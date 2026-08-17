@@ -137,10 +137,11 @@ export function createAnimator() {
       base.root.pos.y,
       base.root.pos.z,
     );
-    rig.legs.forEach((leg, i) => {
-      const side = i === 0 ? -1 : 1;
-      spin(leg, base.legs[i], 0, 0, sway * 0.09 * side * (0.5 + T.wobble));
-    });
+    // Both legs lean the same way — a weight shift tilts the whole stance.
+    // Swinging them in opposite directions would close the gap between them
+    // and, on a thick-limbed freak, fuse them into one leg mid-sway.
+    const legLean = sway * 0.07 * (0.5 + T.wobble);
+    rig.legs.forEach((leg, i) => spin(leg, base.legs[i], 0, 0, legLean));
 
     // --- arms dangle a beat behind the body --------------------------------
     rig.shoulders.forEach((sh, i) => {
