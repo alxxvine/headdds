@@ -71,6 +71,9 @@ export function createAnimator() {
     saccadeIn: 0.8,
     blinkIn: 2.5,
     blinkT: -1,
+    // one tick per breath, so a sound can land on the body actually swelling
+    breathBeat: 0,
+    lastBreath: 0,
     // maw
     jaw: 0,
     jawVel: 0,
@@ -173,6 +176,10 @@ export function createAnimator() {
 
     // --- breathing: the body swells, the head rides on top -----------------
     const breath = Math.sin(t * 1.7);
+    // count the intake, not the frame: the sound layer hangs a breath noise off
+    // this so the noise lands with the swell instead of drifting against it
+    if (breath > 0 && S.lastBreath <= 0) S.breathBeat++;
+    S.lastBreath = breath;
     const b = base.body;
     rig.bodyPivot.scale.set(
       b.scale.x * (1 + breath * 0.02 - pose.body.squash * 0.35),
@@ -364,6 +371,7 @@ export function createAnimator() {
     update, rest, poke,
     get action() { return behaviour.current; },
     get mood() { return mood.id; },
+    get breathBeat() { return S.breathBeat; },
     get moodLabel() { return mood.label; },
     get drives() { return mood.drives; },
   };

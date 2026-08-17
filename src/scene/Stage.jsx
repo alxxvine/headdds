@@ -53,6 +53,7 @@ function Creature({ params, onBuilt, idle, poke, onMood, sound }) {
   const azimuth = useRef(null);
   const mood = useRef(null);
   const acted = useRef(null);
+  const breath = useRef(0);
 
   useEffect(() => {
     poke.current = () => {
@@ -112,6 +113,16 @@ function Creature({ params, onBuilt, idle, poke, onMood, sound }) {
     if (animator.mood !== mood.current) {
       mood.current = animator.mood;
       onMood?.(animator.moodLabel);
+    }
+
+    // The ambient layer: breathing hung off the body actually swelling, and a
+    // scatter of small noises on their own clock. Both stop with idle motion,
+    // so pausing the creature really does silence it.
+    sound?.setMood(animator.mood);
+    sound?.tick(dt);
+    if (animator.breathBeat !== breath.current) {
+      breath.current = animator.breathBeat;
+      sound?.cue('breathe');
     }
 
     // a gesture makes its noise when it starts, not every frame it runs
