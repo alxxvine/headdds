@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { withOutline } from './materials.js';
 import { buildArm } from './arms.js';
+import { addOrnaments } from './ornaments.js';
 
 /**
  * The body is whatever height is left after the head: bodyH = headH * (1-r)/r.
@@ -212,6 +213,13 @@ export function buildBody(p, mats, headBox, rng) {
       shoulders.push(shoulder);
     }
   }
+
+  // Ornaments go on last: they hang off the torso and the limbs, so everything
+  // they attach to has to exist and know its own size first.
+  addOrnaments(group, p, mats, rng, {
+    torso, torsoY, torsoW, torsoH, legs, shoulders, limbR, legR, headW,
+    neckY: legH + torsoH * 0.82,
+  });
 
   return { group, bodyH, legH, torsoH, torso, legs, shoulders };
 }

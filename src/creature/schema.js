@@ -284,6 +284,19 @@ export const PARAMS = [
   ], 'ball', {
     random: (rng) => weighted(rng, [['ball', 3], ['none', 2], ['splay', 3], ['hoof', 2]]),
   }),
+  // The skull has had horns and warts from the start; below the neck a freak
+  // was bare, which is why two different torsos still read as one creature
+  // wearing a different lump.
+  select('ornament', 'body', 'ornament', [
+    { value: 'none', label: 'none' },
+    { value: 'ruff', label: 'spiked ruff' },
+    { value: 'plates', label: 'spine plates' },
+    { value: 'studs', label: 'studs' },
+    { value: 'bands', label: 'limb bands' },
+  ], 'none', {
+    random: (rng) => weighted(rng, [['none', 3], ['ruff', 3], ['plates', 3], ['studs', 3], ['bands', 2]]),
+  }),
+  range('ornamentAmount', 'body', 'ornament size', 0, 1, 0.4, { random: (rng) => 0.2 + rng() * 0.8 }),
   range('legLen', 'body', 'leg length', 0.2, 1.5, 0.8),
   range('stance', 'body', 'stance', 0, 1, 0.45),
 

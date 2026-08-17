@@ -50,6 +50,7 @@ Most of a freak is a menu of kinds, each with its own scatter on top:
 | ears | none, flaps, fins, trumpets, holes — with size and height, and the two never quite the same size |
 | hair | none, tendrils, bristles, antennae, dreads, crest, fur, quills, fronds — 9 kinds |
 | torso | blob, pear, barrel, segmented, slab — each with its own proportions, squat and deep or narrow and tall |
+| ornament | none, a spiked ruff at the neck, plates down the spine, studs over the torso, bands around the limbs |
 | legs | sticks, thick, bent, stumps — with feet: ball, none, splayed, hoof |
 | arms | none, stubs, sticks, noodles, mantis — plus lift and a lopsidedness slider |
 | hands | none, ball, claws, pincer, club |
@@ -61,6 +62,18 @@ scatter inside each kind.
 Defaults are the tame end of every menu, so a link shared before a kind existed
 still opens the creature it was saved as. The variety comes from the weights in
 the randomizer, not from the defaults.
+
+The skull has had horns, warts and hair from the start; below the neck a freak
+was bare, which is why two different torsos still read as one creature wearing a
+different lump. Ornaments fix that, and all of them are built in the growth or
+trim tone rather than a new colour.
+
+The ruff is sized against the **head**, not the torso: the skull is most of this
+creature, and a collar measured off a tiny body vanishes behind it entirely. Its
+spikes lean well past horizontal for the same reason, and it hangs from the body
+rather than the head, so it stays put when the head turns instead of reading as
+a hat. Limb bands take the radius of the limb they go on — a ring sized for a
+leg floats off an arm.
 
 The skull is not one shape all the way up any more. Three sliders widen or
 pinch it independently at brow, temple and jaw height, which is what turns a
@@ -155,6 +168,7 @@ src/creature/ears.js     flaps, fins, trumpets, holes
 src/creature/arms.js     arm and hand kinds, pose, and keeping limbs off the floor
 src/creature/body.js     torso kinds, leg kinds and feet, all derived from the
                          head share: bodyH = headH * (1-r)/r
+src/creature/ornaments.js what grows below the neck: ruff, plates, studs, bands
 src/creature/build.js    buildCreature(params) -> { group, rig, stats, dispose, ... }
 src/scene/animator.js    idle motion: springs, blinking, saccades, secondary sway
 src/scene/behaviour.js   what it does between idles: twelve gestures, personality
