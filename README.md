@@ -225,40 +225,52 @@ small synthesiser: oscillators with pitch sweeps, one buffer of white noise
 through a band-pass, envelopes, and a soft clipper with a low-pass after it so
 the noises are as coarse as the picture.
 
-Every gesture has one — roar, chomp, the landing of a hop, sniffing, shivering,
-a scratch, a groan, the whuff of a head turning — and the voice behind them
-comes out of the stats, exactly as the body comes out of the parameters: VIGOR sets
-the pitch (a heavy freak roars around 90 Hz, a light one nearer 270), DREAD sets
+The voice comes out of the stats, exactly as the body comes out of the
+parameters: VIGOR sets the pitch (a heavy freak roars around 90 Hz, a light one nearer 270), DREAD sets
 how much noise rides on the tone, BITE the sharpness of a chew, SPEED the tempo
 of the envelopes. The seed adds the last third, so two creatures with the same
 stats still do not sound alike.
 
-Underneath the gestures runs an ambient layer, because a creature that is
-silent between them reads as a model rather than an animal. It breathes — each
-breath fired off the body actually swelling, so the noise lands with the motion
-instead of drifting against it — and fills the gaps with small noises picked
-for its mood:
+**Nothing plays on a timer of its own.** The animator reports what the body
+just did and every creature noise is the answer to one of those events, so the
+sound cannot drift against the picture:
+
+| event | what makes it | what you hear |
+|---|---|---|
+| `breathIn` / `breathOut` | the breath phase turning | the body's breathing, shaped by its mood — see below |
+| `bite` | the jaw shutting | teeth, from a faint tick to a snap, by how far it fell |
+| `gape` | the jaw opening wide | the voice: a roar, or a yawn if it is stretching or worn out |
+| `land` | the body arriving back at its own height | a thump under a hop |
+| `step` | the weight shift reaching the end of its swing | a foot taking the load |
+| `blink` | an eyelid closing | a small wet tick |
+| `rustle` | limbs and hair turning around at the peak of a thrash | the scrape of a scratch, shiver, fidget or shake |
+
+The jaw is measured against a floor that follows its resting position, not
+against zero: a furious creature stands with its mouth half open, and an
+absolute threshold would read every idle chew as a fresh roar.
+
+Breathing is where the mood lives:
 
 | | |
 |---|---|
-| CALM | slow breath in and out, a gut gurgle, the odd groan or drip |
-| ALERT | short sharp intakes, snorts, teeth clicking |
-| WIRED | quick shallow double-breaths and bursts of chittering |
+| CALM | a slow swell in and out |
+| ALERT | short sharp intakes |
+| WIRED | quick shallow double-breaths |
 | HOSTILE | a low growl carried on every breath, never quite stopping |
-| SPENT | a wheeze with a rasp on the way out, long groans |
+| SPENT | a wheeze with a rasp on the way out |
 
-A calm freak makes some noise every couple of seconds; a wired or hostile one
-roughly twice as often. All of it stops with the IDLE button — pausing the
-creature really does silence it.
+That comes to a noise every half-second or so — roughly 110 events a minute
+standing still, 150 when wound up — and every one of them is something you can
+watch happen. With idle motion paused there are no events at all, so the IDLE
+button really is a mute.
 
-The panel has a voice of its own — fixed frequencies rather than the creature's,
-so a button sounds like a button whichever freak is on screen. A new seed makes
-the creature **cry out in its own voice** the moment it is built, which is how
-you find out what this one sounds like; RANDOM and the seed box therefore get no
-click of their own, since a blip would only step on the cry. Copying gives a
-two-note confirm (or a falling one if the clipboard refuses), RESET a descending
-wipe, and picking a kind or a colour a short tick. **Sliders stay silent**: they
-fire on every pixel of travel and would turn the panel into a rattle.
+Two noises are not motion: a **new freak cries out in its own voice** the moment
+it is built, and the **panel** has its own set on fixed frequencies rather than
+the creature's, so a button sounds like a button whichever freak is on screen —
+a two-note confirm on copy, a falling one when the clipboard refuses, a
+descending wipe on RESET, a tick for picking a kind or a colour. Sliders stay
+silent: they fire on every pixel of travel and would turn the panel into a
+rattle.
 
 Sound is off until the SOUND button is pressed: browsers refuse to start an
 AudioContext without a gesture, and a page that greets you with a roar is a page

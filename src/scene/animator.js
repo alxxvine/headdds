@@ -71,15 +71,29 @@ export function createAnimator() {
     saccadeIn: 0.8,
     blinkIn: 2.5,
     blinkT: -1,
-    // one tick per breath, so a sound can land on the body actually swelling
-    breathBeat: 0,
-    lastBreath: 0,
     // maw
     jaw: 0,
     jawVel: 0,
     chewIn: 4,
     chewLeft: 0,
+    // previous frame's value of everything the event bus below watches
+    lastBreath: 0,
+    lastSwayVel: 0,
+    jawFloor: 0,
+    lastSwing: 0,
+    lastLift: 0,
+    lastStir: 0,
+    stirRising: false,
+    stirGap: 0,
   };
+
+  // The event bus. A sound must be a consequence of a motion, not a thing on
+  // its own timer running alongside it — so the animator reports what the body
+  // just did and the sound layer decides what that is worth hearing. Cleared
+  // and refilled every frame; `act` carries the gesture in progress, so the
+  // same dip can be a sniff during a sniff and a groan during a slump.
+  const events = [];
+  const fire = (id, power = 1) => events.push({ id, power, act: behaviour.current });
 
   /** local-space rotation delta on top of a captured base orientation */
   const spin = (obj, baseNode, x, y, z) => {
@@ -170,15 +184,17 @@ export function createAnimator() {
     // --- what is it doing right now? ---------------------------------------
     // The behaviour layer writes offsets into `pose`; every layer below adds
     // them to its own idle motion, so the two never fight over a transform.
+    events.length = 0;
     resetPose(pose);
     behaviour.update(pose, step, personality, mood);
     mood.posture(pose, t);
 
     // --- breathing: the body swells, the head rides on top -----------------
     const breath = Math.sin(t * 1.7);
-    // count the intake, not the frame: the sound layer hangs a breath noise off
-    // this so the noise lands with the swell instead of drifting against it
-    if (breath > 0 && S.lastBreath <= 0) S.breathBeat++;
+    // the turn of the breath, not the frame: a breath noise hung off this lands
+    // with the body swelling instead of drifting against it
+    if (breath > 0 && S.lastBreath <= 0) fire('breathIn');
+    if (breath <= 0 && S.lastBreath > 0) fire('breathOut');
     S.lastBreath = breath;
     const b = base.body;
     rig.bodyPivot.scale.set(
@@ -191,6 +207,30 @@ export function createAnimator() {
     // --- weight shift from foot to foot ------------------------------------
     const sway = Math.sin(t * 0.42);
     const swayAmp = 0.03 + T.wobble * 0.05 + T.menace * 0.02;
+    // The weight arrives at the ends of the swing, not as it passes through the
+    // middle: watch where the sway turns around.
+    const swayVel = Math.cos(t * 0.42);
+    if (swayVel * S.lastSwayVel < 0) fire('step', 0.4 + T.weight * 0.6);
+    S.lastSwayVel = swayVel;
+
+    // Landing: the body coming back down through its resting height, whether a
+    // hop threw it up there or a stretch lifted it.
+    const lift = pose.root.y;
+    if (S.lastLift > 0.06 && lift <= 0.06) fire('land', Math.min(1, S.lastLift * 6));
+    S.lastLift = lift;
+
+    // Anything the limbs and hair are doing. One scalar covers fidgeting,
+    // scratching, shivering and shaking, and its peaks are where the rustle is.
+    const stir = Math.abs(pose.arms[0].lift) + Math.abs(pose.arms[1].lift)
+      + Math.abs(pose.arms[0].swing) + Math.abs(pose.arms[1].swing) + pose.hair * 0.4;
+    S.stirGap -= step;
+    if (stir > S.lastStir) S.stirRising = true;
+    else if (S.stirRising && S.lastStir > 0.35 && S.stirGap <= 0) {
+      S.stirRising = false;
+      S.stirGap = 0.1; // a fast shiver must not turn into a machine gun
+      fire('rustle', Math.min(1, S.lastStir / 2.2));
+    } else if (stir < S.lastStir) S.stirRising = false;
+    S.lastStir = stir;
     spin(rig.root, base.root, 0, pose.root.yaw, sway * swayAmp + pose.root.roll);
     rig.root.position.set(
       base.root.pos.x - sway * swayAmp * 0.5 * scale + pose.root.x * scale,
@@ -278,6 +318,7 @@ export function createAnimator() {
     if (S.blinkIn <= 0 && S.blinkT < 0) {
       S.blinkT = 0;
       S.blinkIn = 2 + Math.random() * 4.5;
+      fire('blink');
     }
     let blink = 0;
     if (S.blinkT >= 0) {
@@ -342,7 +383,18 @@ export function createAnimator() {
     }
     S.jawVel += (-70 * S.jaw - 9 * S.jawVel) * step;
     S.jaw = Math.max(0, S.jaw + S.jawVel * step);
-    spin(rig.jaw, base.jaw, (S.jaw + pose.jaw) * 0.09, 0, 0);
+    const open = S.jaw + pose.jaw;
+    // The maw is the loudest thing on the creature, so both ends of its travel
+    // are events: a bite is the jaw shutting, a voice is the jaw opening wide.
+    // Measured against a floor that follows the mouth's resting position rather
+    // than against zero — a furious creature stands with its jaw half open, and
+    // an absolute threshold would read every idle chew as a fresh roar.
+    S.jawFloor = Math.min(open, S.jawFloor + step * 0.8);
+    const swing = open - S.jawFloor;
+    if (S.lastSwing > 0.15 && swing <= 0.15) fire('bite', Math.min(1, S.lastSwing / 1.8));
+    if (swing > 1.2 && S.lastSwing <= 1.2) fire('gape', Math.min(1, swing / 2.4));
+    S.lastSwing = swing;
+    spin(rig.jaw, base.jaw, open * 0.09, 0, 0);
 
     // --- secondary motion: tendrils lag behind, spores drift ---------------
     // bristles barely twitch, antennae whip: each strand carries its own
@@ -371,7 +423,8 @@ export function createAnimator() {
     update, rest, poke,
     get action() { return behaviour.current; },
     get mood() { return mood.id; },
-    get breathBeat() { return S.breathBeat; },
+    /** What the body did this frame. Valid until the next update(). */
+    get events() { return events; },
     get moodLabel() { return mood.label; },
     get drives() { return mood.drives; },
   };
