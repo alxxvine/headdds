@@ -190,5 +190,9 @@ export function buildArm(p, mats, rng, opts) {
     shoulder.scale.multiplyScalar(k);
   }
 
+  // the animator lifts and swings this arm; it needs to know how much splay it
+  // may spend before the limb would cross the midline
+  shoulder.userData.splay = splay;
+  shoulder.userData.side = side;
   return shoulder;
 }

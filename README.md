@@ -98,6 +98,7 @@ src/creature/arms.js     arm and hand kinds, pose, and keeping limbs off the flo
 src/creature/body.js     the body derived from the head share: bodyH = headH * (1-r)/r
 src/creature/build.js    buildCreature(params) -> { group, rig, stats, dispose, ... }
 src/scene/animator.js    idle motion: springs, blinking, saccades, secondary sway
+src/scene/behaviour.js   what it does between idles: twelve gestures, personality
 src/scene/Stage.jsx      canvas, lights, pixelated render, camera orbit
 src/ui/                  the panel, generated straight from the schema
 src/lib/noise.js         seeded RNG plus value/fbm noise
@@ -144,9 +145,29 @@ The stats decide *how* a freak carries itself:
 | SIGHT / `BLIND` | how eagerly the eyes track things; a blind head gropes around instead |
 
 On top of that: breathing, weight shifting from foot to foot, blinking (staggered
-across a multi-eyed face), an occasional chew, tendrils lagging behind the head,
-a drifting spore cloud, eyes that follow the cursor, and a recoil-plus-snap when
-you click.
+across a multi-eyed face), tendrils lagging behind the head, a drifting spore
+cloud, eyes that follow the cursor, and a recoil-plus-snap when you click.
+
+## Behaviour
+
+Idle motion alone still reads as a breathing statue, so on top of it the
+creature actually *does* things. `src/scene/behaviour.js` holds a library of
+twelve gestures — look around, fidget, scratch, stretch, shiver, sniff, chomp,
+roar, hop, slump, inspect a hand, shake — and picks one every few seconds. Each
+one drives the whole body: arms, legs, torso, jaw, eyes and hair all move, not
+just the head.
+
+Actions never touch the rig. They write offsets into a pose struct which the
+animator adds on top of its idle layers and applies in one place, so the two can
+never fight over the same transform, and pausing still returns an exact rest
+pose.
+
+Which gesture turns up is down to a **personality**: half of it is rolled from
+the seed, so two creatures with the same stats still behave differently, and
+half comes from the stats, so behaviour matches the body you are looking at. A
+quick creature fidgets, hops and looks around; a heavy one slumps and chews; a
+frightening one roars and stretches; a blind one sniffs. A poke startles it into
+a roar, a shake or a shiver depending on how bold it is.
 
 ## What comes next (gameplay)
 
