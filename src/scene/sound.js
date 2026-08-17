@@ -5,7 +5,14 @@ import { makeRng } from '../lib/noise.js';
 // derived from the stats, the same way the body is derived from the parameters
 // — a heavy creature is low and slow, a fanged one is sharp and dry.
 //
-// Nothing here runs until the player switches sound on: browsers refuse to
+// Nothing here plays on a timer of its own. The animator reports what the body
+// just did — the breath turned, the jaw shut, a foot took the weight, the eyes
+// blinked — and every creature noise is the answer to one of those. A sound
+// that ran alongside the animation instead of out of it would drift against it
+// within seconds, and drifting is exactly what makes a soundtrack feel bolted
+// on.
+//
+// Nothing runs at all until the player switches sound on: browsers refuse to
 // start an AudioContext without a gesture, and a page that greets you with a
 // roar is a page you close.
 
@@ -31,7 +38,6 @@ export function createSound() {
   let on = false;
   // what it is feeling: the ambient layer is entirely built out of this
   let feel = 'calm';
-  let idleIn = 3;
   let lastUi = -1;
 
   function start() {
@@ -100,128 +106,94 @@ export function createSound() {
     }
   }
 
-  // Each gesture that makes a noise, and what that noise is. Everything is
-  // scaled by the voice, so the same cue on two creatures is two creatures.
+  // What each motion sounds like. Everything is scaled by the voice, so the
+  // same event on two creatures is two creatures — and by `p`, the strength the
+  // animator measured, so a hard landing lands harder than a soft one.
   const CUES = {
-    roar(t, m) {
-      const d = (0.75 + voice.grit * 0.5) / voice.quick;
-      const f = voice.base * (1 + m * 0.35);
-      tone(t, { dur: d, from: f * 1.6, to: f * 0.55, gain: 0.2 });
-      tone(t + 0.02, { dur: d, from: f * 1.58, to: f * 0.54, gain: 0.11, detune: 14, type: 'square' });
-      puff(t, { dur: d * 0.9, from: 900 + voice.bite * 1800, to: 320, q: 0.8, gain: 0.22 * voice.grit });
-    },
-    chomp(t) {
-      // one bite per beat, each a dry click with a little meat under it
-      for (let i = 0; i < 4; i++) {
-        const at = t + i * (0.19 / voice.quick);
-        puff(at, { dur: 0.07, from: 2600 + voice.bite * 2600, to: 700, q: 1.6, gain: 0.3 });
-        tone(at, { dur: 0.09, from: voice.base * 1.1, to: voice.base * 0.6, gain: 0.12, type: 'triangle' });
-      }
-    },
-    hop(t) {
-      // the landing, not the jump
-      const at = t + 0.34;
-      tone(at, { dur: 0.16, from: voice.base * 0.9, to: voice.base * 0.28, gain: 0.32, type: 'sine' });
-      puff(at, { dur: 0.11, from: 900, to: 180, q: 0.7, gain: 0.16 });
-    },
-    sniff(t) {
-      for (let i = 0; i < 3; i++) {
-        puff(t + 0.22 + i * 0.16, { dur: 0.13, from: 500, to: 2400, q: 3, gain: 0.2 });
-      }
-    },
-    shiver(t) {
-      for (let i = 0; i < 7; i++) {
-        puff(t + i * 0.075, { dur: 0.06, from: 1500, to: 900, q: 5, gain: 0.13 });
-      }
-    },
-    stretch(t) {
-      const d = 0.9 / voice.quick;
-      tone(t + 0.3, { dur: d, from: voice.base * 0.75, to: voice.base * 1.15, gain: 0.16, type: 'triangle' });
-      puff(t + 0.3, { dur: d, from: 400, to: 900, q: 1.2, gain: 0.08 });
-    },
-    slump(t) {
-      tone(t, { dur: 0.7 / voice.quick, from: voice.base * 0.95, to: voice.base * 0.5, gain: 0.15, type: 'triangle' });
-    },
-    shake(t) {
-      puff(t, { dur: 0.3, from: 2200, to: 600, q: 2, gain: 0.16 });
-    },
-    scratch(t) {
-      for (let i = 0; i < 5; i++) {
-        puff(t + 0.25 + i * 0.1, { dur: 0.09, from: 3000, to: 1400, q: 2.5, gain: 0.11 });
-      }
-    },
-    // ---- ambient: what a creature that is doing nothing still sounds like ---
-    // These run the whole time sound is on, so they are all far quieter than a
-    // gesture. Between them the freak is never actually silent.
-
-    /** One breath, fired on the intake so it lands with the body swelling. */
-    breathe(t) {
-      const d = 1.0 / voice.quick;
+    /** The breath turning inwards. Its shape is the mood, nothing else. */
+    breathIn(t, p) {
+      const d = 0.55 / voice.quick;
       if (feel === 'hostile') {
         // it never stops growling, it only gets louder on the way in
-        tone(t, { dur: d * 0.95, from: voice.base * 0.64, to: voice.base * 0.5, gain: 0.1 });
-        puff(t, { dur: d * 0.95, from: 340, to: 210, q: 1.1, gain: 0.06 * voice.grit });
+        tone(t, { dur: d * 1.7, from: voice.base * 0.64, to: voice.base * 0.5, gain: 0.1 });
+        puff(t, { dur: d * 1.7, from: 340, to: 210, q: 1.1, gain: 0.06 * voice.grit });
       } else if (feel === 'spent') {
-        puff(t, { dur: d * 0.6, from: 700, to: 260, q: 1.8, gain: 0.16 });
-        puff(t + d * 0.66, { dur: d * 0.5, from: 800, to: 1700, q: 3.5, gain: 0.12 }); // the rasp on the way out
+        puff(t, { dur: d, from: 700, to: 260, q: 1.8, gain: 0.16 });
       } else if (feel === 'wired') {
         puff(t, { dur: 0.15, from: 600, to: 1500, q: 2.5, gain: 0.16 });
         puff(t + 0.19, { dur: 0.15, from: 700, to: 1350, q: 2.5, gain: 0.13 });
       } else if (feel === 'alert') {
         puff(t, { dur: 0.28, from: 520, to: 1300, q: 2, gain: 0.15 });
       } else {
-        puff(t, { dur: d * 0.5, from: 380, to: 780, q: 1.4, gain: 0.1 });
-        puff(t + d * 0.56, { dur: d * 0.46, from: 760, to: 330, q: 1.4, gain: 0.085 });
+        puff(t, { dur: d, from: 380, to: 780, q: 1.4, gain: 0.1 });
       }
     },
-    gurgle(t) {
-      const f = voice.base * 0.5;
-      tone(t, { dur: 0.55, from: f * 1.15, to: f * 0.7, gain: 0.08, type: 'sine' });
-      puff(t, { dur: 0.55, from: 280, to: 150, q: 3, gain: 0.055 });
-    },
-    click(t) {
-      puff(t, { dur: 0.04, from: 3000 + voice.bite * 2500, to: 1200, q: 2, gain: 0.13 });
-    },
-    snort(t) {
-      puff(t, { dur: 0.17, from: 950, to: 400, q: 2.2, gain: 0.2 });
-    },
-    groan(t) {
-      tone(t, { dur: 0.85 / voice.quick, from: voice.base * 0.92, to: voice.base * 0.62, gain: 0.1, type: 'triangle' });
-    },
-    growl(t) {
-      tone(t, { dur: 1.1, from: voice.base * 0.6, to: voice.base * 0.52, gain: 0.12 });
-      puff(t, { dur: 1.1, from: 300, to: 200, q: 1, gain: 0.07 * voice.grit });
-    },
-    wheeze(t) {
-      puff(t, { dur: 0.55, from: 1200, to: 480, q: 4, gain: 0.17 });
-    },
-    chitter(t) {
-      for (let i = 0; i < 5; i++) {
-        puff(t + i * 0.055, { dur: 0.035, from: 2800, to: 1600, q: 3, gain: 0.14 });
+    /** And back out. Quieter than the intake, and where the gut noises live. */
+    breathOut(t, p) {
+      const d = 0.5 / voice.quick;
+      if (feel === 'spent') {
+        puff(t, { dur: d, from: 800, to: 1700, q: 3.5, gain: 0.12 }); // the rasp
+      } else if (feel === 'hostile') {
+        tone(t, { dur: d, from: voice.base * 0.55, to: voice.base * 0.46, gain: 0.07 });
+      } else {
+        puff(t, { dur: d, from: 760, to: 330, q: 1.4, gain: 0.085 });
+      }
+      // a gut is a wet place; now and then it says so, on the way out
+      if (Math.random() < 0.22) {
+        const f = voice.base * 0.5;
+        tone(t + 0.1, { dur: 0.5, from: f * 1.15, to: f * 0.7, gain: 0.07, type: 'sine' });
+        puff(t + 0.1, { dur: 0.5, from: 280, to: 150, q: 3, gain: 0.05 });
       }
     },
-    drip(t) {
-      tone(t, { dur: 0.13, from: voice.base * 3.2, to: voice.base * 5, gain: 0.07, type: 'sine', partial: false });
-    },
-
-    // ---- the quieter half of the gestures ----------------------------------
-    lookAround(t) {
-      puff(t + 0.15, { dur: 0.2, from: 700, to: 340, q: 2.4, gain: 0.15 });
-    },
-    inspectHand(t) {
-      const f = voice.base * 1.2;
-      tone(t + 0.35, { dur: 0.28, from: f, to: f * 1.18, gain: 0.09, type: 'triangle' });
-      tone(t + 0.68, { dur: 0.3, from: f * 1.18, to: f * 0.95, gain: 0.08, type: 'triangle' });
-    },
-    fidget(t) {
-      for (let i = 0; i < 3; i++) {
-        puff(t + i * 0.13, { dur: 0.07, from: 1700, to: 900, q: 3, gain: 0.11 });
+    /** The jaw shutting. Teeth on a small one, a whole bite on a big one. */
+    bite(t, p) {
+      // squared, not linear: an idle chew ticks away in the background while a
+      // real bite still snaps
+      puff(t, { dur: 0.04 + p * 0.05, from: 2600 + voice.bite * 2600, to: 700, q: 1.6, gain: 0.04 + p * p * 0.26 });
+      if (p > 0.3) {
+        tone(t, { dur: 0.09, from: voice.base * 1.1, to: voice.base * 0.6, gain: 0.12 * p, type: 'triangle' });
       }
+    },
+    /**
+     * The jaw opening wide. This is where a roar comes from: not from the
+     * gesture being chosen, but from the mouth actually being open, so the
+     * sound and the maw peak together however the gesture happens to be timed.
+     */
+    gape(t, p, act) {
+      const yawn = act === 'stretch' || feel === 'spent';
+      const d = (yawn ? 1.0 : 0.55 + voice.grit * 0.45) / voice.quick;
+      const f = voice.base * (1 + p * 0.35);
+      if (yawn) {
+        tone(t, { dur: d, from: f * 0.8, to: f * 1.2, gain: 0.16 * p, type: 'triangle' });
+        puff(t, { dur: d, from: 400, to: 900, q: 1.2, gain: 0.08 * p });
+        return;
+      }
+      tone(t, { dur: d, from: f * 1.6, to: f * 0.55, gain: 0.16 * p });
+      tone(t + 0.02, { dur: d, from: f * 1.58, to: f * 0.54, gain: 0.085 * p, detune: 14, type: 'square' });
+      puff(t, { dur: d * 0.9, from: 900 + voice.bite * 1800, to: 320, q: 0.8, gain: 0.18 * voice.grit * p });
+    },
+    /** The body arriving back at its own height. */
+    land(t, p) {
+      tone(t, { dur: 0.16, from: voice.base * 0.9, to: voice.base * 0.28, gain: 0.12 + p * 0.22, type: 'sine' });
+      puff(t, { dur: 0.11, from: 900, to: 180, q: 0.7, gain: 0.06 + p * 0.12 });
+    },
+    /** A foot taking the weight at the end of the sway. */
+    step(t, p) {
+      puff(t, { dur: 0.09, from: 620, to: 200, q: 1.4, gain: 0.05 + p * 0.07 });
+    },
+    /** Eyelids. Barely there, but a face with wet eyes is a face. */
+    blink(t) {
+      puff(t, { dur: 0.035, from: 2200, to: 1300, q: 4, gain: 0.05 });
+    },
+    /** Limbs and hair changing direction — the peak of any thrash. */
+    rustle(t, p) {
+      puff(t, { dur: 0.06 + p * 0.05, from: 1800 + p * 1400, to: 900, q: 3, gain: 0.05 + p * 0.1 });
     },
 
     /**
      * A new freak has just appeared. Its voice is already the new one, so the
-     * cry is how you find out what this creature sounds like.
+     * cry is how you find out what this creature sounds like. The one creature
+     * noise with no motion behind it — there is no body yet to make it.
      */
     spawn(t) {
       const f = voice.base;
@@ -239,6 +211,12 @@ export function createSound() {
     poke(t, m) {
       tone(t, { dur: 0.16, from: voice.base * (2.1 + m), to: voice.base * 1.1, gain: 0.2, type: 'square' });
       puff(t, { dur: 0.1, from: 1800, to: 600, q: 1.4, gain: 0.12 });
+    },
+    /** A nose working. The one gesture with no motion channel of its own. */
+    sniff(t) {
+      for (let i = 0; i < 3; i++) {
+        puff(t + 0.22 + i * 0.16, { dur: 0.13, from: 500, to: 2400, q: 3, gain: 0.2 });
+      }
     },
   };
 
@@ -262,29 +240,6 @@ export function createSound() {
     },
   };
 
-  // What a standing creature busies itself with, per mood, and how long it goes
-  // between noises. A wired freak clicks and chitters almost continuously; a
-  // calm one gurgles once in a while and is otherwise just breathing.
-  const AMBIENT = {
-    calm: [['gurgle', 3], ['click', 2], ['groan', 2], ['drip', 2], ['snort', 1]],
-    alert: [['snort', 3], ['click', 3], ['drip', 2], ['gurgle', 1]],
-    wired: [['chitter', 3], ['click', 3], ['snort', 2], ['drip', 1]],
-    hostile: [['growl', 4], ['click', 2], ['snort', 2]],
-    spent: [['wheeze', 3], ['groan', 3], ['gurgle', 2], ['drip', 1]],
-  };
-  const GAP = {
-    calm: [4, 9], alert: [3, 6], wired: [1.6, 3.6], hostile: [1.6, 3.6], spent: [3, 7],
-  };
-
-  function pickAmbient() {
-    const list = AMBIENT[feel] ?? AMBIENT.calm;
-    let total = 0;
-    for (const [, w] of list) total += w;
-    let r = Math.random() * total;
-    for (const [id, w] of list) { r -= w; if (r <= 0) return id; }
-    return list[0][0];
-  }
-
   return {
     get enabled() { return on; },
 
@@ -307,7 +262,6 @@ export function createSound() {
         wake.connect(ctx.destination);
         wake.start(0);
         CUES.hello(ctx.currentTime + 0.02);
-        idleIn = 1.4;
       }
       return on;
     },
@@ -338,23 +292,20 @@ export function createSound() {
 
     /** The mood the ambient layer should sound like. Cheap: called every frame. */
     setMood(id) {
-      if (id && id !== feel) {
-        feel = id;
-        idleIn = Math.min(idleIn, 0.8); // a new mood should be heard, not waited for
-      }
+      if (id) feel = id;
     },
 
     /**
-     * The idle noises, on their own clock. Called every frame while the creature
-     * is animating; silent the moment idle motion is switched off.
+     * Everything the body did this frame, straight from the animator. This is
+     * the only way a creature noise ever gets made.
      */
-    tick(dt) {
-      if (!on || !ctx) return;
-      idleIn -= dt;
-      if (idleIn > 0) return;
-      const [lo, hi] = GAP[feel] ?? GAP.calm;
-      idleIn = lo + Math.random() * (hi - lo);
-      CUES[pickAmbient()](ctx.currentTime + 0.01);
+    play(events) {
+      if (!on || !ctx || !events.length) return;
+      const now = ctx.currentTime + 0.01;
+      for (const e of events) {
+        const cue = CUES[e.id];
+        if (cue) cue(now, clamp01(e.power ?? 1), e.act);
+      }
     },
 
     /**

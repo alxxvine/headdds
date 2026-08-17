@@ -53,7 +53,6 @@ function Creature({ params, onBuilt, idle, poke, onMood, sound }) {
   const azimuth = useRef(null);
   const mood = useRef(null);
   const acted = useRef(null);
-  const breath = useRef(0);
 
   useEffect(() => {
     poke.current = () => {
@@ -123,21 +122,19 @@ function Creature({ params, onBuilt, idle, poke, onMood, sound }) {
       onMood?.(animator.moodLabel);
     }
 
-    // The ambient layer: breathing hung off the body actually swelling, and a
-    // scatter of small noises on their own clock. Both stop with idle motion,
-    // so pausing the creature really does silence it.
+    // Every creature noise: the breath turning, the jaw shutting or gaping, a
+    // foot taking the weight, a landing, a blink, limbs thrashing. Nothing here
+    // runs on a clock of its own, so nothing can drift against the picture —
+    // and with idle motion paused there are no events, hence silence.
     sound?.setMood(animator.mood);
-    sound?.tick(dt);
-    if (animator.breathBeat !== breath.current) {
-      breath.current = animator.breathBeat;
-      sound?.cue('breathe');
-    }
+    sound?.play(animator.events);
 
-    // a gesture makes its noise when it starts, not every frame it runs
+    // Sniffing is the one gesture with no motion channel of its own — a nose
+    // has no pivot — so it is still announced when it starts. Everything else
+    // comes out of the events below.
     if (animator.action !== acted.current) {
       acted.current = animator.action;
-      const d = animator.drives;
-      if (acted.current) sound?.cue(acted.current, Math.max(d.arousal, d.anger));
+      if (acted.current === 'sniff') sound?.cue('sniff');
     }
   });
 
