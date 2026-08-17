@@ -32,6 +32,7 @@ export function createSound() {
   // what it is feeling: the ambient layer is entirely built out of this
   let feel = 'calm';
   let idleIn = 3;
+  let lastUi = -1;
 
   function start() {
     if (ctx) return true;
@@ -218,6 +219,17 @@ export function createSound() {
       }
     },
 
+    /**
+     * A new freak has just appeared. Its voice is already the new one, so the
+     * cry is how you find out what this creature sounds like.
+     */
+    spawn(t) {
+      const f = voice.base;
+      puff(t, { dur: 0.18, from: 340, to: 1600, q: 1.2, gain: 0.16 });
+      tone(t + 0.06, { dur: 0.3, from: f * 0.8, to: f * 2.1, gain: 0.2, type: 'sawtooth' });
+      tone(t + 0.3, { dur: 0.34, from: f * 2.1, to: f * 1.3, gain: 0.16, type: 'square', detune: 10 });
+    },
+
     // played the moment sound is switched on: without it the first noise waits
     // for a gesture, and a silent button reads as a broken one
     hello(t) {
@@ -227,6 +239,26 @@ export function createSound() {
     poke(t, m) {
       tone(t, { dur: 0.16, from: voice.base * (2.1 + m), to: voice.base * 1.1, gain: 0.2, type: 'square' });
       puff(t, { dur: 0.1, from: 1800, to: 600, q: 1.4, gain: 0.12 });
+    },
+  };
+
+  // The panel's own noises. These are not the creature: they use fixed
+  // frequencies rather than its voice, so a button sounds like a button no
+  // matter which freak is on screen.
+  const UI = {
+    tap(t) {
+      tone(t, { dur: 0.05, from: 660, to: 880, gain: 0.12, type: 'square', partial: false });
+    },
+    ok(t) {
+      tone(t, { dur: 0.06, from: 780, to: 780, gain: 0.12, type: 'square', partial: false });
+      tone(t + 0.07, { dur: 0.1, from: 1170, to: 1170, gain: 0.12, type: 'square', partial: false });
+    },
+    nope(t) {
+      tone(t, { dur: 0.07, from: 420, to: 420, gain: 0.13, type: 'square', partial: false });
+      tone(t + 0.08, { dur: 0.13, from: 280, to: 240, gain: 0.13, type: 'square', partial: false });
+    },
+    reset(t) {
+      tone(t, { dur: 0.22, from: 900, to: 300, gain: 0.13, type: 'square', partial: false });
     },
   };
 
@@ -292,6 +324,16 @@ export function createSound() {
         bite: n(v.bite),
         quick: 0.55 + n(v.speed) * 1.0,
       };
+    },
+
+    /** A button in the panel. Not the creature's voice — the interface's own. */
+    ui(id) {
+      if (!on || !ctx || !UI[id]) return;
+      // a colour picker fires while you drag inside it; without this the panel
+      // turns into a machine gun
+      if (ctx.currentTime - lastUi < 0.08) return;
+      lastUi = ctx.currentTime;
+      UI[id](ctx.currentTime + 0.01);
     },
 
     /** The mood the ambient layer should sound like. Cheap: called every frame. */

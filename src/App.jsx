@@ -2,7 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import Stage from './scene/Stage.jsx';
 import { createSound } from './scene/sound.js';
 import Panel from './ui/Panel.jsx';
-import { DEFAULTS, randomize, randomSeed } from './creature/schema.js';
+import { DEFAULTS, PARAM_BY_KEY, randomize, randomSeed } from './creature/schema.js';
 import { readUrlParams, syncUrl, shareUrl, copyText, prettyJson } from './lib/codec.js';
 
 // Someone who asked the system for less motion should not be met by a
@@ -36,9 +36,16 @@ export default function App() {
   }, [params]);
 
   const setParam = useCallback((key, value) => {
+    // Picking a kind or a colour is a click and gets one; dragging a slider
+    // fires on every pixel of travel and would turn the panel into a rattle.
+    const type = PARAM_BY_KEY[key]?.type;
+    if (type === 'select' || type === 'color') sound.ui('tap');
     setParams((prev) => ({ ...prev, [key]: value }));
-  }, []);
+  }, [sound]);
 
+  // RANDOM and the seed box get no click of their own: the new creature cries
+  // out in its own voice as soon as it is built, and a blip on top of that
+  // would only step on it.
   const onRandom = useCallback(() => {
     const seed = randomSeed();
     setParams(randomize(seed));
@@ -49,27 +56,33 @@ export default function App() {
 
   const onReset = useCallback(() => {
     setParams({ ...DEFAULTS });
+    sound.ui('reset');
     flash('parameters reset');
-  }, [flash]);
+  }, [sound, flash]);
 
   const onCopyJson = useCallback(async () => {
     const ok = await copyText(prettyJson(params));
+    sound.ui(ok ? 'ok' : 'nope');
     flash(ok ? 'JSON copied' : 'clipboard access denied');
-  }, [params, flash]);
+  }, [params, sound, flash]);
 
   const onCopyLink = useCallback(async () => {
     const url = shareUrl(params);
     syncUrl(params);
     const ok = await copyText(url);
+    sound.ui(ok ? 'ok' : 'nope');
     flash(ok ? 'link copied' : 'link is in the address bar');
-  }, [params, flash]);
+  }, [params, sound, flash]);
 
   const onToggleIdle = useCallback(() => {
+    // the click lives out here, not inside the updater: React may call an
+    // updater twice, and a doubled blip is the sort of thing you hear
+    sound.ui('tap');
     setIdle((v) => {
       flash(v ? 'idle motion off' : 'idle motion on');
       return !v;
     });
-  }, [flash]);
+  }, [sound, flash]);
 
   const onToggleSound = useCallback(() => {
     const state = sound.toggle();

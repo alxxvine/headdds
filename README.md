@@ -251,6 +251,15 @@ A calm freak makes some noise every couple of seconds; a wired or hostile one
 roughly twice as often. All of it stops with the IDLE button — pausing the
 creature really does silence it.
 
+The panel has a voice of its own — fixed frequencies rather than the creature's,
+so a button sounds like a button whichever freak is on screen. A new seed makes
+the creature **cry out in its own voice** the moment it is built, which is how
+you find out what this one sounds like; RANDOM and the seed box therefore get no
+click of their own, since a blip would only step on the cry. Copying gives a
+two-note confirm (or a falling one if the clipboard refuses), RESET a descending
+wipe, and picking a kind or a colour a short tick. **Sliders stay silent**: they
+fire on every pixel of travel and would turn the panel into a rattle.
+
 Sound is off until the SOUND button is pressed: browsers refuse to start an
 AudioContext without a gesture, and a page that greets you with a roar is a page
 you close. Switching it on plays a short chirp straight away — partly so the
