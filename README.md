@@ -33,10 +33,36 @@ Deployment to GitHub Pages is set up in `.github/workflows/pages.yml`
 - **JSON** — copies the same creature as a parameter object.
 - Drag to spin, wheel (or pinch) to zoom.
 
+## Stats
+
+Every creature rolls six stats out of its own anatomy — no dice, no hidden
+rolls, just a pure function of the parameters:
+
+| Stat | Comes from |
+|---|---|
+| VIGOR | skull volume, body width, boxiness, warts, jaw |
+| BITE | tooth count, tooth length, maw width, fanginess |
+| SPEED | leg length, minus skull mass, head share and body width |
+| SIGHT | eye count, size, bulge, spread (hollow and bead eyes see less) |
+| DREAD | teeth, horns, tendrils, spores, lumps, dark skin |
+| BALANCE | stance and body width, minus head share and leg length |
+
+The point is trade-offs: a boulder of a skull buys VIGOR and pays in SPEED,
+stilt legs do the opposite, a maw full of fangs costs you nothing but leaves
+no room for a face. On top of the numbers, loud features grant **traits** —
+`MANY-EYED`, `FANGED`, `HORNED`, `SPOREBEARER`, `TOP-HEAVY`, `BLIND` and more
+— each carrying its own modifiers (hover a trait chip to see them). `PWR` is
+just the flat average, a single number for future matchmaking.
+
+Stats live in `src/creature/stats.js` and depend on nothing but the parameter
+object, so gameplay can call `computeStats(params)` on a saved creature without
+loading three.js.
+
 ## How the mechanism works
 
 ```
 src/creature/schema.js   every parameter, defaults, palettes, randomize(seed)
+src/creature/stats.js    six stats and traits derived from the parameters
 src/creature/head.js     the skull: direction -> point of skin (headPoint)
 src/creature/surface.js  planting features on skin: raycasts, orientation, decals
 src/creature/features.js eyes, toothed maw, nose, warts, horns, tendrils, spores
