@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { withOutline, rim } from './materials.js';
+import { withOutline } from './materials.js';
 
 // Arms are built one at a time so the two sides can differ: length, splay and
 // lift all get a per-side wobble from `asymmetry`. Everything hangs along the
@@ -75,6 +75,18 @@ export function innerReach(root, side) {
   return inner === Infinity ? 0 : inner;
 }
 
+/** How far from straight down the hand actually sits, in radians. */
+const _lean = new THREE.Vector3();
+function armLean(shoulder, tip) {
+  _lean.copy(tip).applyQuaternion(shoulder.quaternion);
+  const len = _lean.length();
+  if (len < 1e-9) return 0;
+  return Math.acos(Math.min(1, Math.max(-1, -_lean.y / len)));
+}
+
+/** 60 degrees from straight down. Past this the arm reads as a T-pose. */
+const MAX_LEAN = 1.05;
+
 // ------------------------------------------------------------------ HANDS ---
 
 function addHand(parent, p, mats, { limbR, ink, tip, dir }) {
@@ -88,7 +100,7 @@ function addHand(parent, p, mats, { limbR, ink, tip, dir }) {
   const palmGeo = new THREE.SphereGeometry(limbR * (p.handType === 'club' ? 1.5 : 0.9), 8, 6);
   const palm = new THREE.Mesh(palmGeo, mats.trim);
   if (p.handType === 'club') palm.scale.set(1.1, 1.3, 1.1);
-  withOutline(frame, palm, palmGeo, rim(ink, limbR * (p.handType === 'club' ? 1.5 : 0.9)), mats.outline);
+  withOutline(frame, palm, palmGeo, ink, mats.outline);
   if (p.handType === 'ball' || p.handType === 'club') return;
 
   // claws and pincers are cones fanned around the tip
@@ -104,7 +116,7 @@ function addHand(parent, p, mats, { limbR, ink, tip, dir }) {
     finger.translateY(-limbR * 0.6);
     // cones point +Y by default; flip so they grow away from the palm
     finger.rotateZ(Math.PI);
-    withOutline(frame, finger, fingerGeo, rim(ink * 0.7, limbR * 0.5), mats.outline);
+    withOutline(frame, finger, fingerGeo, ink * 0.7, mats.outline);
   }
 }
 
@@ -120,7 +132,7 @@ function addSegments(parent, p, mats, { limbR, ink, len, side }) {
     const geo = new THREE.CapsuleGeometry(limbR * 1.05, stubLen, 3, 6);
     const stub = new THREE.Mesh(geo, mats.body);
     stub.position.y = -stubLen * 0.5;
-    withOutline(parent, stub, geo, rim(ink, limbR * 1.05), mats.outline);
+    withOutline(parent, stub, geo, ink, mats.outline);
     tip.set(0, -stubLen - limbR * 0.6, 0);
     return { tip, dir };
   }
@@ -148,7 +160,7 @@ function addSegments(parent, p, mats, { limbR, ink, len, side }) {
     const upGeo = new THREE.CapsuleGeometry(limbR * 0.9, upper, 3, 6);
     const upperMesh = new THREE.Mesh(upGeo, mats.body);
     upperMesh.position.y = -upper * 0.5;
-    withOutline(parent, upperMesh, upGeo, rim(ink, limbR * 0.9), mats.outline);
+    withOutline(parent, upperMesh, upGeo, ink, mats.outline);
 
     const elbow = new THREE.Group();
     elbow.position.y = -upper;
@@ -161,7 +173,7 @@ function addSegments(parent, p, mats, { limbR, ink, len, side }) {
     const foreGeo = new THREE.CapsuleGeometry(limbR * 0.75, fore, 3, 6);
     const foreMesh = new THREE.Mesh(foreGeo, mats.body);
     foreMesh.position.y = -fore * 0.5;
-    withOutline(elbow, foreMesh, foreGeo, rim(ink, limbR * 0.75), mats.outline);
+    withOutline(elbow, foreMesh, foreGeo, ink, mats.outline);
 
     elbow.updateMatrix();
     tip.set(0, -fore - limbR * 0.5, 0).applyMatrix4(elbow.matrix);
@@ -173,7 +185,7 @@ function addSegments(parent, p, mats, { limbR, ink, len, side }) {
   const geo = new THREE.CapsuleGeometry(limbR * 0.85, len, 3, 6);
   const arm = new THREE.Mesh(geo, mats.body);
   arm.position.y = -len * 0.5;
-  withOutline(parent, arm, geo, rim(ink, limbR * 0.85), mats.outline);
+  withOutline(parent, arm, geo, ink, mats.outline);
   tip.set(0, -len - limbR * 0.4, 0);
   return { tip, dir };
 }
@@ -209,11 +221,28 @@ export function buildArm(p, mats, rng, opts) {
   // whole arm down with it. A margin measured only in limb radii covers a fat
   // arm and leaves a thin one on a tall body scraping the ground.
   const clearance = limbR * 0.9 + shoulderY * 0.12;
-  let splay = 0.32 + stance * 0.4 + Math.abs(wonk) * 0.3;
+
+  // Opening the arm outward is the cheap way to hold a hand off the floor, and
+  // it was allowed to run to 1.5 radians — 86 degrees, an arm pointing straight
+  // out sideways. A freak in a T-pose does not read as a freak with long arms,
+  // it reads as a rig that failed to load.
+  //
+  // The limit has to be on where the HAND ends up, not on the shoulder's angle:
+  // a noodle curls a third of its own length outward and a mantis kicks its
+  // forearm forward, so those two reach sideways well past whatever the pivot
+  // was turned by. Solve for the widest splay whose hand is still inside 60
+  // degrees of straight down, and let the shrink below take whatever is left —
+  // a slightly shorter arm is a proportion, an arm out sideways is a bug.
+  let splayCap = 0;
+  for (let a = 1.2; a >= -0.001; a -= 0.08) {
+    shoulder.rotation.z = side * Math.max(0, a);
+    if (armLean(shoulder, tip) <= MAX_LEAN) { splayCap = Math.max(0, a); break; }
+  }
+  let splay = Math.min(splayCap, 0.32 + stance * 0.4 + Math.abs(wonk) * 0.3);
   for (let i = 0; i < 14; i++) {
     shoulder.rotation.z = side * splay;
-    if (lowestPoint(shoulder) >= clearance || splay >= 1.5) break;
-    splay = Math.min(1.5, splay + 0.12);
+    if (lowestPoint(shoulder) >= clearance || splay >= splayCap) break;
+    splay = Math.min(splayCap, splay + 0.12);
   }
 
   // Still scraping the floor (a long arm on a tiny body): shrink to fit.

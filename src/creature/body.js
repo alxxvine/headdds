@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { withOutline, rim } from './materials.js';
+import { withOutline } from './materials.js';
 import { buildArm } from './arms.js';
 import { makeTorsoGeometry, bodyProfile, profilePeak } from './torso.js';
 
@@ -39,7 +39,7 @@ export function buildBody(p, mats, headBox, rng) {
   // space several body-widths out.
   const wantW = Math.max(0.04, p.bodyWidth * headW * 0.26);
   // a slender body carries slender limbs
-  const limbR0 = Math.min(Math.max(0.012, p.limbThick * headW * 0.045), wantW * 0.42);
+  const limbR0 = Math.min(Math.max(0.012, p.limbThick * headW * 0.06), wantW * 0.55);
   const ink = p.outline * headW * 0.5;
 
   // The skull gets a silhouette of its own; the torso used to be whichever
@@ -57,7 +57,12 @@ export function buildBody(p, mats, headBox, rng) {
   // the shin: a splayed foot is nearly twice the leg above it.
   const legRPre = Math.min(limbR0 * (p.legType === 'thick' ? 2.1 : p.legType === 'stump' ? 2.6 : 1), wantW * 0.55);
   const footRPre = legRPre * (p.footType === 'hoof' ? 1.05 : 1.25);
-  const legHalf0 = Math.max(legRPre, p.footType === 'none' ? 0
+  // A digitigrade leg's thigh is built 15% fatter than the shin below it, and
+  // leaving that out of the estimate meant the number the hips are spaced by
+  // was smaller than the leg actually is. There was slack enough to hide it
+  // while the spacing was generous; there is not once it is tight.
+  const legWidest = legRPre * (p.legType === 'bent' ? 1.15 : 1);
+  const legHalf0 = Math.max(legWidest, p.footType === 'none' ? 0
     : p.footType === 'splay' ? footRPre * 1.8
     : p.footType === 'hoof' ? footRPre * 1.15
     : footRPre * 1.1);
@@ -108,6 +113,14 @@ export function buildBody(p, mats, headBox, rng) {
   // rather than a search.
   const hipNeed = legHalf0 * 1.45;
   const shoulderNeed = hipNeed + legHalf0 + limbR0 * 1.4;
+  // And how much room they need if they are pushed together as close as they
+  // can go without touching. The difference between these two is the slack the
+  // fit below spends FIRST, before it starts shaving the limbs themselves —
+  // spacing is what these numbers are about, and thickness is what a player
+  // can see. Paying the whole shortfall out of thickness put 30% of arms under
+  // two pixels wide at the resolution this renders at, which is a whisker.
+  const hipTight = legHalf0 * 1.35;
+  const shoulderTight = Math.max(hipTight * 0.7, limbR0 * 1.7);
 
   // The torso may widen to carry them — but only so far. Letting it grow
   // without bound, which is what dividing by these narrowing factors did, set
@@ -137,11 +150,14 @@ export function buildBody(p, mats, headBox, rng) {
   const hipAttach = torsoW * hipNarrow * 0.95;
   const attach = torsoW * shoulderNarrow * 0.95;
 
-  // If a ceiling bound, the limbs come in rather than the body going out.
-  const fit = Math.min(1, hipAttach / Math.max(hipNeed, 1e-6), attach / Math.max(shoulderNeed, 1e-6));
+  // If a ceiling bound, the limbs come in rather than the body going out — and
+  // they come TOGETHER before they come thin. Measured against the tight
+  // spacing, so the roomy gaps above are spent first and the limb only starts
+  // losing thickness once the two of them are already shoulder to shoulder.
+  const fit = Math.min(1, hipAttach / Math.max(hipTight, 1e-6), attach / Math.max(shoulderTight, 1e-6));
   const limbR = limbR0 * fit;
   const legHalf = legHalf0 * fit;
-  const hipFloor = hipNeed * fit;
+  const hipFloor = hipTight * fit;
 
   const group = new THREE.Group();
 
@@ -219,17 +235,17 @@ export function buildBody(p, mats, headBox, rng) {
       const thigh = new THREE.Mesh(thighGeo, mats.body);
       thigh.position.set(0, legR + half * 1.45 - legH, -half * 0.2);
       thigh.rotation.x = -lean;
-      withOutline(legPivot, thigh, thighGeo, rim(ink, legR * 1.15), mats.outline);
+      withOutline(legPivot, thigh, thighGeo, ink, mats.outline);
 
       const shinGeo = new THREE.CapsuleGeometry(legR * 0.85, half, 3, 7);
       const shin = new THREE.Mesh(shinGeo, mats.body);
       shin.position.set(0, legR + half * 0.5 - legH, half * 0.12);
       shin.rotation.x = lean * 0.55;
-      withOutline(legPivot, shin, shinGeo, rim(ink, legR * 0.85), mats.outline);
+      withOutline(legPivot, shin, shinGeo, ink, mats.outline);
     } else {
       const leg = new THREE.Mesh(legGeo, mats.body);
       leg.position.set(0, legR + legLen * 0.5 - legH, 0);
-      withOutline(legPivot, leg, legGeo, rim(ink, legR), mats.outline);
+      withOutline(legPivot, leg, legGeo, ink, mats.outline);
     }
 
     if (p.footType !== 'none') {
@@ -245,7 +261,7 @@ export function buildBody(p, mats, headBox, rng) {
         foot.scale.set(p.footType === 'splay' ? 1.8 : 1.1, squash, p.footType === 'splay' ? 2.2 : 1.5);
         foot.position.set(0, footR * squash - legH, legR * 0.9);
       }
-      withOutline(legPivot, foot, footGeo, rim(ink, footR), mats.outline);
+      withOutline(legPivot, foot, footGeo, ink, mats.outline);
     }
 
     // arm: the shoulder sits low and wide, otherwise the whole limb hides

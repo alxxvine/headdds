@@ -334,7 +334,11 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     const edge = mh * Math.sqrt(Math.max(0.1, 1 - Math.min(1, ((u - mx) / (mw * 0.99)) ** 2)));
     const hit = surfaceAt(headMesh, p, u, my + side * edge * 0.94);
 
-    const w = ((2 * mw) / count) * (1 - p.toothGap) * 0.92
+    // A tooth never fills its own slot. At the bottom of the gap slider the
+    // blocks met edge to edge and the whole row rendered as one white bar with
+    // a couple of seams in it — a mouthguard, not teeth. A sixth of the slot is
+    // always air, whatever the slider says.
+    const w = ((2 * mw) / count) * (1 - Math.max(0.17, p.toothGap)) * 0.92
       * (1 + (rng() * 2 - 1) * p.toothVary * 0.3);
     // A row of identical spikes is what makes a maw look stamped out. `vary`
     // spreads the lengths — at the top of the slider one mouth holds anything
@@ -350,12 +354,15 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     let flat = 0.7;
     let curl = 0;
     if (p.toothType === 'needles') {
+      // A sixth of the slot wide is a single pixel at the resolution this
+      // renders at, and a row of them read as a barcode rather than as teeth.
+      // A third is still a needle and is still there when the dust settles.
       len *= 1.35;
-      geo = new THREE.CylinderGeometry(w * 0.16, w * 0.05, len, 4);
+      geo = new THREE.CylinderGeometry(w * 0.32, w * 0.12, len, 4);
       flat = 1;
     } else if (p.toothType === 'blocks') {
       len *= 0.55;
-      geo = new THREE.BoxGeometry(w * 0.88, len, w * 0.8);
+      geo = new THREE.BoxGeometry(w * 0.8, len, w * 0.8);
       flat = 1;
     } else if (p.toothType === 'tusks') {
       len *= 1.5;
