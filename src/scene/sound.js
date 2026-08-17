@@ -29,6 +29,9 @@ export function createSound() {
   let noise = null;
   let voice = { base: 120, grit: 0.5, bite: 0.5, quick: 1, wet: 0.4 };
   let on = false;
+  // what it is feeling: the ambient layer is entirely built out of this
+  let feel = 'calm';
+  let idleIn = 3;
 
   function start() {
     if (ctx) return true;
@@ -146,6 +149,75 @@ export function createSound() {
         puff(t + 0.25 + i * 0.1, { dur: 0.09, from: 3000, to: 1400, q: 2.5, gain: 0.11 });
       }
     },
+    // ---- ambient: what a creature that is doing nothing still sounds like ---
+    // These run the whole time sound is on, so they are all far quieter than a
+    // gesture. Between them the freak is never actually silent.
+
+    /** One breath, fired on the intake so it lands with the body swelling. */
+    breathe(t) {
+      const d = 1.0 / voice.quick;
+      if (feel === 'hostile') {
+        // it never stops growling, it only gets louder on the way in
+        tone(t, { dur: d * 0.95, from: voice.base * 0.64, to: voice.base * 0.5, gain: 0.1 });
+        puff(t, { dur: d * 0.95, from: 340, to: 210, q: 1.1, gain: 0.06 * voice.grit });
+      } else if (feel === 'spent') {
+        puff(t, { dur: d * 0.6, from: 700, to: 260, q: 1.8, gain: 0.16 });
+        puff(t + d * 0.66, { dur: d * 0.5, from: 800, to: 1700, q: 3.5, gain: 0.12 }); // the rasp on the way out
+      } else if (feel === 'wired') {
+        puff(t, { dur: 0.15, from: 600, to: 1500, q: 2.5, gain: 0.16 });
+        puff(t + 0.19, { dur: 0.15, from: 700, to: 1350, q: 2.5, gain: 0.13 });
+      } else if (feel === 'alert') {
+        puff(t, { dur: 0.28, from: 520, to: 1300, q: 2, gain: 0.15 });
+      } else {
+        puff(t, { dur: d * 0.5, from: 380, to: 780, q: 1.4, gain: 0.1 });
+        puff(t + d * 0.56, { dur: d * 0.46, from: 760, to: 330, q: 1.4, gain: 0.085 });
+      }
+    },
+    gurgle(t) {
+      const f = voice.base * 0.5;
+      tone(t, { dur: 0.55, from: f * 1.15, to: f * 0.7, gain: 0.08, type: 'sine' });
+      puff(t, { dur: 0.55, from: 280, to: 150, q: 3, gain: 0.055 });
+    },
+    click(t) {
+      puff(t, { dur: 0.04, from: 3000 + voice.bite * 2500, to: 1200, q: 2, gain: 0.13 });
+    },
+    snort(t) {
+      puff(t, { dur: 0.17, from: 950, to: 400, q: 2.2, gain: 0.2 });
+    },
+    groan(t) {
+      tone(t, { dur: 0.85 / voice.quick, from: voice.base * 0.92, to: voice.base * 0.62, gain: 0.1, type: 'triangle' });
+    },
+    growl(t) {
+      tone(t, { dur: 1.1, from: voice.base * 0.6, to: voice.base * 0.52, gain: 0.12 });
+      puff(t, { dur: 1.1, from: 300, to: 200, q: 1, gain: 0.07 * voice.grit });
+    },
+    wheeze(t) {
+      puff(t, { dur: 0.55, from: 1200, to: 480, q: 4, gain: 0.17 });
+    },
+    chitter(t) {
+      for (let i = 0; i < 5; i++) {
+        puff(t + i * 0.055, { dur: 0.035, from: 2800, to: 1600, q: 3, gain: 0.14 });
+      }
+    },
+    drip(t) {
+      tone(t, { dur: 0.13, from: voice.base * 3.2, to: voice.base * 5, gain: 0.07, type: 'sine', partial: false });
+    },
+
+    // ---- the quieter half of the gestures ----------------------------------
+    lookAround(t) {
+      puff(t + 0.15, { dur: 0.2, from: 700, to: 340, q: 2.4, gain: 0.15 });
+    },
+    inspectHand(t) {
+      const f = voice.base * 1.2;
+      tone(t + 0.35, { dur: 0.28, from: f, to: f * 1.18, gain: 0.09, type: 'triangle' });
+      tone(t + 0.68, { dur: 0.3, from: f * 1.18, to: f * 0.95, gain: 0.08, type: 'triangle' });
+    },
+    fidget(t) {
+      for (let i = 0; i < 3; i++) {
+        puff(t + i * 0.13, { dur: 0.07, from: 1700, to: 900, q: 3, gain: 0.11 });
+      }
+    },
+
     // played the moment sound is switched on: without it the first noise waits
     // for a gesture, and a silent button reads as a broken one
     hello(t) {
@@ -157,6 +229,29 @@ export function createSound() {
       puff(t, { dur: 0.1, from: 1800, to: 600, q: 1.4, gain: 0.12 });
     },
   };
+
+  // What a standing creature busies itself with, per mood, and how long it goes
+  // between noises. A wired freak clicks and chitters almost continuously; a
+  // calm one gurgles once in a while and is otherwise just breathing.
+  const AMBIENT = {
+    calm: [['gurgle', 3], ['click', 2], ['groan', 2], ['drip', 2], ['snort', 1]],
+    alert: [['snort', 3], ['click', 3], ['drip', 2], ['gurgle', 1]],
+    wired: [['chitter', 3], ['click', 3], ['snort', 2], ['drip', 1]],
+    hostile: [['growl', 4], ['click', 2], ['snort', 2]],
+    spent: [['wheeze', 3], ['groan', 3], ['gurgle', 2], ['drip', 1]],
+  };
+  const GAP = {
+    calm: [4, 9], alert: [3, 6], wired: [1.6, 3.6], hostile: [1.6, 3.6], spent: [3, 7],
+  };
+
+  function pickAmbient() {
+    const list = AMBIENT[feel] ?? AMBIENT.calm;
+    let total = 0;
+    for (const [, w] of list) total += w;
+    let r = Math.random() * total;
+    for (const [id, w] of list) { r -= w; if (r <= 0) return id; }
+    return list[0][0];
+  }
 
   return {
     get enabled() { return on; },
@@ -180,6 +275,7 @@ export function createSound() {
         wake.connect(ctx.destination);
         wake.start(0);
         CUES.hello(ctx.currentTime + 0.02);
+        idleIn = 1.4;
       }
       return on;
     },
@@ -198,10 +294,34 @@ export function createSound() {
       };
     },
 
-    /** A gesture started, or the player jabbed it. `m` is 0..1 agitation. */
-    cue(id, m = 0) {
+    /** The mood the ambient layer should sound like. Cheap: called every frame. */
+    setMood(id) {
+      if (id && id !== feel) {
+        feel = id;
+        idleIn = Math.min(idleIn, 0.8); // a new mood should be heard, not waited for
+      }
+    },
+
+    /**
+     * The idle noises, on their own clock. Called every frame while the creature
+     * is animating; silent the moment idle motion is switched off.
+     */
+    tick(dt) {
+      if (!on || !ctx) return;
+      idleIn -= dt;
+      if (idleIn > 0) return;
+      const [lo, hi] = GAP[feel] ?? GAP.calm;
+      idleIn = lo + Math.random() * (hi - lo);
+      CUES[pickAmbient()](ctx.currentTime + 0.01);
+    },
+
+    /**
+     * A gesture started, or the player jabbed it. `m` is 0..1 agitation.
+     * `delay` pushes it into the future; only the offline level tests use it.
+     */
+    cue(id, m = 0, delay = 0) {
       if (!on || !ctx || !CUES[id]) return;
-      CUES[id](ctx.currentTime + 0.01, clamp01(m));
+      CUES[id](ctx.currentTime + 0.01 + delay, clamp01(m));
     },
 
     dispose() {

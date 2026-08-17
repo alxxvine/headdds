@@ -225,13 +225,31 @@ small synthesiser: oscillators with pitch sweeps, one buffer of white noise
 through a band-pass, envelopes, and a soft clipper with a low-pass after it so
 the noises are as coarse as the picture.
 
-Every gesture that should make a noise has one — roar, chomp, the landing of a
-hop, sniffing, shivering, a scratch, a groan — and the voice behind them comes
-out of the stats, exactly as the body comes out of the parameters: VIGOR sets
+Every gesture has one — roar, chomp, the landing of a hop, sniffing, shivering,
+a scratch, a groan, the whuff of a head turning — and the voice behind them
+comes out of the stats, exactly as the body comes out of the parameters: VIGOR sets
 the pitch (a heavy freak roars around 90 Hz, a light one nearer 270), DREAD sets
 how much noise rides on the tone, BITE the sharpness of a chew, SPEED the tempo
 of the envelopes. The seed adds the last third, so two creatures with the same
 stats still do not sound alike.
+
+Underneath the gestures runs an ambient layer, because a creature that is
+silent between them reads as a model rather than an animal. It breathes — each
+breath fired off the body actually swelling, so the noise lands with the motion
+instead of drifting against it — and fills the gaps with small noises picked
+for its mood:
+
+| | |
+|---|---|
+| CALM | slow breath in and out, a gut gurgle, the odd groan or drip |
+| ALERT | short sharp intakes, snorts, teeth clicking |
+| WIRED | quick shallow double-breaths and bursts of chittering |
+| HOSTILE | a low growl carried on every breath, never quite stopping |
+| SPENT | a wheeze with a rasp on the way out, long groans |
+
+A calm freak makes some noise every couple of seconds; a wired or hostile one
+roughly twice as often. All of it stops with the IDLE button — pausing the
+creature really does silence it.
 
 Sound is off until the SOUND button is pressed: browsers refuse to start an
 AudioContext without a gesture, and a page that greets you with a roar is a page
