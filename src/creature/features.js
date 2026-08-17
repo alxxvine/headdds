@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import { surfaceAt, surfaceByDir, orientTo, decalGeometry } from './surface.js';
 import { withOutline } from './materials.js';
 
-// Все размеры деталей задаются в «единицах головы», чтобы глаз оставался
-// глазом и на приплюснутом блине, и на длинном огурце.
+// Feature sizes are expressed in "head units" so that an eye stays an eye
+// both on a squashed pancake and on a long cucumber.
 export const headUnit = (p) => (p.headWidth + p.headHeight) * 0.5;
 
-// ---------------------------------------------------------------- ГЛАЗА ----
+// ----------------------------------------------------------------- EYES ----
 
 function eyePositions(p, rng) {
   const n = p.eyeCount;
@@ -41,7 +41,7 @@ function eyePositions(p, rng) {
         out.push([(rng() * 2 - 1) * p.headWidth * 0.72, (rng() * 1.3 - 0.3) * p.headHeight * 0.6]);
       }
       break;
-    default: // ряд
+    default: // row
       for (let i = 0; i < n; i++) {
         const x = ((i / (n - 1)) * 2 - 1) * sx;
         out.push([x, cy + x * p.eyeTilt]);
@@ -53,8 +53,8 @@ function eyePositions(p, rng) {
 export function addEyes(parent, headMesh, p, mats, rng) {
   const S = headUnit(p);
   const size = p.eyeSize * S;
-  // Глаза не залезают в пасть: «куча» и «вразнобой» иначе регулярно
-  // высаживают глазное яблоко прямо в зубы.
+  // Keep eyes out of the maw: "cluster" and "scatter" otherwise plant an
+  // eyeball straight into the teeth on a regular basis.
   const mouthTop = p.mouthY * p.headHeight * 0.8 + p.mouthOpen * p.headHeight * 0.72;
   const positions = eyePositions(p, rng).map(([x, y]) => [x, Math.max(y, mouthTop + size * 0.9)]);
 
@@ -83,7 +83,7 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       continue;
     }
 
-    // шар: утоплен в глазницу на (1 - выпученность)
+    // ball: sunk into the socket by (1 - bulge)
     const ballGeo = new THREE.SphereGeometry(size, 12, 10);
     const ball = new THREE.Mesh(ballGeo, mats.eye);
     ball.position.copy(hit.point).addScaledVector(hit.normal, size * (p.eyeBulge - 0.62));
@@ -95,7 +95,7 @@ export function addEyes(parent, headMesh, p, mats, rng) {
   }
 }
 
-// ---------------------------------------------------------------- ПАСТЬ ----
+// ------------------------------------------------------------------ MAW ----
 
 function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, side, count }) {
   if (count <= 0) return;
@@ -104,14 +104,14 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, side, count }) {
   for (let i = 0; i < count; i++) {
     const t = ((i + 0.5) / count) * 2 - 1;
     const u = t * mw * 0.94;
-    // край эллипса пасти в этой точке — оттуда растёт зуб
+    // the maw's ellipse edge at this point — that is where the tooth grows
     const edge = mh * Math.sqrt(Math.max(0.1, 1 - Math.min(1, (u / (mw * 0.99)) ** 2)));
     const hit = surfaceAt(headMesh, p, u, my + side * edge * 0.94);
 
     const w = ((2 * mw) / count) * (1 - p.toothGap) * 0.92;
     const len = mh * (0.7 + 1.7 * p.toothSize) * (0.72 + rng() * 0.56);
     const tip = w * 0.5 * (1 - 0.9 * p.toothJag);
-    // клык растёт остриём от кромки: узкий конец смотрит внутрь пасти
+    // a fang grows tip-first from the rim: the narrow end points into the maw
     const geo = side > 0
       ? new THREE.CylinderGeometry(w * 0.5, tip, len, 5)
       : new THREE.CylinderGeometry(tip, w * 0.5, len, 5);
@@ -149,7 +149,7 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, side: -1, count: p.teethBottom });
 }
 
-// ------------------------------------------------------------------ НОС ----
+// ----------------------------------------------------------------- NOSE ----
 
 export function addNose(parent, headMesh, p, mats) {
   if (p.noseType === 'none') return;
@@ -176,7 +176,7 @@ export function addNose(parent, headMesh, p, mats) {
   if (p.noseType === 'beak') {
     geo = new THREE.ConeGeometry(size * 0.6, size * 2.6, 6);
     mesh = new THREE.Mesh(geo, mats.skin);
-    mesh.rotation.x = Math.PI / 2; // остриё вдоль нормали
+    mesh.rotation.x = Math.PI / 2; // tip along the normal
     mesh.position.set(0, 0, size * 0.9);
   } else if (p.noseType === 'snout') {
     geo = new THREE.SphereGeometry(size, 10, 8);
@@ -201,7 +201,7 @@ export function addNose(parent, headMesh, p, mats) {
   parent.add(frame);
 }
 
-// -------------------------------------------------------------- НАРОСТЫ ----
+// -------------------------------------------------------------- GROWTHS ----
 
 function randomDir(rng, v = new THREE.Vector3()) {
   const z = rng() * 2 - 1;
@@ -217,12 +217,12 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
   const q = new THREE.Quaternion();
   const scl = new THREE.Vector3();
 
-  // бородавки — инстансы, чтобы 40 штук стоили один драв-колл
+  // warts are instanced so that 40 of them cost a single draw call
   if (p.warts > 0) {
     const geo = new THREE.IcosahedronGeometry(p.wartSize * S, 0);
     const inst = new THREE.InstancedMesh(geo, mats.growth, p.warts);
     for (let i = 0; i < p.warts; i++) {
-      // не сажаем наросты прямо в пасть
+      // do not plant growths straight into the maw
       for (let tries = 0; tries < 8; tries++) {
         randomDir(rng, dir);
         if (!(dir.z > 0.5 && Math.abs(dir.y - p.mouthY * 0.8) < 0.35)) break;
@@ -238,7 +238,7 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
     parent.add(inst);
   }
 
-  // рога — симметричными парами по макушке
+  // horns grow in symmetric pairs across the crown
   for (let i = 0; i < p.horns; i++) {
     const side = i % 2 === 0 ? 1 : -1;
     const idx = Math.floor(i / 2);
@@ -255,7 +255,7 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
     parent.add(frame);
   }
 
-  // щупальца — изогнутые трубки с макушки
+  // tendrils are curved tubes sprouting from the crown
   for (let i = 0; i < p.tendrils; i++) {
     const a = (i / Math.max(1, p.tendrils)) * Math.PI * 2;
     const spread = 0.25 + rng() * 0.45;
@@ -272,7 +272,7 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
     parent.add(new THREE.Mesh(geo, mats.growth));
   }
 
-  // облако спор над черепом
+  // spore cloud above the skull
   if (p.spores > 0) {
     const geo = new THREE.BoxGeometry(S * 0.035, S * 0.035, S * 0.035);
     const inst = new THREE.InstancedMesh(geo, mats.growth, p.spores);

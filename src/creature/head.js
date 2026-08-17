@@ -1,31 +1,31 @@
 import * as THREE from 'three';
 import { fbm3, noise3 } from '../lib/noise.js';
 
-// Череп — «звёздчатая» поверхность: любая единичная директория d однозначно
-// отображается в точку кожи. Отсюда два следствия:
-//  - геометрия = икосаэдр, каждая вершина прогнана через headPoint();
-//  - всё, что сажается по направлению (рога, бородавки, споры), считается
-//    аналитически, без рейкастов.
-// Лицо смотрит в +Z.
+// The skull is a star-shaped surface: every unit direction d maps to exactly
+// one point of skin. Two things follow from that:
+//  - the geometry is an icosahedron with every vertex run through headPoint();
+//  - anything placed by direction (horns, warts, spores) is solved
+//    analytically, with no raycasts at all.
+// The face looks towards +Z.
 
-export const HEAD_DETAIL = 4; // 5120 треугольников — хватает и для силуэта, и для рейкастов
+export const HEAD_DETAIL = 4; // 5120 triangles — enough for the silhouette and cheap to raycast
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 /**
- * Точка кожи по направлению d (единичный вектор). Результат пишется в out.
+ * The point of skin along direction d (a unit vector), written into out.
  */
 export function headPoint(p, d, out = new THREE.Vector3()) {
   const dx = d.x, dy = d.y, dz = d.z;
 
-  // 1. сфера ↔ куб
+  // 1. sphere <-> cube
   const m = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) || 1;
   const k = p.boxiness;
   let x = dx * (1 - k) + (dx / m) * k;
   let y = dy * (1 - k) + (dy / m) * k;
   let z = dz * (1 - k) + (dz / m) * k;
 
-  // 2. конусность по Y и раздутая челюсть снизу
+  // 2. taper along Y and a swollen jaw at the bottom
   const taper = clamp(1 + p.taper * dy, 0.18, 2);
   x *= taper; z *= taper;
   if (dy < 0) {
@@ -33,14 +33,14 @@ export function headPoint(p, d, out = new THREE.Vector3()) {
     x *= jaw; z *= jaw * 0.9;
   }
 
-  // 3. бугры и мелкая рябь — радиальное смещение
+  // 3. lumps and fine speckle — a radial displacement
   const s = p.lumpScale;
   const lump = fbm3(dx * s + 11.3, dy * s + 4.1, dz * s + 7.7, 0, 3) - 0.5;
   const fine = noise3(dx * 13.7 + 2.5, dy * 13.7, dz * 13.7 + 5.5, 991) - 0.5;
   const r = 1 + lump * p.lumps * 2.2 + fine * p.speckle * 0.09;
   x *= r; y *= r; z *= r;
 
-  // 4. надбровный валик: гауссова полоса на передней полусфере
+  // 4. brow ridge: a gaussian band across the front hemisphere
   if (dz > 0 && p.brow > 0) {
     const browY = p.eyeY + 0.3 - p.browDroop * 0.28;
     const q = (dy - browY) * 2.8;
@@ -49,7 +49,7 @@ export function headPoint(p, d, out = new THREE.Vector3()) {
     y -= p.brow * p.browDroop * 0.06 * band * dz;
   }
 
-  // 5. наклон профиля: лоб вперёд (+) или челюсть вперёд (−)
+  // 5. profile lean: forehead forward (+) or jaw forward (-)
   z *= 1 + p.profile * dy;
 
   out.set(x * p.headWidth, y * p.headHeight, z * p.headDepth);
@@ -67,8 +67,8 @@ const UP = new THREE.Vector3(0, 1, 0);
 const SIDE = new THREE.Vector3(1, 0, 0);
 
 /**
- * Точка + нормаль кожи по направлению. Нормаль — через конечные разности,
- * потому что аналитической производной у fbm нет.
+ * Skin point + normal along a direction. The normal comes from finite
+ * differences, because fbm noise has no analytic derivative.
  */
 export function headSurfaceByDir(p, dir, out = { point: new THREE.Vector3(), normal: new THREE.Vector3() }) {
   const d = dir.clone().normalize();

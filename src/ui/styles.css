@@ -34,7 +34,7 @@ body {
   min-width: 0;
 }
 
-/* весь пиксель-арт живёт здесь: буфер маленький, картинка растянута nearest'ом */
+/* all of the pixel art lives here: tiny buffer, nearest-neighbour upscale */
 .stage canvas,
 canvas.stage {
   image-rendering: pixelated;
@@ -43,7 +43,7 @@ canvas.stage {
   touch-action: none;
 }
 
-/* ------------------------------------------------------------------ панель */
+/* ------------------------------------------------------------------- panel */
 
 .panel {
   flex: 0 0 268px;
@@ -134,7 +134,7 @@ details[open] > summary { color: var(--ink); }
 
 .group-body { padding: 2px 12px 10px; }
 
-/* --------------------------------------------------------------- контролы */
+/* ---------------------------------------------------------------- controls */
 
 .row {
   display: grid;
@@ -218,7 +218,7 @@ input[type='range']::-moz-range-thumb {
   background: repeating-conic-gradient(#666 0% 25%, #222 0% 50%) 50% / 6px 6px;
 }
 
-/* ------------------------------------------------------------------ мобилы */
+/* ------------------------------------------------------------------ mobile */
 
 @media (max-width: 720px) {
   .app { flex-direction: column; }

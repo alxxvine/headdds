@@ -1,66 +1,72 @@
 # HEADDDS
 
-Браузерный конструктор 3D-уродцев: огромная голова (по умолчанию 70% роста),
-крошечные тело, руки и ноги. Всё считается процедурно — ни одной модели,
-ни одной текстуры в репозитории. Рендер намеренно пиксельный: сцена рисуется
-в маленький буфер и растягивается nearest-фильтром, поверх — ступенчатый тон
-и чёрная обводка.
+A browser-based builder of 3D freaks: a huge head (70% of the character by
+default) on a tiny body with tiny arms and legs. Everything is procedural —
+there is not a single model or texture in this repository. The render is
+deliberately pixelated: the scene is drawn into a small buffer and upscaled
+with a nearest-neighbour filter, with stepped tone and a black outline on top.
 
-Персонаж целиком описывается набором чисел, поэтому его можно положить в
-ссылку, в JSON или потом — в сейв будущей игры.
+A creature is fully described by a handful of numbers, so it fits into a link,
+into JSON, and later into a save file of the game.
 
-## Запуск
+**Live: https://alxxvine.github.io/headdds/**
+
+## Running it
 
 ```bash
 npm install
 npm run dev      # http://localhost:5173
-npm run build    # прод-сборка в dist/
+npm run build    # production build into dist/
 ```
 
-Деплой на GitHub Pages настроен в `.github/workflows/pages.yml`
-(нужно один раз включить Pages → Source: GitHub Actions).
+Deployment to GitHub Pages is set up in `.github/workflows/pages.yml`
+(Pages has to be switched to Source: GitHub Actions once).
 
-## Как этим пользоваться
+## Using it
 
-- **RANDOM** — новый случайный уродец, seed показывается рядом.
-- **seed** — введи число, получишь того же уродца, что и все остальные с этим числом.
-- Слайдеры меняют персонажа поверх сида: череп, глаза, пасть, нос, наросты, тело, стиль.
-- **ССЫЛКА** — копирует URL вида `?c=...`, в котором лежит весь персонаж.
-- **JSON** — тот же персонаж в буфер обмена как объект параметров.
-- ЛКМ — вращать, колесо — зум.
+- **RANDOM** — a new random freak; its seed is shown next to the button.
+- **seed** — type a number and get the same freak everyone else with that
+  number gets.
+- The sliders edit the creature on top of the seed: skull, eyes, maw, nose,
+  growths, body, style.
+- **LINK** — copies a `?c=...` URL that carries the whole creature.
+- **JSON** — copies the same creature as a parameter object.
+- Drag to spin, wheel (or pinch) to zoom.
 
-## Как устроен механизм
+## How the mechanism works
 
 ```
-src/creature/schema.js   все параметры, дефолты, палитры, randomize(seed)
-src/creature/head.js     череп: направление -> точка кожи (headPoint)
-src/creature/surface.js  посадка деталей на кожу: рейкасты, ориентация, «пластыри»
-src/creature/features.js глаза, пасть с зубами, нос, бородавки, рога, щупальца, споры
-src/creature/body.js     тело от доли головы: bodyH = headH * (1-r)/r
+src/creature/schema.js   every parameter, defaults, palettes, randomize(seed)
+src/creature/head.js     the skull: direction -> point of skin (headPoint)
+src/creature/surface.js  planting features on skin: raycasts, orientation, decals
+src/creature/features.js eyes, toothed maw, nose, warts, horns, tendrils, spores
+src/creature/body.js     the body derived from the head share: bodyH = headH * (1-r)/r
 src/creature/build.js    buildCreature(params) -> { group, dispose, ... }
-src/scene/Stage.jsx      канвас, свет, пиксельный рендер, орбита камеры
-src/ui/                  панель, собранная прямо из схемы
-src/lib/noise.js         сид-рандом и value/fbm шум
-src/lib/codec.js         params <-> base64url для ссылки
+src/scene/Stage.jsx      canvas, lights, pixelated render, camera orbit
+src/ui/                  the panel, generated straight from the schema
+src/lib/noise.js         seeded RNG plus value/fbm noise
+src/lib/codec.js         params <-> base64url for the share link
 ```
 
-Три идеи, на которых всё держится:
+Three ideas hold the whole thing together:
 
-1. **Череп — звёздчатая поверхность.** `headPoint(params, dir)` превращает любое
-   единичное направление в точку кожи (сфера ↔ куб, конусность, челюсть, бугры
-   из fbm-шума, надбровные дуги, наклон профиля). Геометрия — это просто
-   икосаэдр, каждая вершина которого прогнана через эту функцию.
-2. **Детали сажаются на кожу, а не рисуются перед лицом.** Для фронтальных
-   координат (x, y) стреляем лучом вдоль −Z и получаем точку с нормалью;
-   для рогов и бородавок хватает аналитической `headSurfaceByDir`. Пасть,
-   губы и глазницы — «пластыри» (`decalGeometry`), облегающие череп по сетке.
-   Поэтому зубы не тонут в черепе даже у пасти во всю морду.
-3. **Схема — единственный источник правды.** Из `PARAMS` собираются дефолты,
-   панель, рандомайзер и валидация ссылок. Новый параметр = одна строка в схеме.
+1. **The skull is a star-shaped surface.** `headPoint(params, dir)` turns any
+   unit direction into a point of skin (sphere ↔ cube, taper, jaw, fbm lumps,
+   brow ridges, profile lean). The geometry is just an icosahedron with every
+   vertex run through that function.
+2. **Features are planted on skin, not drawn in front of the face.** For frontal
+   coordinates (x, y) a ray is cast along −Z and returns a point with a normal;
+   horns and warts only need the analytic `headSurfaceByDir`. The maw, the lips
+   and hollow sockets are decal patches (`decalGeometry`) built on a grid that
+   hugs the skull. That is why teeth never sink into the skull, even on a maw
+   that spans the whole face.
+3. **The schema is the single source of truth.** Defaults, the panel, the
+   randomizer and link validation all come out of `PARAMS`. A new parameter is
+   one line in the schema.
 
-## Что дальше (геймплей)
+## What comes next (gameplay)
 
-Персонаж уже отдаётся наружу как чистые данные (`sanitize(params)`), а
-`buildCreature` возвращает готовую группу с `dispose()`, так что следующий шаг —
-это сцена с несколькими такими группами. В v1 намеренно нет idle-анимации,
-галереи и экспорта PNG/GLB — их проще добавлять уже под конкретный геймплей.
+A creature is already handed out as plain data (`sanitize(params)`), and
+`buildCreature` returns a ready group with `dispose()`, so the next step is a
+scene holding several of them. Idle animation, a gallery and PNG/GLB export are
+deliberately missing from v1 — they are easier to add once the gameplay exists.

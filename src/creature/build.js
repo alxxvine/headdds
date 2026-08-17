@@ -7,10 +7,10 @@ import { buildBody } from './body.js';
 import { sanitize } from './schema.js';
 
 /**
- * params -> готовая THREE.Group. Всё детерминировано: один и тот же
- * набор параметров даёт один и тот же меш.
- * Возвращает { group, bbox, dispose } — dispose обязателен, иначе
- * перетаскивание слайдера утечёт памятью GPU.
+ * params -> a ready THREE.Group. Fully deterministic: the same parameter set
+ * always produces the same mesh.
+ * Returns { group, bbox, dispose } — dispose is mandatory, otherwise dragging
+ * a slider leaks GPU memory.
  */
 export function buildCreature(rawParams) {
   const p = sanitize(rawParams);
@@ -18,8 +18,8 @@ export function buildCreature(rawParams) {
   const mats = makeMaterials(p);
   const S = headUnit(p);
 
-  // --- голова. Пока она не в графе сцены, её локальные координаты = мировые,
-  // поэтому рейкасты в surface.js работают в системе координат черепа.
+  // --- head. While it is outside the scene graph its local coordinates are
+  // world coordinates, so the raycasts in surface.js work in skull space.
   const headGeo = makeHeadGeometry(p);
   const headMesh = new THREE.Mesh(headGeo, mats.skin);
   headMesh.updateMatrixWorld(true);
@@ -31,7 +31,7 @@ export function buildCreature(rawParams) {
   addEyes(head, headMesh, p, mats, rng);
   addMouth(head, headMesh, p, mats, rng);
 
-  // --- тело от доли головы
+  // --- body derived from the head share
   const skull = headGeo.boundingBox;
   const body = buildBody(p, mats, skull);
   head.position.y = body.legH + body.torsoH * 0.86 - skull.min.y;
@@ -46,8 +46,8 @@ export function buildCreature(rawParams) {
   bbox.getSize(size);
   bbox.getCenter(center);
 
-  // Кадрируем по «телу с черепом», без спор и щупалец: иначе облако спор
-  // отжимает камеру назад и персонаж превращается в точку.
+  // Frame on "skull plus body", ignoring spores and tendrils: otherwise the
+  // spore cloud pushes the camera back and the character becomes a dot.
   const fitBox = new THREE.Box3().setFromObject(body.group);
   fitBox.union(skull.clone().translate(new THREE.Vector3(0, head.position.y, 0)));
   const fitSize = new THREE.Vector3();

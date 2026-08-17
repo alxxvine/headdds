@@ -34,7 +34,7 @@ export default function Control({ def, value, onChange }) {
             className="swatch pick"
             value={value}
             onChange={(e) => onChange(def.key, e.target.value)}
-            title="свой цвет"
+            title="custom color"
           />
         </div>
       </div>

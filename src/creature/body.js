@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { withOutline } from './materials.js';
 
 /**
- * Тело — то, что осталось от роста после головы: bodyH = headH * (1-r)/r.
- * При r = 0.7 голова честно занимает 70% персонажа.
- * Ступни стоят в y = 0.
+ * The body is whatever height is left after the head: bodyH = headH * (1-r)/r.
+ * At r = 0.7 the head honestly takes up 70% of the character.
+ * Feet stand at y = 0.
  */
 export function buildBody(p, mats, headBox) {
   const headH = headBox.max.y - headBox.min.y;
@@ -20,7 +20,7 @@ export function buildBody(p, mats, headBox) {
 
   const group = new THREE.Group();
 
-  // торс
+  // torso
   const torsoGeo = new THREE.SphereGeometry(1, 12, 10);
   const torso = new THREE.Mesh(torsoGeo, mats.body);
   torso.scale.set(torsoW, torsoH * 0.62, torsoW * 0.82);
@@ -35,7 +35,7 @@ export function buildBody(p, mats, headBox) {
   const handGeo = new THREE.SphereGeometry(limbR * 1.1, 8, 6);
 
   for (const side of [-1, 1]) {
-    // нога
+    // leg
     const leg = new THREE.Mesh(legGeo, mats.body);
     leg.position.set(side * (torsoW * 0.4 + p.stance * torsoW * 0.55), limbR + legLen * 0.5, 0);
     withOutline(group, leg, legGeo, ink, mats.outline);
@@ -45,9 +45,9 @@ export function buildBody(p, mats, headBox) {
     foot.scale.set(1.1, 0.7, 1.5);
     withOutline(group, foot, footGeo, ink, mats.outline);
 
-    // рука: плечо + свисающая вниз-наружу конечность.
-    // Плечо сидит низко и разведено в стороны — иначе рука целиком
-    // прячется под нависающей головой.
+    // arm: a shoulder plus a limb dangling down and outwards.
+    // The shoulder sits low and wide, otherwise the whole arm hides
+    // under the overhanging head.
     const shoulder = new THREE.Group();
     shoulder.position.set(side * torsoW * 0.92, legH + torsoH * 0.52, torsoW * 0.15);
     shoulder.rotation.z = -side * (0.6 + p.stance * 0.5);

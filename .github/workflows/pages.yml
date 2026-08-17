@@ -29,8 +29,8 @@ jobs:
           BASE_PATH: /${{ github.event.repository.name }}/
       - uses: actions/configure-pages@v5
         with:
-          # сам включает Pages в режиме GitHub Actions, если они выключены,
-          # иначе шаг падает с «Get Pages site failed»
+          # turns Pages on in GitHub Actions mode when it is disabled,
+          # otherwise this step fails with "Get Pages site failed"
           enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:

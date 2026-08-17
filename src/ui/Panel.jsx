@@ -2,14 +2,14 @@ import { GROUPS, PARAMS } from '../creature/schema.js';
 import Control from './Control.jsx';
 
 const TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-const HINT = TOUCH ? 'тащи — вращать, щипок — зум' : 'ЛКМ — вращать, колесо — зум';
+const HINT = TOUCH ? 'drag to spin, pinch to zoom' : 'drag to spin, wheel to zoom';
 
 export default function Panel({ params, onChange, onRandom, onSeed, onReset, onCopyJson, onCopyLink, note }) {
   return (
     <aside className="panel">
       <header className="panel-head">
         <div className="title">HEADDDS</div>
-        <div className="sub">конструктор уродцев</div>
+        <div className="sub">freak builder</div>
       </header>
 
       <div className="actions">
@@ -25,9 +25,9 @@ export default function Panel({ params, onChange, onRandom, onSeed, onReset, onC
         </label>
       </div>
       <div className="actions">
-        <button type="button" onClick={onCopyLink}>ССЫЛКА</button>
+        <button type="button" onClick={onCopyLink}>LINK</button>
         <button type="button" onClick={onCopyJson}>JSON</button>
-        <button type="button" onClick={onReset}>СБРОС</button>
+        <button type="button" onClick={onReset}>RESET</button>
       </div>
       <div className="note">{note || HINT}</div>
 
