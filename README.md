@@ -35,6 +35,21 @@ Deployment to GitHub Pages is set up in `.github/workflows/pages.yml`
   anyone whose system asks for reduced motion.
 - Drag to spin, wheel (or pinch) to zoom. Click the creature to poke it.
 
+## Parts
+
+Most of a freak is a menu of kinds, each with its own scatter on top:
+
+| | |
+|---|---|
+| arms | none, stubs, sticks, noodles, mantis — plus lift, and a lopsidedness slider that makes the two sides differ |
+| hands | none, ball, claws, pincer, club |
+| hair | none, tendrils, bristles, antennae, dreads, a bony crest |
+| eyes | ball, hollow, bead, on stalks; pupils round / slit / goat / cross / ring / blind; eyelids; per-eye size jitter |
+
+Defaults are the tame end of every menu, so a link shared before a kind existed
+still opens the creature it was saved as. The variety comes from the weights in
+the randomizer, not from the defaults.
+
 ## Stats
 
 Every creature rolls six stats out of its own anatomy — no dice, no hidden
@@ -46,7 +61,7 @@ rolls, just a pure function of the parameters:
 | BITE | tooth count, tooth length, maw width, fanginess |
 | SPEED | leg length, minus skull mass, head share and body width |
 | SIGHT | eye count, size, bulge, spread (hollow and bead eyes see less) |
-| DREAD | teeth, horns, tendrils, spores, lumps, dark skin |
+| DREAD | teeth, horns, hair, spores, lumps, dark skin |
 | BALANCE | stance and body width, minus head share and leg length |
 
 **Every creature spends the same 300 points.** The six stats are normalized to
@@ -77,7 +92,9 @@ src/creature/schema.js   every parameter, defaults, palettes, randomize(seed)
 src/creature/stats.js    six stats and traits derived from the parameters
 src/creature/head.js     the skull: direction -> point of skin (headPoint)
 src/creature/surface.js  planting features on skin: raycasts, orientation, decals
-src/creature/features.js eyes, toothed maw, nose, warts, horns, tendrils, spores
+src/creature/features.js eyes, toothed maw, nose, warts, horns, spores
+src/creature/hair.js     tendrils, bristles, antennae, dreads, a bony crest
+src/creature/arms.js     arm and hand kinds, pose, and keeping limbs off the floor
 src/creature/body.js     the body derived from the head share: bodyH = headH * (1-r)/r
 src/creature/build.js    buildCreature(params) -> { group, rig, stats, dispose, ... }
 src/scene/animator.js    idle motion: springs, blinking, saccades, secondary sway

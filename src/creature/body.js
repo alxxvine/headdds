@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { withOutline } from './materials.js';
+import { buildArm } from './arms.js';
 
 /**
  * The body is whatever height is left after the head: bodyH = headH * (1-r)/r.
  * At r = 0.7 the head honestly takes up 70% of the character.
  * Feet stand at y = 0.
  */
-export function buildBody(p, mats, headBox) {
+export function buildBody(p, mats, headBox, rng) {
   const headH = headBox.max.y - headBox.min.y;
   const headW = headBox.max.x - headBox.min.x;
   const r = THREE.MathUtils.clamp(p.headRatio, 0.4, 0.92);
@@ -31,8 +32,6 @@ export function buildBody(p, mats, headBox) {
   const legGeo = new THREE.CapsuleGeometry(limbR, legLen, 3, 6);
   const footGeo = new THREE.SphereGeometry(limbR * 1.25, 8, 6);
   const armLen = Math.max(0.03, p.armLen * bodyH * 0.75);
-  const armGeo = new THREE.CapsuleGeometry(limbR * 0.85, armLen, 3, 6);
-  const handGeo = new THREE.SphereGeometry(limbR * 1.1, 8, 6);
 
   const legs = [];
   const shoulders = [];
@@ -63,35 +62,23 @@ export function buildBody(p, mats, headBox) {
     foot.scale.set(1.1, 0.7, 1.5);
     withOutline(legPivot, foot, footGeo, ink, mats.outline);
 
-    // arm: a shoulder plus a limb dangling down and outwards. The shoulder
-    // sits low and wide, otherwise the whole arm hides under the head.
-    const shoulder = new THREE.Group();
-    const shoulderY = legH + torsoH * 0.52;
-    shoulder.position.set(side * shoulderSpread, shoulderY, torsoW * 0.15);
-
-    // A limb hanging at local -Y lands at x = len * sin(angle), so the sign of
-    // the rotation has to follow the side it grows from — with the sign
-    // flipped both arms fold across the chest and cross each other.
-    // The angle also has a floor: rather than sinking a hand through the
-    // floor, a long arm splays wider. Distances below are how far the hand
-    // centre and the arm's own cap sit down the limb, plus how far each
-    // bulges past that.
-    const clearance = (down, radius) =>
-      Math.acos(THREE.MathUtils.clamp((shoulderY - radius) / down, 0, 1));
-    const minAngle = Math.max(
-      clearance(armLen + limbR * 0.4, limbR * 1.1),
-      clearance(armLen + limbR * 0.85, limbR * 0.85),
-    );
-    shoulder.rotation.z = side * Math.min(1.5, Math.max(0.32 + p.stance * 0.4, minAngle));
-    const arm = new THREE.Mesh(armGeo, mats.body);
-    arm.position.y = -armLen * 0.5;
-    withOutline(shoulder, arm, armGeo, ink, mats.outline);
-
-    const hand = new THREE.Mesh(handGeo, mats.body);
-    hand.position.y = -armLen - limbR * 0.4;
-    withOutline(shoulder, hand, handGeo, ink, mats.outline);
-    group.add(shoulder);
-    shoulders.push(shoulder);
+    // arm: the shoulder sits low and wide, otherwise the whole limb hides
+    // under the head. Its splay carries the sign of the side it grows from —
+    // flip that and both arms fold across the chest (see arms.js).
+    const shoulder = buildArm(p, mats, rng, {
+      side,
+      shoulderX: shoulderSpread,
+      shoulderY: legH + torsoH * 0.52,
+      shoulderZ: torsoW * 0.15,
+      limbR,
+      armLen,
+      ink,
+      stance: p.stance,
+    });
+    if (shoulder) {
+      group.add(shoulder);
+      shoulders.push(shoulder);
+    }
   }
 
   return { group, bodyH, legH, torsoH, torso, legs, shoulders };
