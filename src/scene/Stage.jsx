@@ -62,9 +62,17 @@ function Creature({ params, onBuilt, idle, poke, onMood, sound }) {
     };
   }, [animator, poke, sound]);
 
-  // the voice is derived from the stats, so it is rerolled with the creature
+  // The voice is derived from the stats, so it is rerolled with the creature.
+  // A new seed means a new freak, and a new freak announces itself — but a
+  // slider drag rebuilds the mesh too, and that must stay silent.
+  const bornSeed = useRef(null);
   useEffect(() => {
     sound?.setVoice(built.stats, built.params.seed);
+    const first = bornSeed.current === null;
+    if (bornSeed.current !== built.params.seed) {
+      bornSeed.current = built.params.seed;
+      if (!first) sound?.cue('spawn');
+    }
   }, [built, sound]);
 
   useEffect(() => {
