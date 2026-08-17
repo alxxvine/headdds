@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import { buildCreature } from '../src/creature/build.js';
 import { randomize } from '../src/creature/schema.js';
 import { headPoint } from '../src/creature/head.js';
+import { mawProfile } from '../src/creature/maw.js';
 
 const N = Number(process.argv[2] || 300);
 
@@ -100,11 +101,16 @@ for (let i = 0; i < N; i++) {
       const tip = new THREE.Vector3(0, -tag.side * tag.len * 0.5, 0)
         .applyMatrix4(o.matrixWorld);
       headMesh.worldToLocal(tip);
-      // how far outside the maw's ellipse the tip sits, in ellipse radii
-      tooth = Math.max(tooth, Math.hypot(
-        (tip.x - maw.mx) / Math.max(maw.mw, 1e-6),
-        (tip.y - maw.my) / Math.max(maw.mh, 1e-6),
-      ));
+      // How far past the FAR rim the tip sits, in mouth-heights. Measured on
+      // the maw's own profile rather than on an ellipse: the moment the mouth
+      // stopped being an ellipse, an ellipse stopped being the thing to
+      // measure it against.
+      const u = (tip.x - maw.mx) / Math.max(maw.mw, 1e-6);
+      const prof = mawProfile(p.mawShape);
+      const dy = (tip.y - maw.my) / Math.max(maw.mh, 1e-6);
+      const far = tag.side > 0 ? prof.down(u) : prof.up(u);
+      const past = tag.side > 0 ? far - dy : dy - far;
+      tooth = Math.max(tooth, Math.abs(u) > 1.05 ? 4 : Math.max(0, past));
     });
   }
 
@@ -142,7 +148,7 @@ console.log(`eyes past the skull's outline  ${share('edge', 0.05).padStart(3)}% 
 // A fang overhanging the rim is the look this thing is for, so the line is not
 // at the rim: it is where the tooth stops being a fang and starts being a rod
 // lying across the face.
-console.log(`teeth lying across the face    ${share('tooth', 2.5).padStart(3)}%   reach in lip radii:           ${stat('tooth')}`);
+console.log(`teeth lying across the face    ${share('tooth', 1.6).padStart(3)}%   past the far rim, in mouth-heights: ${stat('tooth')}`);
 console.log(`noses reaching into the maw    ${share('nose', 0.1).padStart(3)}%   reach in maw heights:         ${stat('nose')}`);
 
 for (const [key, label] of [['pair', 'eyes inside one another'], ['edge', 'eyes off the silhouette'], ['tooth', 'teeth past the lips']]) {

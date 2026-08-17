@@ -5,29 +5,74 @@
 import { makeRng } from '../lib/noise.js';
 
 export const SKIN_COLORS = [
+  // Twelve colours meant a dozen creatures in a row could share a skin and read
+  // as a set rather than as strangers. Thirty-four, spread over the whole wheel
+  // and over three levels of brightness, so a random pair rarely matches — and
+  // every one still sits in the same sour, unhealthy register the toon ramp was
+  // built for. Nothing clean, nothing pastel-pretty, nothing pure grey.
   '#5aa9e6', // acid blue
+  '#2f7fbf', // deeper acid blue
+  '#8fd4f5', // sickly sky
   '#f3e0b5', // cream
+  '#d8b98a', // old paper
   '#e8642c', // orange
+  '#ff8f3c', // hot orange
+  '#b34a17', // rust
   '#8ec63f', // toxic green
+  '#4f9330', // moss
+  '#c8e04a', // bile
   '#b9a3e3', // lavender
+  '#8b6fd0', // violet
   '#c0392b', // blood red
+  '#8c1f1a', // dried blood
+  '#f0564a', // raw
   '#f28fb2', // pink
+  '#d4577f', // gum
   '#7ecbc4', // teal
+  '#3f9a92', // deep teal
+  '#a8e6cf', // mint rot
   '#cfc3a4', // bone
+  '#9a9376', // grey bone
   '#6b4f9e', // purple
+  '#452f6d', // bruise
   '#3f5d76', // murky blue
+  '#26404f', // deep murk
   '#9c6b4f', // meat
+  '#6e4433', // liver
+  '#d9c24a', // jaundice
+  '#a6b31f', // pond
+  '#e0d5c8', // ash
+  '#5c6b3f', // swamp
+  '#c97b2e', // amber grub
 ];
 
-export const EYE_COLORS = ['#fdf6e3', '#f5e050', '#e94f37', '#9ef0a0', '#ffffff', '#d8c7ef', '#1a1420'];
+// A sclera can be anything from a boiled egg to a lit lantern to a hole full of
+// ink. The randomizer picks whichever end stands apart from the skin.
+export const EYE_COLORS = [
+  '#fdf6e3', '#ffffff', '#f5e050', '#ffb03b', '#e94f37', '#ff6f9c',
+  '#9ef0a0', '#5ee0c8', '#8fd4f5', '#d8c7ef', '#c9a0ff', '#f0c9a0',
+  '#1a1420', '#2a1a2e', '#0f1d24', '#3c1d1d',
+];
+
 // Mostly dark, but not only: against a black sclera a black pupil is no pupil,
-// and the randomizer picks whichever end contrasts.
+// and the randomizer picks whichever end contrasts — with the eye AND with the
+// skin, since half the eye kinds show no sclera at all.
 export const PUPIL_COLORS = [
   '#0d0a12', '#2b0f1a', '#3a0d0d', '#0a2a1a', '#5a1020',
-  '#f6f0dc', '#f5e050', '#e94f37',
+  '#101820', '#1c0f26', '#241a08', '#06110d', '#2e2416',
+  '#f6f0dc', '#f5e050', '#e94f37', '#7ef0ff', '#b6ff5a',
 ];
-export const LIP_COLORS = ['#7a2036', '#3a1020', '#c04a5f', '#1a0d14', '#8f3f1f', '#2d5a3a'];
-export const BG_COLORS = ['#07060b', '#0b0a10', '#120b16', '#0a1014', '#161016'];
+
+export const LIP_COLORS = [
+  '#7a2036', '#3a1020', '#c04a5f', '#1a0d14', '#8f3f1f', '#2d5a3a',
+  '#5c1f4a', '#a8324e', '#20303a', '#6b4a12', '#3d2a5c', '#912d2d',
+  '#c96a3a', '#40603a', '#7d5a86', '#12191f',
+];
+
+export const BG_COLORS = [
+  '#07060b', '#0b0a10', '#120b16', '#0a1014', '#161016',
+  '#0d0f08', '#100a0a', '#080d12', '#141018', '#0a0c0c',
+];
 const range = (key, group, label, min, max, def, extra = {}) => ({
   key, group, label, type: 'range', min, max, step: (max - min) / 100, def, ...extra,
 });
@@ -161,6 +206,25 @@ export const PARAMS = [
   range('mouthOpen', 'mouth', 'opening', 0.02, 0.6, 0.18, { random: (rng) => 0.08 + rng() * 0.42 }),
   int('teethTop', 'mouth', 'top teeth', 0, 14, 8),
   int('teethBottom', 'mouth', 'bottom teeth', 0, 14, 6),
+  select('mawShape', 'mouth', 'shape', [
+    { value: 'oval', label: 'oval' },
+    { value: 'grin', label: 'grin' },
+    { value: 'frown', label: 'frown' },
+    { value: 'snarl', label: 'snarl' },
+    { value: 'slit', label: 'slit' },
+    { value: 'zigzag', label: 'zigzag' },
+    { value: 'keyhole', label: 'keyhole' },
+    { value: 'crescent', label: 'crescent' },
+    { value: 'gape', label: 'gape' },
+    { value: 'crooked', label: 'crooked' },
+    { value: 'beak', label: 'beak' },
+  ], 'oval', {
+    random: (rng) => weighted(rng, [
+      ['oval', 3], ['grin', 3], ['frown', 3], ['snarl', 3], ['slit', 2],
+      ['zigzag', 2], ['keyhole', 2], ['crescent', 2], ['gape', 2],
+      ['crooked', 2], ['beak', 2],
+    ]),
+  }),
   select('toothType', 'mouth', 'teeth', [
     { value: 'fangs', label: 'fangs' },
     { value: 'needles', label: 'needles' },
@@ -386,7 +450,25 @@ export function randomize(seed) {
     return far.length ? far[Math.floor(rng() * far.length) % far.length] : a;
   };
   out.eyeColor = apart(out.eyeColor, out.skinColor, 0.22, EYE_COLORS);
-  out.pupilColor = apart(out.pupilColor, out.eyeColor, 0.2, PUPIL_COLORS);
+
+  // The pupil was reconciled against the sclera alone — and half the eye kinds
+  // have no sclera worth speaking of. A `hole` is a socket cut into the face
+  // and a `gash` is a slit in it; on those the pupil sits on a shade of the
+  // SKIN, so a pale pupil on a pale freak is a blank stare with nothing in it.
+  //
+  // What it has to stand apart from is whatever is actually behind it, and
+  // nothing else. Demanding it clear both the eye and the skin has no answer
+  // at all when those two sit at opposite ends of the ramp.
+  const sunken = out.eyeStyle === 'hole' || out.eyeStyle === 'gash';
+  const behind = sunken ? luma(out.skinColor) * 0.5 : luma(out.eyeColor);
+  // A pupil is a hole in a face, so it goes DARK by preference and only turns
+  // to the lit end when what is behind it is already dark.
+  if (Math.abs(luma(out.pupilColor) - behind) < 0.2) {
+    const away = PUPIL_COLORS.filter((c) => Math.abs(luma(c) - behind) > 0.26);
+    const dark = away.filter((c) => luma(c) < behind);
+    const from = dark.length ? dark : away;
+    if (from.length) out.pupilColor = from[Math.floor(rng() * from.length) % from.length];
+  }
 
   // A couple of nudges that keep a random freak a readable character instead
   // of a cloud of geometry: teeth have to fit the maw, the pupil the eye.
