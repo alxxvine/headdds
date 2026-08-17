@@ -33,7 +33,8 @@ Deployment to GitHub Pages is set up in `.github/workflows/pages.yml`
 - **JSON** — copies the same creature as a parameter object.
 - **IDLE** — pauses the idle motion (handy for screenshots); off by default for
   anyone whose system asks for reduced motion.
-- **SOUND** — the creature's voice, off until you ask for it.
+- **SOUND** — the creature's voice, off until you ask for it. On an iPhone the
+  ring/silent switch mutes web audio, so a phone on silent stays silent.
 - Drag to spin, wheel (or pinch) to zoom. Click the creature to poke it.
 
 ## Parts
@@ -55,10 +56,13 @@ the randomizer, not from the defaults.
 
 Markings are painted as vertex colours **after** the creature is assembled, in
 one shared space, so a pattern runs across the skull, the torso and the limbs as
-a single coat instead of restarting on every part (`src/creature/skin.js`). The
-marking hue is rolled against the skin it lands on: the toon shading has no
-gradients, and a tone close to the skin would read as a shadow rather than as a
-marking.
+a single coat instead of restarting on every part (`src/creature/skin.js`).
+
+**RANDOM never adds them.** A second tone fights the flat toon shading and makes
+the silhouette harder to read — a freak in one colour is the better freak. Pick
+a pattern in STYLE if you want one; when you do, the marking hue is rolled
+against the skin it lands on, because the shading has no gradients and a tone
+close to the skin reads as a shadow rather than as a marking.
 
 ## Stats
 
@@ -231,7 +235,15 @@ stats still do not sound alike.
 
 Sound is off until the SOUND button is pressed: browsers refuse to start an
 AudioContext without a gesture, and a page that greets you with a roar is a page
-you close.
+you close. Switching it on plays a short chirp straight away — partly so the
+button is obviously working, partly because iOS keeps a context asleep until
+something has actually played inside the gesture that started it. On an iPhone
+the ring/silent switch mutes web audio outright; there is nothing a page can do
+about that except say so.
+
+Every voice also carries a quiet octave above its fundamental. A heavy freak
+roars near 90 Hz, and no phone speaker can move enough air for that — the
+partial lets the roar carry without raising its pitch.
 
 ## What comes next (gameplay)
 

@@ -74,7 +74,7 @@ export function createSound() {
   }
 
   /** a pitched voice: one oscillator sweeping, with its own envelope */
-  function tone(t, { dur, from, to, type = 'sawtooth', gain = 0.3, detune = 0 }) {
+  function tone(t, { dur, from, to, type = 'sawtooth', gain = 0.3, detune = 0, partial = true }) {
     const o = ctx.createOscillator();
     o.type = type;
     o.detune.value = detune;
@@ -87,6 +87,13 @@ export function createSound() {
     o.connect(g).connect(master);
     o.start(t);
     o.stop(t + dur + 0.05);
+
+    // A phone speaker cannot move enough air for the low end: a heavy freak
+    // roaring at 90 Hz is inaudible on one. Double the fundamental quietly
+    // underneath so the voice still carries, without raising its pitch.
+    if (partial && from < 190) {
+      tone(t, { dur, from: from * 2, to: to * 2, type, gain: gain * 0.4, detune, partial: false });
+    }
   }
 
   // Each gesture that makes a noise, and what that noise is. Everything is
@@ -95,8 +102,8 @@ export function createSound() {
     roar(t, m) {
       const d = (0.75 + voice.grit * 0.5) / voice.quick;
       const f = voice.base * (1 + m * 0.35);
-      tone(t, { dur: d, from: f * 1.6, to: f * 0.55, gain: 0.26 });
-      tone(t + 0.02, { dur: d, from: f * 1.58, to: f * 0.54, gain: 0.15, detune: 14, type: 'square' });
+      tone(t, { dur: d, from: f * 1.6, to: f * 0.55, gain: 0.2 });
+      tone(t + 0.02, { dur: d, from: f * 1.58, to: f * 0.54, gain: 0.11, detune: 14, type: 'square' });
       puff(t, { dur: d * 0.9, from: 900 + voice.bite * 1800, to: 320, q: 0.8, gain: 0.22 * voice.grit });
     },
     chomp(t) {
@@ -139,6 +146,12 @@ export function createSound() {
         puff(t + 0.25 + i * 0.1, { dur: 0.09, from: 3000, to: 1400, q: 2.5, gain: 0.11 });
       }
     },
+    // played the moment sound is switched on: without it the first noise waits
+    // for a gesture, and a silent button reads as a broken one
+    hello(t) {
+      tone(t, { dur: 0.1, from: voice.base * 1.6, to: voice.base * 2.4, gain: 0.22, type: 'triangle' });
+      tone(t + 0.1, { dur: 0.16, from: voice.base * 2.4, to: voice.base * 3.2, gain: 0.22, type: 'triangle' });
+    },
     poke(t, m) {
       tone(t, { dur: 0.16, from: voice.base * (2.1 + m), to: voice.base * 1.1, gain: 0.2, type: 'square' });
       puff(t, { dur: 0.1, from: 1800, to: 600, q: 1.4, gain: 0.12 });
@@ -155,10 +168,19 @@ export function createSound() {
     toggle() {
       if (!start()) return null; // no WebAudio here at all
       on = !on;
-      if (on) ctx.resume();
       // ramp instead of a jump: a gain that snaps to zero clicks
       master.gain.cancelScheduledValues(ctx.currentTime);
-      master.gain.setTargetAtTime(on ? 0.5 : 0, ctx.currentTime, 0.03);
+      master.gain.setTargetAtTime(on ? 0.7 : 0, ctx.currentTime, 0.03);
+      if (on) {
+        ctx.resume();
+        // iOS keeps a context asleep until something has actually played
+        // inside the gesture that started it — one empty buffer wakes it
+        const wake = ctx.createBufferSource();
+        wake.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+        wake.connect(ctx.destination);
+        wake.start(0);
+        CUES.hello(ctx.currentTime + 0.02);
+      }
       return on;
     },
 
