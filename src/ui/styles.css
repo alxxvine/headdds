@@ -162,10 +162,22 @@ details[open] > summary { color: var(--ink); }
 
 .stat-label { color: var(--dim); }
 
+/* the tick marks the even split (50) — everything past it was paid for
+   by another stat */
 .stat-bar {
+  position: relative;
   height: 6px;
   background: #241f33;
   border: 1px solid #322b45;
+}
+
+.stat-bar::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  bottom: -1px;
+  border-left: 1px solid #4b4168;
 }
 
 .stat-bar > i {

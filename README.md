@@ -47,12 +47,22 @@ rolls, just a pure function of the parameters:
 | DREAD | teeth, horns, tendrils, spores, lumps, dark skin |
 | BALANCE | stance and body width, minus head share and leg length |
 
-The point is trade-offs: a boulder of a skull buys VIGOR and pays in SPEED,
-stilt legs do the opposite, a maw full of fangs costs you nothing but leaves
-no room for a face. On top of the numbers, loud features grant **traits** —
-`MANY-EYED`, `FANGED`, `HORNED`, `SPOREBEARER`, `TOP-HEAVY`, `BLIND` and more
-— each carrying its own modifiers (hover a trait chip to see them). `PWR` is
-just the flat average, a single number for future matchmaking.
+**Every creature spends the same 300 points.** The six stats are normalized to
+that budget, so pushing one up always pulls the others down and no anatomy can
+produce a strictly better freak — piling on every growth at once just yields a
+flat, mediocre creature. A build is about *where* the points go: a boulder of a
+skull buys VIGOR 95 and pays with SPEED 12, stilt legs do the opposite, a maw
+full of fangs hits BITE 95 and leaves SIGHT at 11.
+
+On top of the numbers, loud features grant **traits** — `MANY-EYED`, `FANGED`,
+`HORNED`, `SPOREBEARER`, `TOP-HEAVY`, `BLIND` and more — each carrying its own
+modifiers (hover a trait chip to see them). Because of the budget those
+modifiers move points between stats instead of adding to the pool.
+
+The panel header shows the **archetype** — the stat the build leans into
+(`BRUTE`, `DEVOURER`, `SKITTERER`, `WATCHER`, `HORROR`, `PILLAR`) — and how
+specialised it is, from an even 0% generalist to a 90%+ one-trick freak. The
+tick in each bar marks the even split at 50.
 
 Stats live in `src/creature/stats.js` and depend on nothing but the parameter
 object, so gameplay can call `computeStats(params)` on a saved creature without

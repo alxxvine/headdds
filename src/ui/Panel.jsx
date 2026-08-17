@@ -7,13 +7,17 @@ const TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)'
 const HINT = TOUCH ? 'drag to spin, pinch to zoom' : 'drag to spin, wheel to zoom';
 
 function Stats({ params }) {
-  const { values, traits, power } = useMemo(() => computeStats(params), [params]);
+  const { values, traits, spread, archetype, budget } = useMemo(() => computeStats(params), [params]);
 
   return (
     <section className="stats">
       <div className="stats-head">
-        <span>STATS</span>
-        <span className="power" title="average of all stats">PWR {power}</span>
+        <span title={`every creature spends the same ${budget} points — a build is how you spend them`}>
+          STATS Σ{budget}
+        </span>
+        <span className="power" title="the stat this build leans into, and how specialised it is">
+          {archetype} {Math.round(spread * 100)}%
+        </span>
       </div>
 
       {STATS.map((s) => (
