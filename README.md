@@ -231,41 +231,60 @@ how much noise rides on the tone, BITE the sharpness of a chew, SPEED the tempo
 of the envelopes. The seed adds the last third, so two creatures with the same
 stats still do not sound alike.
 
-**Nothing plays on a timer of its own.** The animator reports what the body
-just did and every creature noise is the answer to one of those events, so the
-sound cannot drift against the picture:
+**Nothing plays on a timer of its own, and nothing plays for a motion you
+cannot see.** Breathing swells the body by two percent and the weight shift
+tilts it by a couple of degrees; at this resolution neither is visible, and a
+noise hung off them reads as the creature making sounds by itself. Only motion
+you can point at gets one:
 
 | event | what makes it | what you hear |
 |---|---|---|
-| `breathIn` / `breathOut` | the breath phase turning | the body's breathing, shaped by its mood — see below |
-| `bite` | the jaw shutting | teeth, from a faint tick to a snap, by how far it fell |
-| `gape` | the jaw opening wide | the voice: a roar, or a yawn if it is stretching or worn out |
-| `land` | the body arriving back at its own height | a thump under a hop |
-| `step` | the weight shift reaching the end of its swing | a foot taking the load |
+| `move` | an arm swinging, at the moment it turns around | the limb through the air, hair after it |
+| `turn` | the head spring's own speed topping out | the mass of a head whipping round |
+| `launch` / `land` | leaving the ground and arriving back on it | a scuff, then a thump |
 | `blink` | an eyelid closing | a small wet tick |
-| `rustle` | limbs and hair turning around at the peak of a thrash | the scrape of a scratch, shiver, fidget or shake |
+| `bite` | the jaw shutting | teeth, from a dry tick to a snap, by how far it fell |
+| `gape` | the jaw opening wide | the voice: a roar, or a yawn if it is stretching or worn out |
 
 The jaw is measured against a floor that follows its resting position, not
 against zero: a furious creature stands with its mouth half open, and an
-absolute threshold would read every idle chew as a fresh roar.
+absolute threshold would read every idle chew as a fresh roar. A roar therefore
+comes from the mouth actually being open rather than from a gesture being
+chosen, so voice and maw peak together however that gesture happens to be timed.
 
-Breathing is where the mood lives:
+The mood is not a sound of its own — it is the **tone** of every other sound:
+how much flutter is in the voice, how far the throat opens, where the pitch
+sits. A hostile freak growls through everything it does; a spent one is low,
+closed and breathy.
 
-| | |
-|---|---|
-| CALM | a slow swell in and out |
-| ALERT | short sharp intakes |
-| WIRED | quick shallow double-breaths |
-| HOSTILE | a low growl carried on every breath, never quite stopping |
-| SPENT | a wheeze with a rasp on the way out |
+That comes to a noise every second or so — about 48 events a minute standing
+still, 82 when it is furious — and every one of them is something you can watch
+happen. Measured over two minutes of animation, no event has ever fired while
+the part it names was still. With idle motion paused there are no events at all,
+so the IDLE button really is a mute.
 
-That comes to a noise every half-second or so — roughly 110 events a minute
-standing still, 150 when wound up — and every one of them is something you can
-watch happen. With idle motion paused there are no events at all, so the IDLE
-button really is a mute.
+### Why it does not sound like a synthesiser
 
-Two noises are not motion: a **new freak cries out in its own voice** the moment
-it is built, and the **panel** has its own set on fixed frequencies rather than
+A raw oscillator is a buzz, and a swept burst of noise is a laser. Neither is an
+animal, so the primitives are built to avoid being either:
+
+- **Every voiced sound goes through a throat.** A resonant lowpass whose cutoff
+  tracks the pitch, so the timbre stays voiced at any note instead of turning to
+  buzz at the bottom, plus two formant peaks — two resonances is all the ear
+  needs to hear a mouth rather than a filter.
+- **Nothing holds a perfectly steady pitch.** A little vibrato, randomised per
+  sound; without it a pitch sweep is a slide whistle.
+- **A growl is amplitude flutter**, an LFO on the gain, and nothing more exotic
+  than that.
+- **Every envelope opens from actual silence.** The obvious way — an exponential
+  ramp up from 0.0001 — starts with a click, and a few hundred of those an hour
+  is most of what makes a soundtrack sound cheap.
+- **Short noise bursts do not sweep.** A fixed band is a tap; a sweeping one is
+  science fiction.
+
+Three noises have no motion behind them, and none of them could: a **new freak
+cries out in its own voice** the moment it is built (there is no body yet), a
+poke, and the **panel**, which has its own set on fixed frequencies rather than
 the creature's, so a button sounds like a button whichever freak is on screen —
 a two-note confirm on copy, a falling one when the clipboard refuses, a
 descending wipe on RESET, a tick for picking a kind or a colour. Sliders stay

@@ -52,7 +52,6 @@ function Creature({ params, onBuilt, idle, poke, onMood, sound }) {
   const wasIdle = useRef(idle);
   const azimuth = useRef(null);
   const mood = useRef(null);
-  const acted = useRef(null);
 
   useEffect(() => {
     poke.current = () => {
@@ -122,20 +121,12 @@ function Creature({ params, onBuilt, idle, poke, onMood, sound }) {
       onMood?.(animator.moodLabel);
     }
 
-    // Every creature noise: the breath turning, the jaw shutting or gaping, a
-    // foot taking the weight, a landing, a blink, limbs thrashing. Nothing here
-    // runs on a clock of its own, so nothing can drift against the picture —
-    // and with idle motion paused there are no events, hence silence.
+    // Every creature noise: an arm swinging, the head whipping round, a jump,
+    // a landing, a blink, the jaw. Nothing runs on a clock of its own and
+    // nothing answers a motion you cannot see — and with idle motion paused
+    // there are no events at all, so IDLE really is a mute.
     sound?.setMood(animator.mood);
     sound?.play(animator.events);
-
-    // Sniffing is the one gesture with no motion channel of its own — a nose
-    // has no pivot — so it is still announced when it starts. Everything else
-    // comes out of the events below.
-    if (animator.action !== acted.current) {
-      acted.current = animator.action;
-      if (acted.current === 'sniff') sound?.cue('sniff');
-    }
   });
 
   return <primitive object={built.group} />;
