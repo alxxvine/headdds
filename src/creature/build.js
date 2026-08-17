@@ -30,7 +30,7 @@ export function buildCreature(rawParams) {
   const growths = addGrowths(head, headMesh, p, mats, rng);
   addNose(head, headMesh, p, mats, rng);
   const eyes = addEyes(head, headMesh, p, mats, rng);
-  const { jaw } = addMouth(head, headMesh, p, mats, rng);
+  const { jaw, maw } = addMouth(head, headMesh, p, mats, rng);
   addScars(head, headMesh, p, mats, rng);
 
   // --- body derived from the head share
@@ -102,6 +102,7 @@ export function buildCreature(rawParams) {
     shoulders: body.shoulders,
     eyes,
     jaw,
+    maw,
     tendrils: growths.tendrils,
     spores: growths.spores,
     scale: S,

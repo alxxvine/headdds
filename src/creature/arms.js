@@ -167,7 +167,14 @@ function addSegments(parent, p, mats, { limbR, ink, len, side }) {
     // forearm kicks forward *and* up, otherwise the bend is pure foreshortening
     // and the limb reads as another straight stick head-on
     elbow.rotation.x = -1.95;
-    elbow.rotation.z = -0.3;
+    // Mirrored, like every other joint on this creature: unsigned, both
+    // forearms kicked the same way in world space, so one folded in over its
+    // own chest while the other swung out. The sign is `+side` and not `-side`
+    // — the shoulder above has already been turned by `side * splay`, so the
+    // elbow inherits the mirroring once and must not undo it. Getting that
+    // backwards points both forearms at the midline; the limb sweep says so
+    // immediately, with 56 arm crossings where there had been none.
+    elbow.rotation.z = side * 0.3;
     parent.add(elbow);
 
     const foreGeo = new THREE.CapsuleGeometry(limbR * 0.75, fore, 3, 6);

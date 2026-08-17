@@ -59,7 +59,20 @@ export function makeMaterials(p) {
     // bulging eye the same tone as the skin reads as a lump, and the thin
     // outline around it is not enough to separate the two.
     socket: new THREE.MeshBasicMaterial({ color: shade(p.skinColor, 0.5) }),
-    outline: new THREE.MeshBasicMaterial({ color: INK.clone(), side: THREE.BackSide }),
+    // The outline is an inverted hull, so only its BACK faces are drawn — and
+    // for anything lying flat on the skull (a nose disc, an ear root, a wart)
+    // those back faces sit within a hair of the skin they are pressed against.
+    // At that grazing angle the depth test cannot decide between them and the
+    // rim renders as a dotted ring around the part, which reads as a rendering
+    // fault rather than as ink. Pushed back in depth, it always loses, and the
+    // dots become a line.
+    outline: new THREE.MeshBasicMaterial({
+      color: INK.clone(),
+      side: THREE.BackSide,
+      polygonOffset: true,
+      polygonOffsetFactor: 1.5,
+      polygonOffsetUnits: 1.5,
+    }),
   };
 }
 
