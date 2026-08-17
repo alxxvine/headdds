@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createBehaviour, makePersonality, blankPose, resetPose } from './behaviour.js';
+import { createMood } from './mood.js';
 
 // The creature has no skeleton — it is a puppet of named pivot groups (see the
 // rig built in creature/build.js). This module drives those pivots and owns all
@@ -55,7 +56,9 @@ export function createAnimator() {
   let base = null;
   let personality = null;
   const behaviour = createBehaviour();
+  const mood = createMood();
   const pose = blankPose();
+  const lastPointer = new THREE.Vector2();
 
   const S = {
     t: 0,
@@ -92,6 +95,7 @@ export function createAnimator() {
       personality = makePersonality(next.seed, stats);
       personality.seed = next.seed;
       behaviour.reset();
+      mood.reset();
     }
   }
 
@@ -99,6 +103,7 @@ export function createAnimator() {
   function rest(next) {
     bind(next);
     behaviour.reset();
+    mood.reset();
     const put = (o, b) => {
       if (!o || !b) return;
       o.position.copy(b.pos);
@@ -125,20 +130,37 @@ export function createAnimator() {
     S.headVel.z += (Math.random() - 0.5) * 6;
     S.jawVel += 22;
     S.blinkIn = Math.min(S.blinkIn, 0.12);
-    // a poke startles it into doing something: the bold ones roar back, the
-    // timid ones shiver, the rest shake it off
-    if (personality) {
-      const r = Math.random();
-      const id = r < personality.boldness * 0.5 ? 'roar' : r < 0.7 ? 'shake' : 'shiver';
-      behaviour.trigger(id, personality);
-    }
+    if (!personality) return;
+    mood.poke(personality);
+    // a poke startles it into doing something, and what it does depends on the
+    // state it is already in: an angry creature bites back, an exhausted one
+    // can only flinch, and one you have just walked up to merely reacts
+    const r = Math.random();
+    let id;
+    if (mood.id === 'hostile') id = r < 0.6 ? 'roar' : 'chomp';
+    else if (mood.id === 'spent') id = r < 0.6 ? 'shiver' : 'slump';
+    else id = r < personality.boldness * 0.5 ? 'roar' : r < 0.7 ? 'shake' : 'shiver';
+    behaviour.trigger(id, personality);
   }
 
   function update(nextRig, stats, dt, input = {}) {
     bind(nextRig, stats);
     const T = temperament(stats);
     const step = Math.min(0.05, dt); // a tab that was in the background must not explode the springs
-    S.t += step * T.tempo * IDLE_SPEED;
+
+    // --- how does it feel about you? ---------------------------------------
+    // Mood runs on real seconds: a fast creature must not also get angry fast.
+    // A hard camera swing counts as something rushing past it.
+    if (input.active) {
+      const moved = Math.hypot(input.pointer.x - lastPointer.x, input.pointer.y - lastPointer.y);
+      if (moved > 0.06) mood.stir(Math.min(0.05, moved * 0.06));
+    }
+    lastPointer.set(input.pointer?.x ?? 0, input.pointer?.y ?? 0);
+    if (input.spin > 1.2) mood.stir(Math.min(0.06, (input.spin - 1.2) * 0.02));
+    mood.update(step, { hovering: !!input.active, acting: !!behaviour.current }, personality);
+
+    // an agitated freak ticks faster than the same freak half asleep
+    S.t += step * T.tempo * IDLE_SPEED * (1 + (mood.pace - 1) * 0.45);
     const t = S.t;
     const scale = rig.scale || 1;
 
@@ -146,7 +168,8 @@ export function createAnimator() {
     // The behaviour layer writes offsets into `pose`; every layer below adds
     // them to its own idle motion, so the two never fight over a transform.
     resetPose(pose);
-    behaviour.update(pose, step, personality);
+    behaviour.update(pose, step, personality, mood);
+    mood.posture(pose, t);
 
     // --- breathing: the body swells, the head rides on top -----------------
     const breath = Math.sin(t * 1.7);
@@ -189,8 +212,16 @@ export function createAnimator() {
       // rotation is mirrored, so the delta has to be mirrored with it or the
       // clamp guards the wrong direction and the arm sails across the chest.
       const armSide = sh.userData.side ?? 1;
+      // `tuck` is how much of that splay the build found spare: on a long-armed
+      // freak most of the splay is holding the hand off the floor, and spending
+      // it would put the hand through the ground.
       const splay = sh.userData.splay ?? 0.5;
-      const swing = armSide * Math.max(-(splay - 0.05), Math.min(0.9, pa.swing));
+      const tuck = sh.userData.tuck ?? Math.max(0, splay - 0.05);
+      // The weight shift tilts both arms the same way in world space, which is
+      // opposite ways in their mirrored local frames — so it is folded into the
+      // outward-positive figure and clamped with everything else, instead of
+      // being added afterwards where it could leak past the limit.
+      const swing = armSide * Math.max(-tuck, Math.min(0.9, pa.swing + armSide * sway * 0.1));
       // Lift rotates the arm about its own X axis, which the splay has already
       // tilted: past a quarter turn the cone carries the limb back across the
       // chest and through the torso. Keep it inside that quarter turn.
@@ -198,7 +229,7 @@ export function createAnimator() {
       // twist rolls the limb about its own axis; unbounded it walks the hand
       // sideways just like an unclamped swing would
       const twist = Math.max(-0.5, Math.min(0.5, lag * 0.05 + pa.twist));
-      spin(sh, base.shoulders[i], lift, twist, sway * 0.1 + swing);
+      spin(sh, base.shoulders[i], lift, twist, swing);
     });
 
     // --- head on a critically-ish damped spring ----------------------------
@@ -211,7 +242,8 @@ export function createAnimator() {
     const idlePitch = Math.sin(t * 0.53) * 0.035 - sway * 0.02;
     const pointerX = input.active ? input.pointer.x : 0;
     const pointerY = input.active ? input.pointer.y : 0;
-    const follow = T.blind ? 0.15 : 0.35 + T.curiosity * 0.4;
+    // an alert creature locks on harder than a bored one
+    const follow = (T.blind ? 0.15 : 0.35 + T.curiosity * 0.4) * (1 + mood.drives.attention * 0.35);
 
     const targetYaw = idleYaw + pointerX * 0.42 * follow + pose.head.yaw;
     const targetPitch = idlePitch - pointerY * 0.3 * follow + pose.head.pitch;
@@ -326,6 +358,13 @@ export function createAnimator() {
     }
   }
 
-  // `action` is exposed for debugging and tests: which gesture is running now
-  return { update, rest, poke, get action() { return behaviour.current; } };
+  // `action` and `mood` are exposed for the panel and for tests: what it is
+  // doing right now, and how it feels about you
+  return {
+    update, rest, poke,
+    get action() { return behaviour.current; },
+    get mood() { return mood.id; },
+    get moodLabel() { return mood.label; },
+    get drives() { return mood.drives; },
+  };
 }

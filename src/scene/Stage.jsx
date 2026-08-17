@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildCreature } from '../creature/build.js';
 import { createAnimator } from './animator.js';
 
-function Creature({ params, onBuilt, idle, poke }) {
+function Creature({ params, onBuilt, idle, poke, onMood, sound }) {
   const { camera, controls } = useThree();
   const lastFit = useRef(0);
   const fitted = useRef(false);
@@ -50,10 +50,21 @@ function Creature({ params, onBuilt, idle, poke }) {
   const dom = useThree((s) => s.gl.domElement);
   const hovering = useRef(false);
   const wasIdle = useRef(idle);
+  const azimuth = useRef(null);
+  const mood = useRef(null);
+  const acted = useRef(null);
 
   useEffect(() => {
-    poke.current = () => animator.poke();
-  }, [animator, poke]);
+    poke.current = () => {
+      animator.poke();
+      sound?.cue('poke', animator.drives.anger);
+    };
+  }, [animator, poke, sound]);
+
+  // the voice is derived from the stats, so it is rerolled with the creature
+  useEffect(() => {
+    sound?.setVoice(built.stats, built.params.seed);
+  }, [built, sound]);
 
   useEffect(() => {
     const enter = () => { hovering.current = true; };
@@ -66,18 +77,49 @@ function Creature({ params, onBuilt, idle, poke }) {
     };
   }, [dom]);
 
-  useFrame((_, dt) => {
+  useFrame((state, dt) => {
     if (!idle) {
       // snap back to the built pose once, then stay out of the way
-      if (wasIdle.current) animator.rest(built.rig);
+      if (wasIdle.current) {
+        animator.rest(built.rig);
+        mood.current = null;
+        onMood?.(null);
+      }
       wasIdle.current = false;
       return;
     }
     wasIdle.current = true;
+
+    // How fast the player is swinging the camera around it, in radians per
+    // second: a slow look is nothing, a hard spin is something rushing past.
+    const p = state.camera.position;
+    const a = Math.atan2(p.x, p.z);
+    let spin = 0;
+    if (azimuth.current !== null && dt > 0) {
+      let d = a - azimuth.current;
+      if (d > Math.PI) d -= Math.PI * 2;
+      if (d < -Math.PI) d += Math.PI * 2;
+      spin = Math.abs(d) / dt;
+    }
+    azimuth.current = a;
+
     animator.update(built.rig, built.stats, dt, {
       pointer: { x: pointer.x, y: pointer.y },
       active: hovering.current,
+      spin,
     });
+
+    if (animator.mood !== mood.current) {
+      mood.current = animator.mood;
+      onMood?.(animator.moodLabel);
+    }
+
+    // a gesture makes its noise when it starts, not every frame it runs
+    if (animator.action !== acted.current) {
+      acted.current = animator.action;
+      const d = animator.drives;
+      if (acted.current) sound?.cue(acted.current, Math.max(d.arousal, d.anger));
+    }
   });
 
   return <primitive object={built.group} />;
@@ -123,7 +165,7 @@ function Controls() {
   return null;
 }
 
-export default function Stage({ params, onBuilt, idle = true }) {
+export default function Stage({ params, onBuilt, idle = true, onMood, sound }) {
   const poke = useRef(() => {});
   const down = useRef({ x: 0, y: 0 });
 
@@ -150,7 +192,7 @@ export default function Stage({ params, onBuilt, idle = true }) {
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
       <PixelScale pixelSize={params.pixelSize} />
       <Controls />
-      <Creature params={params} onBuilt={onBuilt} idle={idle} poke={poke} />
+      <Creature params={params} onBuilt={onBuilt} idle={idle} poke={poke} onMood={onMood} sound={sound} />
     </Canvas>
   );
 }

@@ -190,9 +190,23 @@ export function buildArm(p, mats, rng, opts) {
     shoulder.scale.multiplyScalar(k);
   }
 
+  // How far the arm may swing back in towards the body. Two different limits
+  // meet here: the midline (never cross the chest) and the floor. Most of the
+  // splay above exists to hold a long arm up, so an action that tucks the arm
+  // in — a scratch, a hug — would spend exactly that clearance and drive the
+  // hand through the ground. Measure what is actually spare.
+  let tuck = 0;
+  for (let d = 0.08; d <= splay - 0.05; d += 0.08) {
+    shoulder.rotation.z = side * (splay - d);
+    if (lowestPoint(shoulder) < 0) break;
+    tuck = d;
+  }
+  shoulder.rotation.z = side * splay;
+
   // the animator lifts and swings this arm; it needs to know how much splay it
   // may spend before the limb would cross the midline
   shoulder.userData.splay = splay;
+  shoulder.userData.tuck = tuck;
   shoulder.userData.side = side;
   return shoulder;
 }

@@ -116,9 +116,12 @@ export function addEyes(parent, headMesh, p, mats, rng) {
   const positions = eyePositions(p, rng).map(([x, y]) => [x, Math.max(y, mouthTop + baseSize * 0.9)]);
   const eyes = [];
 
-  for (const [x, y] of positions) {
+  for (const [x0, y0] of positions) {
     // no two eyes are quite the same once jitter is up
     const size = baseSize * (1 + (rng() * 2 - 1) * p.eyeJitter * 0.55);
+    // lopsidedness slides each eye off its neat layout slot
+    const x = x0 + (rng() * 2 - 1) * p.lopsided * p.headWidth * 0.16;
+    const y = y0 + (rng() * 2 - 1) * p.lopsided * p.headHeight * 0.13;
     const hit = surfaceAt(headMesh, p, x, y);
     const pivot = new THREE.Group();
     let stalk = null;
@@ -182,15 +185,17 @@ export function addEyes(parent, headMesh, p, mats, rng) {
 
 // ------------------------------------------------------------------ MAW ----
 
-function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, side, count }) {
+function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, count }) {
   if (count <= 0) return;
   const S = headUnit(p);
 
   for (let i = 0; i < count; i++) {
+    // wear knocks teeth out of the row
+    if (rng() < p.wear * 0.35) continue;
     const t = ((i + 0.5) / count) * 2 - 1;
-    const u = t * mw * 0.94;
+    const u = mx + t * mw * 0.94;
     // the maw's ellipse edge at this point — that is where the tooth grows
-    const edge = mh * Math.sqrt(Math.max(0.1, 1 - Math.min(1, (u / (mw * 0.99)) ** 2)));
+    const edge = mh * Math.sqrt(Math.max(0.1, 1 - Math.min(1, ((u - mx) / (mw * 0.99)) ** 2)));
     const hit = surfaceAt(headMesh, p, u, my + side * edge * 0.94);
 
     const w = ((2 * mw) / count) * (1 - p.toothGap) * 0.92;
@@ -217,19 +222,22 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, side, count }) {
 export function addMouth(parent, headMesh, p, mats, rng) {
   const mw = p.mouthWidth * p.headWidth;
   const mh = Math.max(0.03, p.mouthOpen * p.headHeight * 0.55);
-  const my = p.mouthY * p.headHeight * 0.8;
+  // a crooked maw sits off centre and off level
+  const skew = (rng() * 2 - 1) * p.lopsided;
+  const my = p.mouthY * p.headHeight * 0.8 + skew * p.headHeight * 0.06;
+  const mx = skew * p.headWidth * 0.1;
 
   if (p.lips > 0.01) {
     const grow = 1 + p.lips;
     const lips = decalGeometry(headMesh, p, {
-      cx: 0, cy: my, rx: mw * grow, ry: mh * grow * 1.25,
+      cx: mx, cy: my, rx: mw * grow, ry: mh * grow * 1.25,
       inner: 1 / grow, offset: 0.006, rings: 2, segs: 26,
     });
     parent.add(new THREE.Mesh(lips, mats.lip));
   }
 
   const cavity = decalGeometry(headMesh, p, {
-    cx: 0, cy: my, rx: mw, ry: mh, offset: 0.014, rings: 3, segs: 26,
+    cx: mx, cy: my, rx: mw, ry: mh, offset: 0.014, rings: 3, segs: 26,
   });
   parent.add(new THREE.Mesh(cavity, mats.cavity));
 
@@ -237,11 +245,11 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   // peel them off. Only the lower row of teeth swings, on a hinge sitting
   // behind and below the maw.
   const jaw = new THREE.Group();
-  jaw.position.set(0, my - mh * 0.2, -p.headDepth * 0.35);
+  jaw.position.set(mx, my - mh * 0.2, -p.headDepth * 0.35);
   parent.add(jaw);
 
-  addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, side: 1, count: p.teethTop });
-  addTeeth(jaw, headMesh, p, mats, rng, { mw, mh, my, side: -1, count: p.teethBottom });
+  addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx, side: 1, count: p.teethTop });
+  addTeeth(jaw, headMesh, p, mats, rng, { mw, mh, my, mx, side: -1, count: p.teethBottom });
 
   return { jaw };
 }
@@ -298,6 +306,40 @@ export function addNose(parent, headMesh, p, mats) {
   parent.add(frame);
 }
 
+// ---------------------------------------------------------------- SCARS ----
+
+/**
+ * Old damage: a line of small dark patches across the face. decalGeometry only
+ * makes axis-aligned ellipses, so a slash is stitched from overlapping dots —
+ * which at this resolution reads more like a scar than a clean ellipse would.
+ */
+export function addScars(parent, headMesh, p, mats, rng) {
+  if (p.wear < 0.25) return;
+  const S = headUnit(p);
+  const scars = 1 + (rng() < p.wear - 0.45 ? 1 : 0);
+
+  for (let n = 0; n < scars; n++) {
+    const angle = (rng() * 2 - 1) * 1.1;
+    const len = (0.35 + rng() * 0.5) * p.headHeight;
+    const cx = (rng() * 2 - 1) * p.headWidth * 0.45;
+    const cy = (rng() * 2 - 1) * p.headHeight * 0.3;
+    const dots = 6;
+    for (let i = 0; i < dots; i++) {
+      const t = (i / (dots - 1) - 0.5) * len;
+      const geo = decalGeometry(headMesh, p, {
+        cx: cx + Math.sin(angle) * t,
+        cy: cy + Math.cos(angle) * t,
+        rx: S * 0.035,
+        ry: S * 0.035,
+        offset: 0.016,
+        rings: 1,
+        segs: 8,
+      });
+      parent.add(new THREE.Mesh(geo, mats.socket));
+    }
+  }
+}
+
 // -------------------------------------------------------------- GROWTHS ----
 
 function randomDir(rng, v = new THREE.Vector3()) {
@@ -341,8 +383,12 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
     const idx = Math.floor(i / 2);
     dir.set(side * (0.3 + idx * 0.28), 1 - idx * 0.22, -0.12 + idx * 0.1).normalize();
     const hit = surfaceByDir(p, dir.x, dir.y, dir.z);
-    const len = p.hornLen * S * (0.7 + rng() * 0.5);
-    const geo = new THREE.ConeGeometry(S * 0.085, len, 5);
+    // a broken horn is a stump with a flat top
+    const broken = rng() < p.wear * 0.45;
+    const len = p.hornLen * S * (0.7 + rng() * 0.5) * (broken ? 0.35 : 1) * (1 + (rng() * 2 - 1) * p.lopsided * 0.4);
+    const geo = broken
+      ? new THREE.CylinderGeometry(S * 0.055, S * 0.085, len, 5)
+      : new THREE.ConeGeometry(S * 0.085, len, 5);
     const frame = new THREE.Group();
     orientTo(frame, hit.point, hit.normal);
     const horn = new THREE.Mesh(geo, mats.growth);
