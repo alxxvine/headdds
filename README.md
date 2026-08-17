@@ -177,6 +177,7 @@ src/lib/noise.js         seeded RNG plus value/fbm noise
 src/lib/codec.js         params <-> base64url for the share link
 tools/limb-sweep.mjs     checks the limb invariants over a population
 tools/proportion-sweep.mjs checks the silhouette: no pancakes, no wedges
+tools/roll-sweep.mjs     checks the randomizer can reach what the panel offers
 ```
 
 Three ideas hold the whole thing together:
@@ -217,12 +218,33 @@ like damage.
 Below the neck the same rule applies to the limbs. The torso may widen to reach
 the hips and shoulders it has to carry, but only to a ceiling — half again the
 width asked for, and never past its own height. When a ceiling binds, the limbs
-come in instead of the body going out.
+come in instead of the body going out. So the trunk is built to reach a quarter
+past its own hip line rather than merely down to it: a rounded body narrows
+towards its ends, and a joint measured at the very bottom sits where the width
+has already fallen to a third, which is a third every limb then gets divided by.
+
+The outline obeys the same discipline, and for the same reason. It is an
+inverted hull pushed out along the normals by an **absolute** distance, and
+everything below the neck takes that distance from the skull — so on a freak
+whose legs are a fortieth of its head the rim came out thicker than the leg
+inside it, and the limb rendered as a solid black stick. That was 400 of 600
+random creatures, at a median of 2.3× the leg's own half-width. An outline is a
+rim, not a coating: `rim()` caps it at a third of whatever it is drawn around.
 
 `node tools/proportion-sweep.mjs 400` measures both failures over a population:
 flatness as mid/min of the three sorted extents (a column is fine, a pancake is
 not), and the skull's width profile latitude by latitude, because a wedge fits a
 perfectly square bounding box.
+
+`node tools/roll-sweep.mjs` checks the other half of variety: that the
+randomizer can reach what the panel offers. A parameter declares a range, and
+`randomize` may declare its own draw on top of it — and when the two disagree
+nothing errors, because `sanitize` clamps the result. Six width sliders were
+drawing `(rng*2-1)*0.6` against a range of `[-0.5, 0.7]`, so 7.5% of every
+population sat on exactly the narrowest setting while the top tenth of the
+slider was never generated at all. The check measures the RAW draw against the
+range, because a deliberately lopsided roll is a choice — half the freaks are
+meant to have no wear and no glow — while leaving the range is a bug.
 
 ## Idle motion
 

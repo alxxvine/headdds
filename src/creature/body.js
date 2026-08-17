@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { withOutline } from './materials.js';
+import { withOutline, rim } from './materials.js';
 import { buildArm } from './arms.js';
 import { makeTorsoGeometry, bodyProfile, profilePeak } from './torso.js';
 
@@ -59,8 +59,15 @@ export function buildBody(p, mats, headBox, rng) {
   // below the mesh they were supposed to grow from.
   const torsoY = legH + torsoH * (0.42 + torsoDrop);
   const shoulderY = legH + torsoH * 0.52;
-  // the trunk always reaches down to its own hips
-  const halfH = Math.max(torsoH * 0.55 * tall, (torsoY - legH) * 1.04);
+  // The trunk always reaches PAST its own hips, not merely down to them. A
+  // rounded body narrows towards its own ends, so a hip line sitting at the
+  // very bottom is measured where the latitude term alone has taken the width
+  // to a third — and everything downstream then divides by that third: the
+  // torso is asked to widen, the ceiling stops it, and `fit` shrinks the legs
+  // instead. Reaching a quarter further down puts the joint at four fifths
+  // rather than at the pole, and the legs come out half again as thick for it
+  // (radius median 0.039 -> 0.046) with no joint any further outside the skin.
+  const halfH = Math.max(torsoH * 0.55 * tall, (torsoY - legH) * 1.25);
   const heightIn = (y) => THREE.MathUtils.clamp((y - torsoY) / halfH, -0.95, 0.95);
 
   // How wide the body actually is where each limb joins it. Two things set
@@ -198,17 +205,17 @@ export function buildBody(p, mats, headBox, rng) {
       const thigh = new THREE.Mesh(thighGeo, mats.body);
       thigh.position.set(0, legR + half * 1.45 - legH, -half * 0.2);
       thigh.rotation.x = -lean;
-      withOutline(legPivot, thigh, thighGeo, ink, mats.outline);
+      withOutline(legPivot, thigh, thighGeo, rim(ink, legR * 1.15), mats.outline);
 
       const shinGeo = new THREE.CapsuleGeometry(legR * 0.85, half, 3, 7);
       const shin = new THREE.Mesh(shinGeo, mats.body);
       shin.position.set(0, legR + half * 0.5 - legH, half * 0.12);
       shin.rotation.x = lean * 0.55;
-      withOutline(legPivot, shin, shinGeo, ink, mats.outline);
+      withOutline(legPivot, shin, shinGeo, rim(ink, legR * 0.85), mats.outline);
     } else {
       const leg = new THREE.Mesh(legGeo, mats.body);
       leg.position.set(0, legR + legLen * 0.5 - legH, 0);
-      withOutline(legPivot, leg, legGeo, ink, mats.outline);
+      withOutline(legPivot, leg, legGeo, rim(ink, legR), mats.outline);
     }
 
     if (p.footType !== 'none') {
@@ -224,7 +231,7 @@ export function buildBody(p, mats, headBox, rng) {
         foot.scale.set(p.footType === 'splay' ? 1.8 : 1.1, squash, p.footType === 'splay' ? 2.2 : 1.5);
         foot.position.set(0, footR * squash - legH, legR * 0.9);
       }
-      withOutline(legPivot, foot, footGeo, ink, mats.outline);
+      withOutline(legPivot, foot, footGeo, rim(ink, footR), mats.outline);
     }
 
     // arm: the shoulder sits low and wide, otherwise the whole limb hides

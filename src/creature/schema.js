@@ -82,9 +82,15 @@ export const PARAMS = [
   // The skull used to be one shape all the way up — a cone, a ball or a box.
   // These three widen or pinch it at brow, eye and jaw height independently,
   // which is what makes a silhouette instead of a solid.
-  range('browWide', 'head', 'brow width', -0.5, 0.7, 0, { random: (rng) => (rng() * 2 - 1) * 0.6 }),
-  range('midWide', 'head', 'temple width', -0.5, 0.7, 0, { random: (rng) => (rng() * 2 - 1) * 0.6 }),
-  range('chinWide', 'head', 'jaw width', -0.5, 0.7, 0, { random: (rng) => (rng() * 2 - 1) * 0.6 }),
+  // No `random` on any of the six width bands, here or on the torso: the
+  // default roll already spans the whole declared range in one draw. Writing a
+  // second one by hand is how all six ended up drawing (rng*2-1)*0.6 against a
+  // range of [-0.5, 0.7] — sanitize clamps what overshoots, so 7.5% of every
+  // population sat on exactly the narrowest setting while the top tenth of the
+  // slider was never generated at all.
+  range('browWide', 'head', 'brow width', -0.5, 0.7, 0),
+  range('midWide', 'head', 'temple width', -0.5, 0.7, 0),
+  range('chinWide', 'head', 'jaw width', -0.5, 0.7, 0),
   range('lumps', 'head', 'lumps', 0, 0.35, 0.08),
   // a freak is rarely symmetric and rarely undamaged
   range('lopsided', 'head', 'lopsidedness', 0, 1, 0, { random: (rng) => (rng() < 0.3 ? 0 : rng() * 0.9) }),
@@ -252,9 +258,9 @@ export const PARAMS = [
   range('headRatio', 'body', 'head share', 0.5, 0.88, 0.7),
   // The torso is a surface of its own now, not a primitive — these are its
   // silhouette, the same three-band idea the skull uses.
-  range('chestWide', 'body', 'chest width', -0.6, 0.8, 0, { random: (rng) => (rng() * 2 - 1) * 0.7 }),
-  range('waistWide', 'body', 'waist width', -0.6, 0.8, 0, { random: (rng) => (rng() * 2 - 1) * 0.7 }),
-  range('hipWide', 'body', 'hip width', -0.6, 0.8, 0, { random: (rng) => (rng() * 2 - 1) * 0.7 }),
+  range('chestWide', 'body', 'chest width', -0.6, 0.8, 0),
+  range('waistWide', 'body', 'waist width', -0.6, 0.8, 0),
+  range('hipWide', 'body', 'hip width', -0.6, 0.8, 0),
   range('bodyBox', 'body', 'boxiness', 0, 1, 0.1, { random: (rng) => rng() * rng() }),
   range('bodyLumps', 'body', 'lumps', 0, 0.4, 0.05, { random: (rng) => rng() * 0.35 }),
   range('belly', 'body', 'belly', 0, 1, 0.15, { random: (rng) => rng() * 0.9 }),
