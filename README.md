@@ -47,9 +47,9 @@ Most of a freak is a menu of kinds, each with its own scatter on top:
 | pupils | round, slit, goat, cross, ring, square, double, blind — plus eyelids |
 | teeth | fangs, needles, blocks, tusks — with a mismatch slider, so one mouth holds anything from a stub to a fang three times its neighbour |
 | nose | none, bump, beak, snout, nostrils, trunk, tusks, disc — and each one gets its own proportions: wide and flat, narrow and long, or pushed out from the face |
-| ears | none, flaps, fins, trumpets, holes — with size and height |
+| ears | none, flaps, fins, trumpets, holes — with size and height, and the two never quite the same size |
 | hair | none, tendrils, bristles, antennae, dreads, crest, fur, quills, fronds — 9 kinds |
-| torso | blob, pear, barrel, segmented, slab |
+| torso | blob, pear, barrel, segmented, slab — each with its own proportions, squat and deep or narrow and tall |
 | legs | sticks, thick, bent, stumps — with feet: ball, none, splayed, hoof |
 | arms | none, stubs, sticks, noodles, mantis — plus lift and a lopsidedness slider |
 | hands | none, ball, claws, pincer, club |
@@ -61,6 +61,20 @@ scatter inside each kind.
 Defaults are the tame end of every menu, so a link shared before a kind existed
 still opens the creature it was saved as. The variety comes from the weights in
 the randomizer, not from the defaults.
+
+The skull is not one shape all the way up any more. Three sliders widen or
+pinch it independently at brow, temple and jaw height, which is what turns a
+cone or a ball into a silhouette: a broad brow over narrow temples over a wide
+jaw reads as a face, where one global shape only ever reads as a solid.
+
+**A limb grows out of the body, never beside it.** The order in `body.js` is
+what makes that true: limbs are sized against the body the player asked for,
+then the spread floors that keep them from fusing are worked out, and only then
+is the torso widened — if it still has to be — to reach its own attachment
+points. Sizing the torso first and spacing the limbs afterwards, which is the
+obvious order, left the arms of a narrow freak hanging several body-widths out
+in space. Stance is clamped for the same reason: it opens the hips, but never so
+far that the shoulders can no longer fit inside the body either.
 
 Hands, feet, ears and fleshy noses are drawn in a **deeper shade of the same
 skin**, not a second colour. A tone rather than a hue is what stops a freak

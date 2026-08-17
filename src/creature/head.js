@@ -33,6 +33,20 @@ export function headPoint(p, d, out = new THREE.Vector3()) {
     x *= jaw; z *= jaw * 0.9;
   }
 
+  // 2b. the width profile: three bands up the skull, each widening or pinching
+  // it on its own. A head that is only ever one shape reads as a solid; a broad
+  // brow over narrow temples over a wide jaw reads as a face.
+  const band = (c, w) => {
+    const q = (dy - c) / w;
+    return Math.exp(-(q * q));
+  };
+  const widen = 1
+    + p.browWide * band(0.62, 0.42)
+    + p.midWide * band(0.05, 0.38)
+    + p.chinWide * band(-0.6, 0.42);
+  x *= widen;
+  z *= 0.25 + widen * 0.75;   // depth follows, but less: this is a silhouette
+
   // 3. lumps and fine speckle — a radial displacement
   const s = p.lumpScale;
   const lump = fbm3(dx * s + 11.3, dy * s + 4.1, dz * s + 7.7, 0, 3) - 0.5;
