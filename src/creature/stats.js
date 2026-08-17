@@ -2,10 +2,12 @@
 // the same numbers, on any machine, without touching the mesh. Gameplay can
 // call computeStats(params) on a saved creature and never load three.js.
 //
-// The design goal is trade-offs, not a score. A boulder of a skull buys VIGOR
-// and pays for it in SPEED and BALANCE; stilt legs do the opposite. Every
-// slider should move at least one stat, and the loud ones (horns, spores,
-// a maw full of fangs) also grant a trait with its own modifiers.
+// The design goal is trade-offs, not a score. Every creature spends the same
+// budget of points (BUDGET below), so pushing one stat up always pushes the
+// others down and no anatomy can produce a strictly better freak. A boulder of
+// a skull buys VIGOR and pays for it in SPEED and BALANCE; stilt legs do the
+// opposite. The loud features (horns, spores, a maw full of fangs) grant traits
+// whose modifiers shift points between stats rather than adding to the pool.
 
 import { PARAM_BY_KEY } from './schema.js';
 
@@ -20,8 +22,72 @@ export const STATS = [
 
 export const STAT_KEYS = STATS.map((s) => s.key);
 
+// Every creature spends the same pool of points, so a build is about *where*
+// the points go, never about how many you managed to collect. Raising one stat
+// necessarily lowers the others.
+export const BUDGET = 300; // 6 stats, so an even creature sits at 50 each
+export const STAT_MIN = 5;
+export const STAT_MAX = 95;
+
+/** The name of the stat a creature leans into — flavour for future gameplay. */
+export const ARCHETYPES = {
+  vigor: 'BRUTE',
+  bite: 'DEVOURER',
+  speed: 'SKITTERER',
+  sight: 'WATCHER',
+  dread: 'HORROR',
+  balance: 'PILLAR',
+};
+
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
-const clampStat = (v) => Math.min(99, Math.max(1, Math.round(v)));
+
+/**
+ * Scales raw stats so they sum to exactly BUDGET while every value stays in
+ * [STAT_MIN, STAT_MAX]. Clamping steals points from the pool, so the leftover
+ * is redistributed over the stats that still have headroom (water filling),
+ * and the final rounding uses largest remainders to land on the budget exactly.
+ */
+function fitBudget(raw) {
+  const keys = Object.keys(raw);
+  const total = keys.reduce((s, k) => s + raw[k], 0) || 1;
+  const v = {};
+  for (const k of keys) v[k] = (raw[k] / total) * BUDGET;
+
+  for (let pass = 0; pass < 16; pass++) {
+    let sum = 0;
+    for (const k of keys) {
+      v[k] = Math.min(STAT_MAX, Math.max(STAT_MIN, v[k]));
+      sum += v[k];
+    }
+    const deficit = BUDGET - sum;
+    if (Math.abs(deficit) < 1e-6) break;
+
+    // headroom in the direction we need to move
+    const free = keys.filter((k) => (deficit > 0 ? v[k] < STAT_MAX : v[k] > STAT_MIN));
+    if (!free.length) break;
+    const room = free.reduce((s, k) => s + (deficit > 0 ? STAT_MAX - v[k] : v[k] - STAT_MIN), 0) || 1;
+    for (const k of free) {
+      const share = (deficit > 0 ? STAT_MAX - v[k] : v[k] - STAT_MIN) / room;
+      v[k] += deficit * share;
+    }
+  }
+
+  // integer values that still add up to BUDGET
+  const out = {};
+  let spent = 0;
+  for (const k of keys) {
+    out[k] = Math.floor(v[k]);
+    spent += out[k];
+  }
+  const order = keys
+    .map((k) => ({ k, frac: v[k] - Math.floor(v[k]) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let i = 0; spent < BUDGET && i < order.length * 2; i++) {
+    const k = order[i % order.length].k;
+    if (out[k] < STAT_MAX) { out[k] += 1; spent += 1; }
+  }
+  return out;
+}
 
 /** Normalizes a parameter to 0..1 using the range declared in the schema. */
 function nk(p, key) {
@@ -130,15 +196,19 @@ export function computeStats(p) {
 
   const traits = TRAITS.filter((t) => t.when(p));
 
-  const values = {};
+  const raw = {};
   for (const { key } of STATS) {
     let v = 6 + clamp01(base[key]) * 88;
     for (const t of traits) v += t.mods[key] || 0;
-    values[key] = clampStat(v);
+    raw[key] = Math.max(1, v);
   }
 
-  const power = Math.round(STAT_KEYS.reduce((s, k) => s + values[k], 0) / STAT_KEYS.length);
-  return { values, traits, power };
+  const values = fitBudget(raw);
+  const list = STAT_KEYS.map((k) => values[k]);
+  const spread = (Math.max(...list) - Math.min(...list)) / (STAT_MAX - STAT_MIN);
+  const archetype = ARCHETYPES[STAT_KEYS.reduce((a, b) => (values[b] > values[a] ? b : a))];
+
+  return { values, raw, traits, budget: BUDGET, spread, archetype };
 }
 
 /** "sight +10, dread +4" — for trait tooltips. */
