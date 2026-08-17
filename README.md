@@ -162,9 +162,10 @@ src/creature/features.js eyes, toothed maw, nose, warts, horns, spores
 src/creature/hair.js     nine kinds of hair, from fur to a bony crest
 src/creature/ears.js     flaps, fins, trumpets, holes
 src/creature/arms.js     arm and hand kinds, pose, and keeping limbs off the floor
-src/creature/body.js     torso kinds, leg kinds and feet, all derived from the
-                         head share: bodyH = headH * (1-r)/r
-src/creature/ornaments.js what grows below the neck: ruff, plates, studs, bands
+src/creature/torso.js    the trunk: direction -> point of skin (bodyPoint)
+src/creature/body.js     leg kinds, feet and the proportions everything below the
+                         neck is fitted into: bodyH = headH * (1-r)/r
+src/creature/aura.js     what floats around it: spores, orbit ring, swarm, halo
 src/creature/build.js    buildCreature(params) -> { group, rig, stats, dispose, ... }
 src/scene/animator.js    idle motion: springs, blinking, saccades, secondary sway
 src/scene/behaviour.js   what it does between idles: twelve gestures, personality
@@ -175,14 +176,17 @@ src/ui/                  the panel, generated straight from the schema
 src/lib/noise.js         seeded RNG plus value/fbm noise
 src/lib/codec.js         params <-> base64url for the share link
 tools/limb-sweep.mjs     checks the limb invariants over a population
+tools/proportion-sweep.mjs checks the silhouette: no pancakes, no wedges
 ```
 
 Three ideas hold the whole thing together:
 
 1. **The skull is a star-shaped surface.** `headPoint(params, dir)` turns any
-   unit direction into a point of skin (sphere ↔ cube, taper, jaw, fbm lumps,
-   brow ridges, profile lean). The geometry is just an icosahedron with every
-   vertex run through that function.
+   unit direction into a point of skin (sphere ↔ cube, taper, jaw, three width
+   bands at brow, temple and jaw, fbm lumps, brow ridges, profile lean). The
+   geometry is just an icosahedron with every vertex run through that function.
+   The torso is the same construction one level down (`bodyPoint`), so the body
+   has a silhouette of its own instead of being a primitive picked from a list.
 2. **Features are planted on skin, not drawn in front of the face.** For frontal
    coordinates (x, y) a ray is cast along −Z and returns a point with a normal;
    horns and warts only need the analytic `headSurfaceByDir`. The maw, the lips
@@ -192,6 +196,33 @@ Three ideas hold the whole thing together:
 3. **The schema is the single source of truth.** Defaults, the panel, the
    randomizer and link validation all come out of `PARAMS`. A new parameter is
    one line in the schema.
+
+## Proportions
+
+Every one of those width terms multiplies, and left alone they multiply without
+limit: a full taper times a swollen jaw times three bands took the bottom of a
+skull past ten times its own crown while `headHeight` stayed exactly where the
+slider put it. The result renders as a blade with a mouth on the end, and it is
+the one failure a player reads instantly as *the character is broken*.
+
+So the profiles do not add width, they **redistribute** it. Both surfaces are
+divided by their own widest point — `headWidth` and the torso's scale are then
+the real size of the thing, not a number the profile multiplies afterwards — and
+the skull's profile is additionally pulled back towards that widest point until
+nothing along it is thinner than about half of it. The pull is an exponent, not
+a clamp: it keeps the *order* of the widths, so a broad brow over narrow temples
+over a wide jaw is still exactly that, just no longer extreme enough to look
+like damage.
+
+Below the neck the same rule applies to the limbs. The torso may widen to reach
+the hips and shoulders it has to carry, but only to a ceiling — half again the
+width asked for, and never past its own height. When a ceiling binds, the limbs
+come in instead of the body going out.
+
+`node tools/proportion-sweep.mjs 400` measures both failures over a population:
+flatness as mid/min of the three sorted extents (a column is fine, a pancake is
+not), and the skull's width profile latitude by latitude, because a wedge fits a
+perfectly square bounding box.
 
 ## Idle motion
 
@@ -235,6 +266,14 @@ the two legs never fuse, and no arm dips below the feet. Limbs are measured as
 the real capsules and spheres — a rotated sphere's bounding box is far larger
 than the sphere, and every mistaken "fix" in this repository so far started
 with a bounding box.
+
+The build is what makes those hold, because it is the only place that knows how
+much room a particular freak has. Each arm measures its own budgets while it is
+being assembled — how far it may tuck in before it crosses the midline or
+scrapes the ground, and how far it may swing before the splay that was holding
+its hand clear of the body has all been spent — and each leg measures how far it
+may tilt before it touches the other one. The gestures then spend those budgets
+instead of a constant that suits an average creature and fuses a narrow one.
 
 Actions never touch the rig. They write offsets into a pose struct which the
 animator adds on top of its idle layers and applies in one place, so the two can

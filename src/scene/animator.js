@@ -237,11 +237,15 @@ export function createAnimator() {
     );
     // Both legs lean the same way — a weight shift tilts the whole stance.
     // Swinging them in opposite directions would close the gap between them
-    // and, on a thick-limbed freak, fuse them into one leg mid-sway.
+    // and, on a thick-limbed freak, fuse them into one leg mid-sway. A gesture
+    // does swing one leg on its own, though, and that is exactly the motion the
+    // shared lean was written to avoid: it gets only the room the build found
+    // between the two of them.
     const legLean = sway * 0.07 * (0.5 + T.wobble);
     rig.legs.forEach((leg, i) => {
       const pl = pose.legs[i] || pose.legs[0];
-      spin(leg, base.legs[i], pl.lift, 0, legLean + pl.swing);
+      const cap = leg.userData.lean ?? 0.3;
+      spin(leg, base.legs[i], pl.lift, 0, legLean + Math.max(-cap, Math.min(cap, pl.swing)));
     });
 
     // --- arms dangle a beat behind the body --------------------------------
@@ -269,8 +273,11 @@ export function createAnimator() {
       const swing = armSide * Math.max(-tuck, Math.min(0.9, pa.swing + armSide * sway * 0.1));
       // Lift rotates the arm about its own X axis, which the splay has already
       // tilted: past a quarter turn the cone carries the limb back across the
-      // chest and through the torso. Keep it inside that quarter turn.
-      const lift = Math.max(-1.4, Math.min(1.4, lag * 0.14 * (0.4 + T.weight) + pa.lift));
+      // chest and through the torso. How much of that turn this particular arm
+      // has is measured at build time — a wide freak gets the whole quarter, a
+      // narrow one with fanned claws gets a fraction of it.
+      const liftCap = sh.userData.lift ?? 1.4;
+      const lift = Math.max(-liftCap, Math.min(liftCap, lag * 0.14 * (0.4 + T.weight) + pa.lift));
       // twist rolls the limb about its own axis; unbounded it walks the hand
       // sideways just like an unclamped swing would
       const twist = Math.max(-0.5, Math.min(0.5, lag * 0.05 + pa.twist));

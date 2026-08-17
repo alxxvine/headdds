@@ -10,13 +10,13 @@ const _scale = new THREE.Vector3();
 const _box = new THREE.Box3();
 
 /**
- * Lowest point of a subtree, measured on the real shapes.
+ * Every shape in a subtree, reported as balls in world space: a centre and a
+ * radius the shape stays inside of.
  * Box3.setFromObject takes the AABB of the rotated geometry box, which for a
  * tilted sphere is far bigger than the sphere — that overestimate is exactly
  * what would push every bent arm into a needless splay.
  */
-export function lowestPoint(root) {
-  let lo = Infinity;
+function forEachBall(root, cb) {
   root.updateMatrixWorld(true);
   root.traverse((o) => {
     if (!o.isMesh || o.material?.side === THREE.BackSide) return; // skip outline shells
@@ -29,7 +29,7 @@ export function lowestPoint(root) {
 
     if (g.type === 'SphereGeometry') {
       o.getWorldPosition(_v);
-      lo = Math.min(lo, _v.y - par.radius * scale);
+      cb(_v, par.radius * scale);
       return;
     }
     if (g.type === 'CapsuleGeometry' || g.type === 'CylinderGeometry' || g.type === 'ConeGeometry') {
@@ -37,16 +37,42 @@ export function lowestPoint(root) {
       const r = Math.max(par.radius ?? 0, par.radiusTop ?? 0, par.radiusBottom ?? 0) * scale;
       for (const end of [-half, half]) {
         _v.set(0, end, 0).applyMatrix4(o.matrixWorld);
-        lo = Math.min(lo, _v.y - r);
+        cb(_v, r);
       }
       return;
     }
     // tubes and anything else: bounding box corners are close enough
     g.computeBoundingBox();
     _box.copy(g.boundingBox).applyMatrix4(o.matrixWorld);
-    lo = Math.min(lo, _box.min.y);
+    for (const x of [_box.min.x, _box.max.x]) {
+      for (const y of [_box.min.y, _box.max.y]) {
+        for (const z of [_box.min.z, _box.max.z]) cb(_v.set(x, y, z), 0);
+      }
+    }
   });
+}
+
+/** Lowest point of a subtree, measured on the real shapes. */
+export function lowestPoint(root) {
+  let lo = Infinity;
+  forEachBall(root, (c, r) => { lo = Math.min(lo, c.y - r); });
   return lo === Infinity ? 0 : lo;
+}
+
+/**
+ * How far the nearest part of a subtree stays from the midline, on the side it
+ * grows from. Negative means it has crossed to the other half of the body.
+ *
+ * The floor is not the only thing an arm can be swung into. A hand reaches
+ * sideways well past the limb it is on — a claw's fingers fan out by more than
+ * a whole limb radius — so an arm rooted a hand's width from the middle of a
+ * narrow freak can be tucked in until the two sets of fingers interlock, while
+ * every check made on the limb alone still passes.
+ */
+export function innerReach(root, side) {
+  let inner = Infinity;
+  forEachBall(root, (c, r) => { inner = Math.min(inner, side * c.x - r); });
+  return inner === Infinity ? 0 : inner;
 }
 
 // ------------------------------------------------------------------ HANDS ---
@@ -176,7 +202,13 @@ export function buildArm(p, mats, rng, opts) {
   // The arm is fitted to clear the floor with a margin, not to touch it. The
   // animator's idle lag swings the limb by a fifth of a radian on its own, and
   // an arm built resting exactly on the ground dips through it every cycle.
-  const clearance = limbR * 0.9;
+  //
+  // Part of that margin has to scale with the shoulder rather than the limb: a
+  // tired creature leans and squashes for as long as the mood lasts, and both
+  // of those drop the shoulder by a fraction of its own height, carrying the
+  // whole arm down with it. A margin measured only in limb radii covers a fat
+  // arm and leaves a thin one on a tall body scraping the ground.
+  const clearance = limbR * 0.9 + shoulderY * 0.12;
   let splay = 0.32 + stance * 0.4 + Math.abs(wonk) * 0.3;
   for (let i = 0; i < 14; i++) {
     shoulder.rotation.z = side * splay;
@@ -199,18 +231,49 @@ export function buildArm(p, mats, rng, opts) {
   // splay above exists to hold a long arm up, so an action that tucks the arm
   // in — a scratch, a hug — would spend exactly that clearance and drive the
   // hand through the ground. Measure what is actually spare.
+  //
+  // Against the same margin the splay was fitted to, not against the floor
+  // itself: the animator adds a lift on top of the swing, and a budget that
+  // puts the hand exactly on the ground at full tuck has nothing left for it.
+  const midline = limbR * 0.35;
   let tuck = 0;
   for (let d = 0.08; d <= splay - 0.05; d += 0.08) {
     shoulder.rotation.z = side * (splay - d);
-    if (lowestPoint(shoulder) < 0) break;
+    if (lowestPoint(shoulder) < clearance * 0.5) break;
+    if (innerReach(shoulder, side) < midline) break;
     tuck = d;
   }
+
+  // And how far it may swing forward or back. Lift turns the arm about its own
+  // X axis, which the splay has already tilted outward — so the further it
+  // swings the less of that splay is left holding the hand out from the body,
+  // and at a quarter turn none of it is. A fixed cap works for a freak with
+  // room to spare and lets a narrow one wave its two hands through each other.
+  // Measured from the tucked pose, which is the least room the gesture will
+  // ever have.
+  const baseX = shoulder.rotation.x;
+  shoulder.rotation.z = side * (splay - tuck);
+  // A little is always allowed: an arm pinned at its rest angle reads as a
+  // mannequin, and a fifth of a radian is inside the slack the fitting above
+  // already left around it.
+  let lift = 0.2;
+  for (let a = 0.4; a <= 1.4001; a += 0.2) {
+    let ok = true;
+    for (const s of [1, -1]) {
+      shoulder.rotation.x = baseX + s * a;
+      if (innerReach(shoulder, side) < midline || lowestPoint(shoulder) < 0) { ok = false; break; }
+    }
+    if (!ok) break;
+    lift = a;
+  }
+  shoulder.rotation.x = baseX;
   shoulder.rotation.z = side * splay;
 
   // the animator lifts and swings this arm; it needs to know how much splay it
   // may spend before the limb would cross the midline
   shoulder.userData.splay = splay;
   shoulder.userData.tuck = tuck;
+  shoulder.userData.lift = lift;
   shoulder.userData.side = side;
   return shoulder;
 }

@@ -12,6 +12,90 @@ export const HEAD_DETAIL = 4; // 5120 triangles — enough for the silhouette an
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
+const bell = (dy, c, w) => {
+  const q = (dy - c) / w;
+  return Math.exp(-(q * q));
+};
+
+/**
+ * How wide the skull is at height dy, before normalisation: the taper, the jaw
+ * and the three bands, all of which multiply. The jaw's own dependence on dz is
+ * taken at its strongest so the peak below is an upper bound whichever way the
+ * head is facing.
+ */
+const flareAt = (p, dy) => Math.max(0.2, clamp(1 + p.taper * dy, 0.18, 2)
+  * (dy < 0 ? 1 + p.jaw * (-dy) : 1)
+  * Math.max(0.2, 1
+    + p.browWide * bell(dy, 0.62, 0.42)
+    + p.midWide * bell(dy, 0.05, 0.38)
+    + p.chinWide * bell(dy, -0.6, 0.42)));
+
+// How thin the skull is allowed to get, as a fraction of its own widest point.
+// Below this it stops being a head with a shape and becomes a blade with a jaw
+// on the end: the crown of the worst rolls came out a tenth of the width of the
+// chin, which is a wedge, not a face.
+const FLARE_FLOOR = 0.46;
+
+/**
+ * The profile solved once per head: how far to pull it back towards its widest
+ * point, and how much the whole thing then has to be divided by so the skull
+ * really is `headWidth` across. One entry of memo is enough — every vertex of
+ * one head shares its parameters, and heads are built one at a time.
+ */
+let flareKey = null;
+let flareMemo = { k: 1, rawMax: 1, peak: 1 };
+function flareOf(p) {
+  const key = `${p.taper},${p.jaw},${p.browWide},${p.midWide},${p.chinWide}`;
+  if (key === flareKey) return flareMemo;
+
+  const N = 48;
+  const raw = new Array(N + 1);
+  let rawMax = 1e-6;
+  for (let i = 0; i <= N; i++) {
+    raw[i] = flareAt(p, -1 + (i / N) * 2);
+    rawMax = Math.max(rawMax, raw[i]);
+  }
+
+  // The narrowest latitude of the skull proper. The poles are left out: a
+  // sphere comes to a point there whatever the profile is doing, so counting
+  // them would say every head is a wedge.
+  let lo = 1;
+  for (let i = 0; i <= N; i++) {
+    if (Math.abs(-1 + (i / N) * 2) > 0.85) continue;
+    lo = Math.min(lo, raw[i] / rawMax);
+  }
+
+  // An exponent below one pulls the whole profile towards its widest point
+  // without changing the ORDER of the widths — a broad brow over narrow
+  // temples over a wide jaw is still exactly that, just no longer extreme
+  // enough to read as damage. Clamping the widths one by one would flatten the
+  // narrow parts into a straight edge instead, which is a worse silhouette
+  // than the one being fixed.
+  const k = lo < FLARE_FLOOR ? Math.log(FLARE_FLOOR) / Math.log(Math.max(lo, 1e-4)) : 1;
+
+  let peak = 1e-6;
+  for (let i = 0; i <= N; i++) {
+    const dy = -1 + (i / N) * 2;
+    peak = Math.max(peak, (k === 1 ? raw[i] / rawMax : Math.pow(raw[i] / rawMax, k))
+      * Math.sqrt(Math.max(0, 1 - dy * dy)));
+  }
+
+  flareKey = key;
+  flareMemo = { k, rawMax, peak: Math.max(0.35, peak) };
+  return flareMemo;
+}
+
+/**
+ * The horizontal multiplier at height dy, compressed and normalised. It is 1 at
+ * the skull's widest latitude and never lets `flare * sqrt(1 - dy²)` exceed 1,
+ * so the head really is `headWidth` across and no wider.
+ */
+function flareNorm(p, dy) {
+  const f = flareOf(p);
+  const g = flareAt(p, dy) / f.rawMax;
+  return (f.k === 1 ? g : Math.pow(g, f.k)) / f.peak;
+}
+
 /**
  * The point of skin along direction d (a unit vector), written into out.
  */
@@ -25,27 +109,24 @@ export function headPoint(p, d, out = new THREE.Vector3()) {
   let y = dy * (1 - k) + (dy / m) * k;
   let z = dz * (1 - k) + (dz / m) * k;
 
-  // 2. taper along Y and a swollen jaw at the bottom
-  const taper = clamp(1 + p.taper * dy, 0.18, 2);
-  x *= taper; z *= taper;
-  if (dy < 0) {
-    const jaw = 1 + p.jaw * (-dy) * (0.6 + 0.4 * Math.abs(dz));
-    x *= jaw; z *= jaw * 0.9;
-  }
-
-  // 2b. the width profile: three bands up the skull, each widening or pinching
-  // it on its own. A head that is only ever one shape reads as a solid; a broad
-  // brow over narrow temples over a wide jaw reads as a face.
-  const band = (c, w) => {
-    const q = (dy - c) / w;
-    return Math.exp(-(q * q));
-  };
-  const widen = 1
-    + p.browWide * band(0.62, 0.42)
-    + p.midWide * band(0.05, 0.38)
-    + p.chinWide * band(-0.6, 0.42);
-  x *= widen;
-  z *= 0.25 + widen * 0.75;   // depth follows, but less: this is a silhouette
+  // 2. Everything that sets how wide the skull is at a given height: the taper,
+  // the swollen jaw, and three bands that widen or pinch it at brow, temple and
+  // jaw. A head that is only ever one shape reads as a solid; a broad brow over
+  // narrow temples over a wide jaw reads as a face.
+  //
+  // They are divided by their own peak, so together they REDISTRIBUTE width
+  // rather than add it. Left to accumulate they multiply: a full taper times a
+  // full jaw times three bands takes the bottom of the skull past three times
+  // the top, while headHeight stays where the slider put it, and the head
+  // renders as a plate. Which is what headWidth is for.
+  //
+  // And redistributing is not enough on its own — a profile can be normalised
+  // and still run from a tenth of its widest point to all of it. It is pulled
+  // back towards its own widest point too, so the skull keeps a shape instead
+  // of narrowing to an edge.
+  const flare = flareNorm(p, dy);
+  x *= flare;
+  z *= (0.25 + flare * 0.75) * (dy < 0 ? 0.9 : 1);
 
   // 3. lumps and fine speckle — a radial displacement
   const s = p.lumpScale;

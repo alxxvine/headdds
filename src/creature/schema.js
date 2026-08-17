@@ -362,6 +362,13 @@ export function randomize(seed) {
     }
   }
 
+  // A skull much taller or wider than it is deep is a blade seen edge-on. The
+  // three dimensions are independent sliders, so nothing stopped a roll landing
+  // at the top of two and the bottom of the third; depth is brought back up to
+  // meet the others. Only RANDOM is nudged — set the sliders by hand and you
+  // get exactly what you set, blade included.
+  out.headDepth = Math.max(out.headDepth, Math.max(out.headWidth, out.headHeight) / 2.1);
+
   // An eye only reads as an eye if it stands apart from what surrounds it. The
   // sclera is picked before the skin is (parameters are rolled in panel order),
   // so the two are reconciled here: a pale eyeball on a pale face is a bump
