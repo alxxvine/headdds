@@ -28,7 +28,7 @@ export function addEars(parent, p, mats, S) {
     if (kind === 'holes') {
       // no ear at all, just a hole and a rim around it
       const rimGeo = new THREE.TorusGeometry(size * 0.5, size * 0.16, 5, 12);
-      withOutline(pivot, new THREE.Mesh(rimGeo, mats.skin), rimGeo, p.outline * 0.4 * S, mats.outline);
+      withOutline(pivot, new THREE.Mesh(rimGeo, mats.trim), rimGeo, p.outline * 0.4 * S, mats.outline);
       const pit = new THREE.Mesh(new THREE.SphereGeometry(size * 0.42, 8, 6), mats.cavity);
       pit.position.z = -size * 0.16;
       pivot.add(pit);
@@ -37,35 +37,42 @@ export function addEars(parent, p, mats, S) {
     }
 
     // orientTo gives this pivot a useful basis: +Z points out of the skull,
-    // +Y is up, +X runs fore and aft. So an ear is a cone turned about X alone
-    // — which keeps its own X axis on the head's fore-aft line, and that is the
-    // axis to flatten along. Rolling it about Z as well, the obvious-looking
-    // thing, turns the flat face sideways and the ear becomes a spike.
+    // +Y is up, +X runs fore and aft. So an ear leans about X alone, which
+    // keeps its own X axis on the head's fore-aft line — the axis to flatten
+    // along. Rolling it about Z as well turns the flat face sideways and the
+    // ear becomes a spike.
+    //
+    // These used to be cones, and a cone has a flat base. Whichever way it was
+    // turned that base showed as a hard disc hanging off the head — an ear with
+    // a lid on it. An ellipsoid has no flat face to show, so the shapes here
+    // are all spheres under a scale.
     let geo;
     let mesh;
     if (kind === 'flaps') {
-      // broad and hanging: down and a little out
-      geo = new THREE.ConeGeometry(size * 1.05, size * 2.8, 5);
-      mesh = new THREE.Mesh(geo, mats.skin);
+      // broad and hanging: down and a little out, tapering to a point
+      geo = new THREE.SphereGeometry(1, 9, 7);
+      mesh = new THREE.Mesh(geo, mats.trim);
+      mesh.scale.set(size * 0.3, size * 1.5, size * 0.85);
       mesh.rotation.x = 2.6;                    // +Y swings to (0, -0.86, 0.51)
       mesh.position.set(0, -size * 1.2, size * 0.72);
-      mesh.scale.x = 0.3;
     } else if (kind === 'fins') {
       // stiff and standing, up and a little out
-      geo = new THREE.ConeGeometry(size * 1.1, size * 2.4, 4);
-      mesh = new THREE.Mesh(geo, mats.growth);
+      geo = new THREE.SphereGeometry(1, 9, 7);
+      mesh = new THREE.Mesh(geo, mats.trim);
+      mesh.scale.set(size * 0.24, size * 1.25, size * 0.8);
       mesh.rotation.x = 0.46;                   // +Y swings to (0, 0.9, 0.44)
       mesh.position.set(0, size * 1.08, size * 0.53);
-      mesh.scale.x = 0.24;
     } else {
-      // trumpets: an open cone aimed straight out, dark inside
-      geo = new THREE.ConeGeometry(size * 1.05, size * 1.7, 9, 1, true);
-      mesh = new THREE.Mesh(geo, mats.skin);
+      // Trumpets: an open cone aimed straight out, dark inside. Open-ended, so
+      // there is no lid — and its point is pushed back into the skull, so the
+      // one hard edge it does have is the rim you are meant to see.
+      geo = new THREE.ConeGeometry(size * 1.05, size * 1.9, 9, 1, true);
+      mesh = new THREE.Mesh(geo, mats.trim);
       mesh.rotation.x = Math.PI / 2;            // +Y swings to +Z, straight out
-      mesh.position.set(0, 0, size * 0.85);
-      const inner = new THREE.Mesh(new THREE.ConeGeometry(size * 0.85, size * 1.4, 9), mats.cavity);
+      mesh.position.set(0, 0, size * 0.62);
+      const inner = new THREE.Mesh(new THREE.ConeGeometry(size * 0.9, size * 1.6, 9), mats.cavity);
       inner.rotation.x = Math.PI / 2;
-      inner.position.set(0, 0, size * 0.72);
+      inner.position.set(0, 0, size * 0.5);
       pivot.add(inner);
     }
 

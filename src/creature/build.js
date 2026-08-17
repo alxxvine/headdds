@@ -28,7 +28,7 @@ export function buildCreature(rawParams) {
   const head = new THREE.Group();
   withOutline(head, headMesh, headGeo, p.outline * S, mats.outline);
   const growths = addGrowths(head, headMesh, p, mats, rng);
-  addNose(head, headMesh, p, mats);
+  addNose(head, headMesh, p, mats, rng);
   const eyes = addEyes(head, headMesh, p, mats, rng);
   const { jaw } = addMouth(head, headMesh, p, mats, rng);
   addScars(head, headMesh, p, mats, rng);

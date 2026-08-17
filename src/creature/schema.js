@@ -183,7 +183,9 @@ export const PARAMS = [
       ['holes', 2], ['trunk', 2], ['tusks', 2], ['pig', 2],
     ]),
   }),
-  range('noseSize', 'nose', 'nose size', 0.04, 0.35, 0.13),
+  range('noseSize', 'nose', 'nose size', 0.04, 0.35, 0.13, {
+    random: (rng) => 0.05 + rng() * rng() * 0.3,   // small most of the time, occasionally a snout
+  }),
   range('noseY', 'nose', 'nose height', -0.4, 0.45, -0.05),
   select('earType', 'nose', 'ears', [
     { value: 'none', label: 'none' },
@@ -284,6 +286,10 @@ export const PARAMS = [
   range('sheen', 'style', 'wet sheen', 0, 1, 0, { random: (rng) => (rng() < 0.5 ? 0 : rng()) }),
   range('glow', 'style', 'glow', 0, 1, 0, { random: (rng) => (rng() < 0.55 ? 0 : rng() * 0.9) }),
   range('bodyTint', 'style', 'body shade', 0, 0.7, 0.25),
+  // Hands, feet and ears in a deeper shade of the same skin. Not a second
+  // colour — a second tone — which is what stops a freak reading as one flat
+  // silhouette without turning it into a paint job.
+  range('trim', 'style', 'tip shade', 0, 0.75, 0.35, { random: (rng) => rng() * 0.7 }),
   range('outline', 'style', 'outline', 0, 0.12, 0.05, { random: (rng) => 0.03 + rng() * 0.05 }),
   int('pixelSize', 'style', 'pixel size', 1, 8, 4, { random: () => 4 }),
   int('toonSteps', 'style', 'tone steps', 2, 5, 3, { random: () => 3 }),
