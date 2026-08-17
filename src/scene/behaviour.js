@@ -90,8 +90,8 @@ export const ACTIONS = [
     dur: [0.9, 1.6],
     apply: (pose, k, c) => {
       const tw = beats(k, 5);
-      pose.arms[c.side].lift += tw * 0.5;
-      pose.arms[1 - c.side].lift += tw * -0.25;
+      pose.arms[c.side].lift += tw * 0.38;
+      pose.arms[1 - c.side].lift += tw * -0.2;
       pose.legs[c.side].swing += tw * 0.12;
       pose.body.twist += tw * 0.1;
       pose.head.roll += tw * 0.06;
@@ -264,10 +264,11 @@ export function createBehaviour() {
   let side = 0;
   let nextIn = 1.5;
 
-  function choose(P) {
+  function choose(P, bias) {
     let total = 0;
     const w = ACTIONS.map((a) => {
-      const x = Math.max(0.01, a.weight(P));
+      // the mood does not pick the gesture, it only tilts the odds
+      const x = Math.max(0.01, a.weight(P) * (bias?.[a.id] ?? 1));
       total += x;
       return x;
     });
@@ -300,14 +301,15 @@ export function createBehaviour() {
 
     get current() { return action?.id ?? null; },
 
-    update(pose, dt, P) {
+    update(pose, dt, P, mood) {
+      const pace = mood?.pace ?? 1;
       if (action) {
         elapsed += dt;
         const k = elapsed / duration;
         if (k >= 1) {
           action = null;
           // busy creatures barely pause between gestures, lazy ones dawdle
-          nextIn = (1.2 + Math.random() * 5) / Math.max(0.25, P.jitter);
+          nextIn = (1.2 + Math.random() * 5) / (Math.max(0.25, P.jitter) * pace);
         } else {
           action.apply(pose, k, { side, P });
         }
@@ -315,7 +317,7 @@ export function createBehaviour() {
       }
       nextIn -= dt;
       if (nextIn <= 0) {
-        const a = choose(P);
+        const a = choose(P, mood?.bias);
         action = a;
         elapsed = 0;
         duration = a.dur[0] + Math.random() * (a.dur[1] - a.dur[0]);

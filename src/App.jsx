@@ -12,6 +12,7 @@ export default function App() {
   const [params, setParams] = useState(() => readUrlParams() || { ...DEFAULTS });
   const [note, setNote] = useState('');
   const [idle, setIdle] = useState(WANTS_MOTION);
+  const [mood, setMood] = useState(null);
   const noteTimer = useRef(0);
 
   // The scene gets a deferred value: the slider stays responsive even when
@@ -68,12 +69,13 @@ export default function App() {
   return (
     <div className="app">
       <div className="viewport">
-        <Stage params={scene} idle={idle} />
+        <Stage params={scene} idle={idle} onMood={setMood} />
       </div>
       <Panel
         params={params}
         note={note}
         idle={idle}
+        mood={mood}
         onChange={setParam}
         onRandom={onRandom}
         onSeed={onSeed}

@@ -56,9 +56,30 @@ canvas.stage {
 }
 
 .panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 12px 12px 8px;
   border-bottom: 1px solid var(--line);
 }
+
+.panel-head .names { flex: 1; min-width: 0; }
+
+/* how the creature currently feels about you — colour carries most of it */
+.mood {
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  cursor: help;
+  color: #7f92a8;
+}
+
+.mood[data-mood='ALERT'] { color: #7ecbc4; }
+.mood[data-mood='WIRED'] { color: #f5e050; }
+.mood[data-mood='HOSTILE'] { color: #e8642c; }
+.mood[data-mood='SPENT'] { color: #8d7fa8; }
 
 .title {
   font-size: 15px;

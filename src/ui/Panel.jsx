@@ -38,15 +38,21 @@ function Stats({ params }) {
   );
 }
 
+const MOOD_HINT = 'how it feels about you right now: it warms up when you hover '
+  + 'and spin the camera, gets angry if you keep poking it, and tires out';
+
 export default function Panel({
-  params, note, idle,
+  params, note, idle, mood,
   onChange, onRandom, onSeed, onReset, onCopyJson, onCopyLink, onToggleIdle,
 }) {
   return (
     <aside className="panel">
       <header className="panel-head">
-        <div className="title">HEADDDS</div>
-        <div className="sub">freak builder</div>
+        <div className="names">
+          <div className="title">HEADDDS</div>
+          <div className="sub">freak builder</div>
+        </div>
+        {mood && <div className="mood" data-mood={mood} title={MOOD_HINT}>{mood}</div>}
       </header>
 
       <div className="actions">

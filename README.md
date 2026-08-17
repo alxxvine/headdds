@@ -45,10 +45,19 @@ Most of a freak is a menu of kinds, each with its own scatter on top:
 | hands | none, ball, claws, pincer, club |
 | hair | none, tendrils, bristles, antennae, dreads, a bony crest |
 | eyes | ball, hollow, bead, on stalks; pupils round / slit / goat / cross / ring / blind; eyelids; per-eye size jitter |
+| skin | markings — spots, stripes, blotches, veins, crust, a pale belly — with their own hue, coverage and scale, plus a wet sheen and an emissive glow |
+| damage | lopsidedness pulls the face out of true; wear knocks out teeth, snaps horns to stumps and stitches scars across the skull |
 
 Defaults are the tame end of every menu, so a link shared before a kind existed
 still opens the creature it was saved as. The variety comes from the weights in
 the randomizer, not from the defaults.
+
+Markings are painted as vertex colours **after** the creature is assembled, in
+one shared space, so a pattern runs across the skull, the torso and the limbs as
+a single coat instead of restarting on every part (`src/creature/skin.js`). The
+marking hue is rolled against the skin it lands on: the toon shading has no
+gradients, and a tone close to the skin would read as a shadow rather than as a
+marking.
 
 ## Stats
 
@@ -96,9 +105,11 @@ src/creature/features.js eyes, toothed maw, nose, warts, horns, spores
 src/creature/hair.js     tendrils, bristles, antennae, dreads, a bony crest
 src/creature/arms.js     arm and hand kinds, pose, and keeping limbs off the floor
 src/creature/body.js     the body derived from the head share: bodyH = headH * (1-r)/r
+src/creature/skin.js     markings painted as vertex colours across the whole body
 src/creature/build.js    buildCreature(params) -> { group, rig, stats, dispose, ... }
 src/scene/animator.js    idle motion: springs, blinking, saccades, secondary sway
 src/scene/behaviour.js   what it does between idles: twelve gestures, personality
+src/scene/mood.js        how it feels about you: four drives, five moods
 src/scene/Stage.jsx      canvas, lights, pixelated render, camera orbit
 src/ui/                  the panel, generated straight from the schema
 src/lib/noise.js         seeded RNG plus value/fbm noise
@@ -168,6 +179,30 @@ half comes from the stats, so behaviour matches the body you are looking at. A
 quick creature fidgets, hops and looks around; a heavy one slumps and chews; a
 frightening one roars and stretches; a blind one sniffs. A poke startles it into
 a roar, a shake or a shiver depending on how bold it is.
+
+## Mood
+
+The creature also has an opinion about you. `src/scene/mood.js` keeps four
+drives that move in real seconds — attention, arousal, anger and fatigue — and
+reads a mood off them:
+
+| | |
+|---|---|
+| CALM | left alone |
+| ALERT | your cursor is on it, or something moved past |
+| WIRED | poked or spun about, and still buzzing |
+| HOSTILE | poked again and again — pokes in quick succession stack |
+| SPENT | worn out after a minute or so of being wound up |
+
+The mood is shown in the panel header. It does three things: it holds a posture
+(hunched and bare-toothed when angry, drawn up and wide-eyed when alert, sagging
+when spent), it tilts which gesture comes next — an angry freak roars and
+chomps, an exhausted one slumps — and it changes the tempo of everything.
+
+Posture is written from the drives, not from the mood name, so it slides in and
+out instead of snapping; the name only picks the gesture weights and the label.
+And it goes into the same pose struct the gestures write, so the animator still
+applies every transform in one place.
 
 ## What comes next (gameplay)
 
