@@ -20,7 +20,12 @@ export const SKIN_COLORS = [
 ];
 
 export const EYE_COLORS = ['#fdf6e3', '#f5e050', '#e94f37', '#9ef0a0', '#ffffff', '#d8c7ef', '#1a1420'];
-export const PUPIL_COLORS = ['#0d0a12', '#2b0f1a', '#3a0d0d', '#0a2a1a', '#5a1020'];
+// Mostly dark, but not only: against a black sclera a black pupil is no pupil,
+// and the randomizer picks whichever end contrasts.
+export const PUPIL_COLORS = [
+  '#0d0a12', '#2b0f1a', '#3a0d0d', '#0a2a1a', '#5a1020',
+  '#f6f0dc', '#f5e050', '#e94f37',
+];
 export const LIP_COLORS = ['#7a2036', '#3a1020', '#c04a5f', '#1a0d14', '#8f3f1f', '#2d5a3a'];
 export const BG_COLORS = ['#07060b', '#0b0a10', '#120b16', '#0a1014', '#161016'];
 // second skin tone: markings, not a whole new creature, so these sit close to
@@ -329,6 +334,19 @@ export function randomize(seed) {
       out[p.key] = pick(rng, p.palette);
     }
   }
+
+  // An eye only reads as an eye if it stands apart from what surrounds it. The
+  // sclera is picked before the skin is (parameters are rolled in panel order),
+  // so the two are reconciled here: a pale eyeball on a pale face is a bump
+  // with a dot on it, not a face looking at you. Same again for the pupil,
+  // which otherwise vanishes into a dark sclera.
+  const apart = (a, b, gap, palette) => {
+    if (Math.abs(luma(a) - luma(b)) >= gap) return a;
+    const far = palette.filter((c) => Math.abs(luma(c) - luma(b)) > gap * 1.3);
+    return far.length ? far[Math.floor(rng() * far.length) % far.length] : a;
+  };
+  out.eyeColor = apart(out.eyeColor, out.skinColor, 0.22, EYE_COLORS);
+  out.pupilColor = apart(out.pupilColor, out.eyeColor, 0.2, PUPIL_COLORS);
 
   // A couple of nudges that keep a random freak a readable character instead
   // of a cloud of geometry: teeth have to fit the maw, the pupil the eye.

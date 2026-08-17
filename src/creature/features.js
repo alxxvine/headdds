@@ -187,6 +187,10 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       continue;
     } else if (p.eyeStyle === 'compound') {
       // an insect's eye: a dark dome studded with facets, no pupil at all
+      const rim = decalGeometry(headMesh, p, {
+        cx: x, cy: y, rx: size * 1.5, ry: size * 1.5, offset: 0.02, rings: 3, segs: 14,
+      });
+      parent.add(new THREE.Mesh(rim, mats.socket));
       orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * (p.eyeBulge - 0.5)), hit.normal);
       const domeGeo = new THREE.SphereGeometry(size, 10, 8);
       withOutline(pivot, new THREE.Mesh(domeGeo, mats.pupil), domeGeo, p.outline * 0.7 * S, mats.outline);
@@ -236,6 +240,21 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       pivot.add(bar);
       addPupil(pivot, p, mats, size * 0.45);
     } else {
+      // A ring of darker skin around the eyeball. Without it a pale eye on a
+      // pale face is a lump with a dot on it: the black outline is one pixel
+      // wide at this resolution and cannot separate the two on its own. The
+      // more the eye bulges, the wider the shadow it would cast.
+      // A decal is a fan of concentric rings, each raycast onto the skull and
+      // pushed out along its normal. Two rings is fine for a small patch and
+      // useless for a wide one: the flat triangles between them cut inside the
+      // curve of the skull and the middle of the ring is buried. Hence five
+      // rings and a bigger lift.
+      const r = size * (1.45 + p.eyeBulge * 0.2);
+      const socket = decalGeometry(headMesh, p, {
+        cx: x, cy: y, rx: r, ry: r, offset: 0.02, rings: 3, segs: 14,
+      });
+      parent.add(new THREE.Mesh(socket, mats.socket));
+
       // ball: sunk into the socket by (1 - bulge)
       orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * (p.eyeBulge - 0.62)), hit.normal);
 
