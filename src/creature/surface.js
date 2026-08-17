@@ -61,9 +61,19 @@ export function orientTo(obj, point, normal) {
  * A decal patch: an elliptical disc (or ring) that hugs the skull.
  * Used for the maw cavity, the lips and hollow eye sockets.
  */
+/**
+ * A patch glued to the skin, built as a fan of concentric rings.
+ *
+ * `rim(a)` gives the shape's outline in unit coordinates — the default is a
+ * circle, which under rx/ry is the ellipse this always used to draw. A mouth
+ * hands in its own rim so the lips, the cavity and the rows of teeth all follow
+ * the same curve; see maw.js.
+ */
+const CIRCLE_RIM = (a) => [Math.cos(a), Math.sin(a)];
+
 export function decalGeometry(headMesh, p, {
   cx = 0, cy = 0, rx = 0.3, ry = 0.2,
-  inner = 0, offset = 0.012, rings = 5, segs = 28,
+  inner = 0, offset = 0.012, rings = 5, segs = 28, rim = CIRCLE_RIM,
 }) {
   const count = (rings + 1) * segs;
   const positions = new Float32Array(count * 3);
@@ -74,7 +84,8 @@ export function decalGeometry(headMesh, p, {
     const t = inner + (1 - inner) * (r / rings);
     for (let s = 0; s < segs; s++) {
       const a = (s / segs) * Math.PI * 2;
-      const hit = surfaceAt(headMesh, p, cx + Math.cos(a) * rx * t, cy + Math.sin(a) * ry * t);
+      const [ux, uy] = rim(a);
+      const hit = surfaceAt(headMesh, p, cx + ux * rx * t, cy + uy * ry * t);
       const i = (r * segs + s) * 3;
       positions[i] = hit.point.x + hit.normal.x * offset;
       positions[i + 1] = hit.point.y + hit.normal.y * offset;

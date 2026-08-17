@@ -6,6 +6,7 @@ import { warpGeometry, warpRoll } from './warp.js';
 import { addHair } from './hair.js';
 import { addEars } from './ears.js';
 import { addAura } from './aura.js';
+import { mawProfile, mawRim, mawExtent } from './maw.js';
 
 // Feature sizes are expressed in "head units" so that an eye stays an eye
 // both on a squashed pancake and on a long cucumber.
@@ -24,7 +25,11 @@ export const headUnit = (p) => (p.headWidth + p.headHeight) * 0.5;
 export function faceLimits(p) {
   const S = headUnit(p);
   // the top rim of the maw, opening included
-  const mouthTop = p.mouthY * p.headHeight * 0.8 + p.mouthOpen * p.headHeight * 0.72;
+  // The top of the maw is where its own profile reaches, not where an ellipse
+  // would: a grin throws its corners half a mouth-height higher than the oval
+  // it replaced, and everything above has to know.
+  const mouthTop = p.mouthY * p.headHeight * 0.8
+    + p.mouthOpen * p.headHeight * 0.72 * Math.max(1, mawExtent(mawProfile(p.mawShape)).hi);
   const noseSize = p.noseSize * S;
   // How tall the nose really is, rather than how tall a ball of `noseSize`
   // would be. `addNose` scales its mesh by a roll of up to 1.6 on top of the
@@ -453,7 +458,7 @@ export function addEyes(parent, headMesh, p, mats, rng) {
 
 // ------------------------------------------------------------------ MAW ----
 
-function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, count }) {
+function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, count, profile }) {
   if (count <= 0) return;
   const S = headUnit(p);
 
@@ -462,9 +467,12 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     if (rng() < p.wear * 0.35) continue;
     const t = ((i + 0.5) / count) * 2 - 1;
     const u = mx + t * mw * 0.94;
-    // the maw's ellipse edge at this point — that is where the tooth grows
-    const edge = mh * Math.sqrt(Math.max(0.1, 1 - Math.min(1, ((u - mx) / (mw * 0.99)) ** 2)));
-    const hit = surfaceAt(headMesh, p, u, my + side * edge * 0.94);
+    // The rim of the maw at this point — whatever shape the maw is, that is
+    // where the tooth grows. It used to be the ellipse's own edge, which meant
+    // that the moment the mouth stopped being an ellipse the teeth stayed
+    // behind on one.
+    const edge = mh * (side > 0 ? profile.up(t * 0.94) : -profile.down(t * 0.94));
+    const hit = surfaceAt(headMesh, p, u, my + side * Math.max(edge, mh * 0.12) * 0.94);
 
     // A tooth never fills its own slot. At the bottom of the gap slider the
     // blocks met edge to edge and the whole row rendered as one white bar with
@@ -502,23 +510,31 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     let geo;
     let flat = 0.7;
     let curl = 0;
+    // A cylinder's radiusTop is at its +Y end, and +Y is up in the frame the
+    // tooth is planted in — so a tooth written wide-at-the-top is wide at the
+    // top of BOTH rows, which on the bottom row means the fat end pointing into
+    // the mouth and the point buried in the jaw. Only the fangs ever flipped;
+    // needles and tusks grew upside down along the whole bottom row.
+    const wideEnd = side > 0 ? 0 : 1;   // top row tapers downward, bottom up
+    const taperTo = (fat, thin) => (wideEnd
+      ? new THREE.CylinderGeometry(thin, fat, len, 5)
+      : new THREE.CylinderGeometry(fat, thin, len, 5));
+
     if (p.toothType === 'needles') {
       // A sixth of the slot wide is a single pixel at the resolution this
       // renders at, and a row of them read as a barcode rather than as teeth.
       // A third is still a needle and is still there when the dust settles.
-      geo = new THREE.CylinderGeometry(w * 0.32, w * 0.12, len, 4);
+      geo = taperTo(w * 0.32, w * 0.12);
       flat = 1;
     } else if (p.toothType === 'blocks') {
       geo = new THREE.BoxGeometry(w * 0.8, len, w * 0.8);
       flat = 1;
     } else if (p.toothType === 'tusks') {
-      geo = new THREE.CylinderGeometry(w * 0.42, w * 0.1, len, 5);
+      geo = taperTo(w * 0.42, w * 0.1);
       flat = 0.9;
       curl = -side * 0.5; // tusks sweep back out of the mouth
     } else {
-      geo = side > 0
-        ? new THREE.CylinderGeometry(w * 0.5, tip, len, 5)
-        : new THREE.CylinderGeometry(tip, w * 0.5, len, 5);
+      geo = taperTo(w * 0.5, tip);
     }
 
     const frame = new THREE.Group();
@@ -549,17 +565,23 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   const my = p.mouthY * p.headHeight * 0.8 + skew * p.headHeight * 0.06;
   const mx = skew * p.headWidth * 0.1;
 
+  // The shape the mouth is cut in — see maw.js. Every part of the mouth reads
+  // the same two curves, so the lips, the hole and both rows of teeth agree
+  // about where the rim is even when it is a zigzag.
+  const profile = mawProfile(p.mawShape);
+  const rim = mawRim(profile);
+
   if (p.lips > 0.01) {
     const grow = 1 + p.lips;
     const lips = decalGeometry(headMesh, p, {
       cx: mx, cy: my, rx: mw * grow, ry: mh * grow * 1.25,
-      inner: 1 / grow, offset: 0.006, rings: 2, segs: 26,
+      inner: 1 / grow, offset: 0.006, rings: 2, segs: 34, rim,
     });
     parent.add(new THREE.Mesh(lips, mats.lip));
   }
 
   const cavity = decalGeometry(headMesh, p, {
-    cx: mx, cy: my, rx: mw, ry: mh, offset: 0.014, rings: 3, segs: 26,
+    cx: mx, cy: my, rx: mw, ry: mh, offset: 0.014, rings: 3, segs: 34, rim,
   });
   parent.add(new THREE.Mesh(cavity, mats.cavity));
 
@@ -570,13 +592,14 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   jaw.position.set(mx, my - mh * 0.2, -p.headDepth * 0.35);
   parent.add(jaw);
 
-  addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx, side: 1, count: p.teethTop });
-  addTeeth(jaw, headMesh, p, mats, rng, { mw, mh, my, mx, side: -1, count: p.teethBottom });
+  addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx, side: 1, count: p.teethTop, profile });
+  addTeeth(jaw, headMesh, p, mats, rng, { mw, mh, my, mx, side: -1, count: p.teethBottom, profile });
 
   // The maw's own ellipse, reported so it can be checked afterwards. Where the
   // mouth ended up depends on a roll of `lopsided`, so nothing outside this
   // function can work it out again.
-  return { jaw, maw: { mx, my, mw, mh } };
+  const reach = mawExtent(profile);
+  return { jaw, maw: { mx, my, mw, mh, hi: reach.hi, lo: reach.lo } };
 }
 
 // ----------------------------------------------------------------- NOSE ----
