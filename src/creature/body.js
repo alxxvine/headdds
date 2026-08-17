@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { withOutline } from './materials.js';
 import { buildArm } from './arms.js';
-import { makeTorsoGeometry, bodyProfile } from './torso.js';
+import { makeTorsoGeometry, bodyProfile, profilePeak } from './torso.js';
 
 /**
  * The body is whatever height is left after the head: bodyH = headH * (1-r)/r.
@@ -25,7 +25,7 @@ export function buildBody(p, mats, headBox, rng) {
   // space several body-widths out.
   const wantW = Math.max(0.04, p.bodyWidth * headW * 0.26);
   // a slender body carries slender limbs
-  const limbR = Math.min(Math.max(0.012, p.limbThick * headW * 0.045), wantW * 0.42);
+  const limbR0 = Math.min(Math.max(0.012, p.limbThick * headW * 0.045), wantW * 0.42);
   const ink = p.outline * headW * 0.5;
 
   // The skull gets a silhouette of its own; the torso used to be whichever
@@ -41,9 +41,9 @@ export function buildBody(p, mats, headBox, rng) {
 
   // How wide the leg is at its widest, which is usually the foot rather than
   // the shin: a splayed foot is nearly twice the leg above it.
-  const legRPre = Math.min(limbR * (p.legType === 'thick' ? 2.1 : p.legType === 'stump' ? 2.6 : 1), wantW * 0.55);
+  const legRPre = Math.min(limbR0 * (p.legType === 'thick' ? 2.1 : p.legType === 'stump' ? 2.6 : 1), wantW * 0.55);
   const footRPre = legRPre * (p.footType === 'hoof' ? 1.05 : 1.25);
-  const legHalf = Math.max(legRPre, p.footType === 'none' ? 0
+  const legHalf0 = Math.max(legRPre, p.footType === 'none' ? 0
     : p.footType === 'splay' ? footRPre * 1.8
     : p.footType === 'hoof' ? footRPre * 1.15
     : footRPre * 1.1);
@@ -72,22 +72,55 @@ export function buildBody(p, mats, headBox, rng) {
   // is what the joint has to be inside of — the analytic profile is where the
   // skin would be without them.
   const dented = 1 - Math.min(0.55, p.bodyLumps * 1.2);
+  // The mesh is normalised to a half-width of one, so these fractions are of
+  // the widest point rather than of the raw profile.
+  const peak = profilePeak(p);
   const widthAt = (y) => {
     const t = heightIn(y);
-    return wide * bodyProfile(p, t) * Math.sqrt(Math.max(0.05, 1 - t * t)) * dented;
+    return wide * (bodyProfile(p, t) * Math.sqrt(Math.max(0.05, 1 - t * t)) / peak) * dented;
   };
   const shoulderNarrow = widthAt(shoulderY);
   const hipNarrow = widthAt(legH);
-  const hipFloor = legHalf * 1.45;
-  const shoulderFloor = hipFloor + legHalf + limbR * 1.4;
-  const torsoW = Math.max(
-    wantW,
-    hipFloor / (hipNarrow * 0.95),
-    shoulderFloor / (shoulderNarrow * 0.95),
+  // How much room the limbs need for the two of them to sit side by side
+  // without fusing and still be inside the trunk. Everything here scales
+  // linearly with one factor, which is what lets the fit below be a division
+  // rather than a search.
+  const hipNeed = legHalf0 * 1.45;
+  const shoulderNeed = hipNeed + legHalf0 + limbR0 * 1.4;
+
+  // The torso may widen to carry them — but only so far. Letting it grow
+  // without bound, which is what dividing by these narrowing factors did, set
+  // the width of 82% of creatures to something the body-width slider never
+  // asked for: a median of twice over, up to fifteen times. And since the body
+  // is a sliver whenever the head takes most of the character, a torso widened
+  // like that renders as a flat blade — sixty times wider than tall, at worst.
+  //
+  // Hence two ceilings: half again the width asked for, and half again the
+  // torso's own height. A body may be broad. It may not be a pancake.
+  //
+  // The height ceiling is not a ceiling on the WIDENING, it is a ceiling on the
+  // width. The body-width slider is scaled by the head, and the body's height
+  // shrinks as the head takes more of the character — so at a wide setting on a
+  // big head with a tiny body, the width the slider asks for is already a disc
+  // before anything widens it at all. Both the floor and the ceiling have to
+  // respect it.
+  const maxHalfW = (halfH * 1.6) / wide;
+  const base = Math.min(wantW, maxHalfW);
+  const torsoW = THREE.MathUtils.clamp(
+    Math.max(hipNeed / (hipNarrow * 0.95), shoulderNeed / (shoulderNarrow * 0.95)),
+    base,
+    Math.max(base, Math.min(wantW * 1.5, maxHalfW)),
   );
+
   // the furthest out each joint may root and still be inside the body
   const hipAttach = torsoW * hipNarrow * 0.95;
   const attach = torsoW * shoulderNarrow * 0.95;
+
+  // If a ceiling bound, the limbs come in rather than the body going out.
+  const fit = Math.min(1, hipAttach / Math.max(hipNeed, 1e-6), attach / Math.max(shoulderNeed, 1e-6));
+  const limbR = limbR0 * fit;
+  const legHalf = legHalf0 * fit;
+  const hipFloor = hipNeed * fit;
 
   const group = new THREE.Group();
 
@@ -105,7 +138,7 @@ export function buildBody(p, mats, headBox, rng) {
   // A leg is a capsule of some thickness, and the whole limb has to fit inside
   // `legH` whatever kind it is — the creature stands with its feet at y = 0 and
   // nothing here may push them through the floor.
-  const legR = Math.min(limbR * (p.legType === 'thick' ? 2.1 : p.legType === 'stump' ? 2.6 : 1), wantW * 0.55);
+  const legR = legRPre * fit;
   const legLen = Math.max(0.02, legH - legR * 2);
   const legGeo = new THREE.CapsuleGeometry(legR, legLen, 3, 7);
   const armLen = Math.max(0.03, p.armLen * bodyH * 0.75);
@@ -133,6 +166,17 @@ export function buildBody(p, mats, headBox, rng) {
   // never runs alongside a leg; angling the arm outward only widens that gap.
   const shoulderSpread = Math.min(attach, Math.max(torsoW * 0.8, hipSpread + legHalf + limbR * 1.4));
 
+  // How far a gesture may tilt one leg sideways before it touches the other.
+  // The stance sets the gap once, at build time; a gesture that swings a single
+  // leg spends it, and on a squat freak with thick legs the two fuse into one
+  // paddle. Tilting by θ moves the foot legH·sin θ across, so the room between
+  // them is a rotation, and it is the leg that knows how much of one it has.
+  // Half the gap each, not the whole of it: a gesture may swing the two legs
+  // opposite ways, so both spend the budget towards the same middle. Giving
+  // each one the full gap — on the grounds that only one leg is moving — brings
+  // the crossings straight back.
+  const legLean = Math.min(0.3, Math.asin(THREE.MathUtils.clamp(
+    Math.max(0, hipSpread - legHalf) * 0.7 / Math.max(legH, 1e-6), 0, 1)));
 
   for (const side of [-1, 1]) {
     // leg: hangs from a hip pivot so the animator can shift weight from one
@@ -140,6 +184,7 @@ export function buildBody(p, mats, headBox, rng) {
     const hipX = side * hipSpread;
     const legPivot = new THREE.Group();
     legPivot.position.set(hipX, legH, 0);
+    legPivot.userData.lean = legLean;
     group.add(legPivot);
     legs.push(legPivot);
 

@@ -62,18 +62,50 @@ export function bodyPoint(p, d, out = new THREE.Vector3()) {
   return out;
 }
 
-/** A unit torso: about 1 wide and 1 tall, for the caller to scale. */
+/**
+ * A unit torso: exactly 1 in half-width and half-depth, whatever the profile
+ * does, so the caller's scale really is the body's size.
+ *
+ * Without that normalisation the profile multiplies the geometry — three bands
+ * at their limit take the half-width to 3.4 — and every ceiling the caller puts
+ * on its own scale is off by that factor. That is how a torso ended up sixty
+ * times wider than it was tall while the code that sized it believed it had
+ * capped the ratio at two.
+ */
 export function makeTorsoGeometry(p) {
   const geo = new THREE.IcosahedronGeometry(1, TORSO_DETAIL);
   const pos = geo.attributes.position;
   const d = new THREE.Vector3();
   const out = new THREE.Vector3();
+  let maxX = 1e-6;
+  let maxZ = 1e-6;
   for (let i = 0; i < pos.count; i++) {
     d.fromBufferAttribute(pos, i).normalize();
     bodyPoint(p, d, out);
     pos.setXYZ(i, out.x, out.y, out.z);
+    maxX = Math.max(maxX, Math.abs(out.x));
+    maxZ = Math.max(maxZ, Math.abs(out.z));
+  }
+  // Normalise the two horizontal axes only: the height stays as the surface
+  // made it, so a pinched waist or a swollen gut still reads, and only the
+  // overall spread is brought back to one.
+  for (let i = 0; i < pos.count; i++) {
+    pos.setXYZ(i, pos.getX(i) / maxX, pos.getY(i), pos.getZ(i) / maxZ);
   }
   geo.computeVertexNormals();
   geo.computeBoundingBox();
   return geo;
+}
+
+/**
+ * The same normalisation, solved rather than measured, so body.js can ask how
+ * wide the trunk is at a given height without building the mesh first.
+ */
+export function profilePeak(p) {
+  let peak = 1e-6;
+  for (let i = 0; i <= 40; i++) {
+    const t = -1 + (i / 40) * 2;
+    peak = Math.max(peak, bodyProfile(p, t) * Math.sqrt(Math.max(0, 1 - t * t)));
+  }
+  return peak;
 }

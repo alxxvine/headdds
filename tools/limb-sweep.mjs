@@ -100,7 +100,7 @@ Math.random = () => { _s = (_s * 1664525 + 1013904223) >>> 0; return _s / 429496
 
 const N = Number(process.argv[2] || 120);
 const report = {};
-for (const [name] of MOODS) report[name] = { cross: 0, sink: 0, worstCross: 0, worstSink: 0, cSeed: 0, sSeed: 0, acts: new Map() };
+for (const [name] of MOODS) report[name] = { cross: 0, sink: 0, worstCross: 0, worstSink: 0, cSeed: 0, sSeed: 0, acts: new Map(), what: new Map() };
 
 for (let i = 0; i < N; i++) {
   const seed = 1000 + i * 7;
@@ -136,9 +136,12 @@ for (let i = 0; i < N; i++) {
       // The invariants are: the two arms never cross, the two legs never fuse,
       // and no arm dips below the feet. An arm brushing the leg beside it is
       // not one of them — on a freak this squat they hang right next to it.
-      let cross = 0;
-      if (arms[0]?.length && arms[1]?.length) cross = Math.max(cross, overlap(arms[0], arms[1]));
-      if (legs[0]?.length && legs[1]?.length) cross = Math.max(cross, overlap(legs[0], legs[1]));
+      // Reported apart: the two are different bugs with different fixes, and a
+      // single number sent one whole round of work at the arms while it was the
+      // legs fusing the entire time.
+      const armCross = arms[0]?.length && arms[1]?.length ? overlap(arms[0], arms[1]) : 0;
+      const legCross = legs[0]?.length && legs[1]?.length ? overlap(legs[0], legs[1]) : 0;
+      const cross = Math.max(armCross, legCross);
 
       const armLow = Math.min(Infinity, ...arms.flat().map((c) => Math.min(c.a.y, c.b.y) - c.r));
       const sink = Math.max(0, floor - armLow);
@@ -146,6 +149,8 @@ for (let i = 0; i < N; i++) {
       const R = report[name];
       if (cross > 0.02 * scale) {
         R.cross++;
+        const which = armCross > legCross ? 'arms' : 'legs';
+        R.what.set(which, (R.what.get(which) || 0) + 1);
         R.acts.set(an.action, (R.acts.get(an.action) || 0) + 1);
         if (cross > R.worstCross) { R.worstCross = cross; R.cSeed = seed; }
       }
@@ -162,6 +167,6 @@ for (let i = 0; i < N; i++) {
 for (const [name] of MOODS) {
   const R = report[name];
   console.log(name.padEnd(8), `cross ${R.cross} (worst ${R.worstCross.toFixed(3)} @${R.cSeed})`,
-    `sink ${R.sink} (worst ${R.worstSink.toFixed(3)} @${R.sSeed})`, [...R.acts].map(([a,n])=>`${a}:${n}`).join(' '));
+    `sink ${R.sink} (worst ${R.worstSink.toFixed(3)} @${R.sSeed})`, [...R.what].map(([a,n])=>`${a}:${n}`).join(' '), [...R.acts].map(([a,n])=>`${a}:${n}`).join(' '));
 }
 console.log(`${N} creatures x ${MOODS.length} moods x 15 samples`);
