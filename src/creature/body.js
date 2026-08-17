@@ -135,7 +135,7 @@ export function buildBody(p, mats, headBox, rng) {
     }
 
     if (p.footType !== 'none') {
-      const foot = new THREE.Mesh(footGeo, mats.body);
+      const foot = new THREE.Mesh(footGeo, mats.trim);
       if (p.footType === 'hoof') {
         foot.position.set(0, footR * 0.7 - legH, 0);
       } else {

@@ -41,6 +41,8 @@ export function makeMaterials(p) {
       emissive: shade(p.skinColor, 0.1),
       emissiveIntensity: glow * 0.5,
     }),
+    // hands, feet and ears: the same skin, further into the ink
+    trim: toon(shade(p.skinColor, p.trim ?? 0.35)),
     tooth: toon(new THREE.Color('#f4ecd6')),
     lip: toon(new THREE.Color(p.lipColor)),
     // a glowing creature lights its own eyes: emissive needs no post-processing

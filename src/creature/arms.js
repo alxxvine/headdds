@@ -60,7 +60,7 @@ function addHand(parent, p, mats, { limbR, ink, tip, dir }) {
   parent.add(frame);
 
   const palmGeo = new THREE.SphereGeometry(limbR * (p.handType === 'club' ? 1.5 : 0.9), 8, 6);
-  const palm = new THREE.Mesh(palmGeo, mats.body);
+  const palm = new THREE.Mesh(palmGeo, mats.trim);
   if (p.handType === 'club') palm.scale.set(1.1, 1.3, 1.1);
   withOutline(frame, palm, palmGeo, ink, mats.outline);
   if (p.handType === 'ball' || p.handType === 'club') return;
@@ -173,10 +173,14 @@ export function buildArm(p, mats, rng, opts) {
   // lift swings the arm forward or back; the wobble keeps the sides apart
   shoulder.rotation.x = -p.armLift * 0.7 + wonk * 0.2;
 
+  // The arm is fitted to clear the floor with a margin, not to touch it. The
+  // animator's idle lag swings the limb by a fifth of a radian on its own, and
+  // an arm built resting exactly on the ground dips through it every cycle.
+  const clearance = limbR * 0.9;
   let splay = 0.32 + stance * 0.4 + Math.abs(wonk) * 0.3;
   for (let i = 0; i < 14; i++) {
     shoulder.rotation.z = side * splay;
-    if (lowestPoint(shoulder) >= 0 || splay >= 1.5) break;
+    if (lowestPoint(shoulder) >= clearance || splay >= 1.5) break;
     splay = Math.min(1.5, splay + 0.12);
   }
 
@@ -185,8 +189,8 @@ export function buildArm(p, mats, rng, opts) {
   // shrink exactly in step with the arm, so one analytic step lands short.
   for (let i = 0; i < 4; i++) {
     const lo = lowestPoint(shoulder);
-    if (lo >= 0 || shoulderY <= 0) break;
-    const k = Math.max(0.15, (shoulderY / (shoulderY - lo)) * 0.96);
+    if (lo >= clearance || shoulderY <= 0) break;
+    const k = Math.max(0.15, ((shoulderY - clearance) / (shoulderY - lo)) * 0.96);
     shoulder.scale.multiplyScalar(k);
   }
 

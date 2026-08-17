@@ -8,6 +8,34 @@ import { addEars } from './ears.js';
 // both on a squashed pancake and on a long cucumber.
 export const headUnit = (p) => (p.headWidth + p.headHeight) * 0.5;
 
+/**
+ * Where the big features sit on the face, in the frontal coordinates every
+ * placement uses. Eyes, nose and maw are built by three separate functions and
+ * each used to place itself as if it were alone on the skull, which is how a
+ * nose ends up inside the maw and an eye ends up wearing the nose. They all
+ * read these limits now, so they agree.
+ *
+ * The overlaps are not forbidden outright — a freak whose eye crowds its nose
+ * is a good freak — only kept from landing one part fully inside another.
+ */
+export function faceLimits(p) {
+  const S = headUnit(p);
+  // the top rim of the maw, opening included
+  const mouthTop = p.mouthY * p.headHeight * 0.8 + p.mouthOpen * p.headHeight * 0.72;
+  const noseSize = p.noseSize * S;
+  const noseY = p.noseType === 'none' ? -99
+    : Math.max(p.noseY * p.headHeight * 0.7, mouthTop + noseSize * 1.15);
+  return {
+    S,
+    mouthTop,
+    noseSize,
+    noseY,
+    // how much room the nose takes on the face, for whatever has to dodge it
+    noseHalfW: noseSize * (p.noseType === 'pig' ? 1.5 : p.noseType === 'tusks' ? 1.6 : 1.1),
+    noseTop: noseY + noseSize * (p.noseType === 'beak' ? 0.8 : 1.0),
+  };
+}
+
 // ----------------------------------------------------------------- EYES ----
 
 function eyePositions(p, rng) {
@@ -127,12 +155,23 @@ function addLid(pivot, p, mats, size, S) {
  * Returns the pivots so the animator can drive them.
  */
 export function addEyes(parent, headMesh, p, mats, rng) {
-  const S = headUnit(p);
+  const L = faceLimits(p);
+  const S = L.S;
   const baseSize = p.eyeSize * S;
-  // Keep eyes out of the maw: "cluster" and "scatter" otherwise plant an
-  // eyeball straight into the teeth on a regular basis.
-  const mouthTop = p.mouthY * p.headHeight * 0.8 + p.mouthOpen * p.headHeight * 0.72;
-  const positions = eyePositions(p, rng).map(([x, y]) => [x, Math.max(y, mouthTop + baseSize * 0.9)]);
+  // Keep eyes off the two things already on the face. "cluster" and "scatter"
+  // otherwise plant an eyeball straight into the teeth on a regular basis, and
+  // a low eye near the midline ends up sitting on the nose.
+  // The clearance has to cover the eye's own radius, not just its centre: a
+  // margin of less than one radius leaves the bottom of the eyeball sitting in
+  // the teeth, which is what it looked like. Jitter can grow an eye by half
+  // again, so the margin carries that too.
+  const clear = baseSize * (1.35 + p.eyeJitter * 0.4);
+  const positions = eyePositions(p, rng).map(([x, y]) => {
+    let out = Math.max(y, L.mouthTop + clear);
+    const onMidline = Math.abs(x) < L.noseHalfW + baseSize * 0.55;
+    if (onMidline && out < L.noseTop + clear * 0.75) out = L.noseTop + clear * 0.75;
+    return [x, out];
+  });
   const eyes = [];
 
   for (const [x0, y0] of positions) {
@@ -382,11 +421,17 @@ export function addMouth(parent, headMesh, p, mats, rng) {
 
 // ----------------------------------------------------------------- NOSE ----
 
-export function addNose(parent, headMesh, p, mats) {
+export function addNose(parent, headMesh, p, mats, rng) {
   if (p.noseType === 'none') return;
-  const S = headUnit(p);
-  const ny = p.noseY * p.headHeight * 0.7;
-  const size = p.noseSize * S;
+  const L = faceLimits(p);
+  const S = L.S;
+  const ny = L.noseY;   // already lifted clear of the maw
+  const size = L.noseSize;
+  // Every bump used to be the same oval. Give this one its own proportions:
+  // wide and flat, or narrow and long, or pushed out from the face.
+  const wide = 0.65 + rng() * 0.95;
+  const tall = 0.65 + rng() * 0.95;
+  const deep = 0.7 + rng() * 0.9;
 
   if (p.noseType === 'holes') {
     for (const dx of [-1, 1]) {
@@ -429,7 +474,7 @@ export function addNose(parent, headMesh, p, mats) {
       const k = i / (links - 1);
       const r = size * (0.85 - k * 0.45);
       const g = new THREE.SphereGeometry(r, 8, 6);
-      const seg = new THREE.Mesh(g, mats.skin);
+      const seg = new THREE.Mesh(g, mats.trim);
       // Out along the normal first, then increasingly down — and further out
       // than feels necessary, or it hangs flat against the face and reads as a
       // line drawn through the teeth rather than as a trunk in front of them.
@@ -444,24 +489,24 @@ export function addNose(parent, headMesh, p, mats) {
   let mesh;
   if (p.noseType === 'pig') {
     // a flat disc pressed onto the face, two holes punched through it
-    geo = new THREE.CylinderGeometry(size * 1.3, size * 1.15, size * 0.55, 10);
-    mesh = new THREE.Mesh(geo, mats.skin);
+    geo = new THREE.CylinderGeometry(size * 1.3 * wide, size * 1.15 * wide, size * 0.55 * deep, 10);
+    mesh = new THREE.Mesh(geo, mats.trim);
     mesh.rotation.x = Math.PI / 2;
     mesh.position.set(0, 0, size * 0.3);
   } else if (p.noseType === 'beak') {
-    geo = new THREE.ConeGeometry(size * 0.6, size * 2.6, 6);
+    geo = new THREE.ConeGeometry(size * 0.6 * wide, size * 2.6 * deep, 6);
     mesh = new THREE.Mesh(geo, mats.skin);
     mesh.rotation.x = Math.PI / 2; // tip along the normal
     mesh.position.set(0, 0, size * 0.9);
   } else if (p.noseType === 'snout') {
     geo = new THREE.SphereGeometry(size, 10, 8);
-    mesh = new THREE.Mesh(geo, mats.skin);
-    mesh.scale.set(1, 0.75, 1.9);
+    mesh = new THREE.Mesh(geo, mats.trim);
+    mesh.scale.set(wide, 0.75 * tall, 1.9 * deep);
     mesh.position.set(0, 0, size * 0.45);
   } else {
     geo = new THREE.SphereGeometry(size, 10, 8);
-    mesh = new THREE.Mesh(geo, mats.skin);
-    mesh.scale.set(1, 1.25, 0.85);
+    mesh = new THREE.Mesh(geo, mats.trim);
+    mesh.scale.set(wide, 1.25 * tall, 0.85 * deep);
     mesh.position.set(0, 0, -size * 0.15);
   }
   withOutline(frame, mesh, geo, p.outline * 0.7 * S, mats.outline);

@@ -46,22 +46,38 @@ Most of a freak is a menu of kinds, each with its own scatter on top:
 | eyes | ball, hollow, bead, on stalks, compound, lantern, gash — 7 kinds. One mismatch slider drives size, bulge and pupil width per eye, so no two on a face agree |
 | pupils | round, slit, goat, cross, ring, square, double, blind — plus eyelids |
 | teeth | fangs, needles, blocks, tusks — with a mismatch slider, so one mouth holds anything from a stub to a fang three times its neighbour |
-| nose | none, bump, beak, snout, nostrils, trunk, tusks, disc |
+| nose | none, bump, beak, snout, nostrils, trunk, tusks, disc — and each one gets its own proportions: wide and flat, narrow and long, or pushed out from the face |
 | ears | none, flaps, fins, trumpets, holes — with size and height |
 | hair | none, tendrils, bristles, antennae, dreads, crest, fur, quills, fronds — 9 kinds |
+| torso | blob, pear, barrel, segmented, slab |
+| legs | sticks, thick, bent, stumps — with feet: ball, none, splayed, hoof |
 | arms | none, stubs, sticks, noodles, mantis — plus lift and a lopsidedness slider |
 | hands | none, ball, claws, pincer, club |
 
-That is 7 × 8 × 4 × 8 × 5 × 9 × 5 × 5 × 5 × 4 × 4 ways to pick the parts alone
+That is 7 × 8 × 4 × 8 × 5 × 9 × 5 × 4 × 4 × 5 × 5 ways to pick the parts alone
 — over four million — before any of the sliders, the colours or the per-seed
 scatter inside each kind.
-| torso | blob, pear, barrel, segmented, slab |
-| legs | sticks, thick, bent, stumps — with feet: ball, none, splayed, hoof |
-| damage | lopsidedness pulls the face out of true; wear knocks out teeth, snaps horns to stumps and stitches scars across the skull |
 
 Defaults are the tame end of every menu, so a link shared before a kind existed
 still opens the creature it was saved as. The variety comes from the weights in
 the randomizer, not from the defaults.
+
+Hands, feet, ears and fleshy noses are drawn in a **deeper shade of the same
+skin**, not a second colour. A tone rather than a hue is what stops a freak
+reading as one flat silhouette without turning it into a paint job, and the
+`tip shade` slider decides how far into the ink those parts go.
+
+Ears are ellipsoids rather than cones for one reason: a cone has a flat base,
+and whichever way it was turned that base showed as a hard disc hanging off the
+head — an ear with a lid on it. An ellipsoid has no flat face to show. The
+trumpet is still a cone, open-ended so there is no lid, with its point pushed
+back into the skull so the only hard edge left is the rim you are meant to see.
+
+Eyes, nose and maw are built by three separate functions, and each used to place
+itself as if it were alone on the skull — which is how a nose ends up inside the
+maw and an eye ends up wearing the nose. They all read `faceLimits(p)` now, so
+they agree about where the others are. Crowding is still allowed; landing one
+part fully inside another is not.
 
 An eye only reads as an eye if it stands apart from what surrounds it, and two
 things make sure it does. Every eyeball sits in a ring of skin **half as bright
