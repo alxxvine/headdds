@@ -105,8 +105,14 @@ export const PARAMS = [
     { value: 'hole', label: 'hole' },
     { value: 'bead', label: 'bead' },
     { value: 'stalk', label: 'on stalks' },
+    { value: 'compound', label: 'compound' },
+    { value: 'lantern', label: 'lantern' },
+    { value: 'gash', label: 'gash' },
   ], 'ball', {
-    random: (rng) => weighted(rng, [['ball', 5], ['hole', 3], ['bead', 3], ['stalk', 2]]),
+    random: (rng) => weighted(rng, [
+      ['ball', 5], ['hole', 3], ['bead', 3], ['stalk', 2],
+      ['compound', 3], ['lantern', 2], ['gash', 2],
+    ]),
   }),
   select('pupilShape', 'eyes', 'pupil shape', [
     { value: 'round', label: 'round' },
@@ -114,9 +120,14 @@ export const PARAMS = [
     { value: 'goat', label: 'goat' },
     { value: 'cross', label: 'cross' },
     { value: 'ring', label: 'ring' },
+    { value: 'square', label: 'square' },
+    { value: 'double', label: 'double' },
     { value: 'blind', label: 'blind' },
   ], 'round', {
-    random: (rng) => weighted(rng, [['round', 5], ['slit', 3], ['goat', 2], ['cross', 2], ['ring', 2], ['blind', 1]]),
+    random: (rng) => weighted(rng, [
+      ['round', 5], ['slit', 3], ['goat', 2], ['cross', 2],
+      ['ring', 2], ['square', 2], ['double', 2], ['blind', 1],
+    ]),
   }),
   range('eyeSize', 'eyes', 'size', 0.05, 0.4, 0.16),
   range('eyeSpread', 'eyes', 'spread', 0.1, 1.0, 0.42),
@@ -135,6 +146,14 @@ export const PARAMS = [
   range('mouthOpen', 'mouth', 'opening', 0.02, 0.6, 0.18, { random: (rng) => 0.08 + rng() * 0.42 }),
   int('teethTop', 'mouth', 'top teeth', 0, 14, 8),
   int('teethBottom', 'mouth', 'bottom teeth', 0, 14, 6),
+  select('toothType', 'mouth', 'teeth', [
+    { value: 'fangs', label: 'fangs' },
+    { value: 'needles', label: 'needles' },
+    { value: 'blocks', label: 'blocks' },
+    { value: 'tusks', label: 'tusks' },
+  ], 'fangs', {
+    random: (rng) => weighted(rng, [['fangs', 4], ['needles', 3], ['blocks', 3], ['tusks', 2]]),
+  }),
   range('toothSize', 'mouth', 'tooth length', 0.2, 1.4, 0.7),
   range('toothJag', 'mouth', 'fanginess', 0, 1, 0.35),
   range('toothGap', 'mouth', 'gaps', 0, 0.6, 0.1),
@@ -148,9 +167,28 @@ export const PARAMS = [
     { value: 'beak', label: 'beak' },
     { value: 'snout', label: 'snout' },
     { value: 'holes', label: 'nostrils' },
-  ], 'bump'),
+    { value: 'trunk', label: 'trunk' },
+    { value: 'tusks', label: 'tusks' },
+    { value: 'pig', label: 'disc' },
+  ], 'bump', {
+    random: (rng) => weighted(rng, [
+      ['none', 1], ['bump', 4], ['beak', 3], ['snout', 3],
+      ['holes', 2], ['trunk', 2], ['tusks', 2], ['pig', 2],
+    ]),
+  }),
   range('noseSize', 'nose', 'nose size', 0.04, 0.35, 0.13),
   range('noseY', 'nose', 'nose height', -0.4, 0.45, -0.05),
+  select('earType', 'nose', 'ears', [
+    { value: 'none', label: 'none' },
+    { value: 'flaps', label: 'flaps' },
+    { value: 'fins', label: 'fins' },
+    { value: 'trumpets', label: 'trumpets' },
+    { value: 'holes', label: 'holes' },
+  ], 'none', {
+    random: (rng) => weighted(rng, [['none', 3], ['flaps', 3], ['fins', 3], ['trumpets', 2], ['holes', 2]]),
+  }),
+  range('earSize', 'nose', 'ear size', 0.08, 0.6, 0.25),
+  range('earY', 'nose', 'ear height', -0.4, 0.6, 0.15),
   range('brow', 'nose', 'brow ridge', 0, 1, 0.35),
   range('browDroop', 'nose', 'brow droop', 0, 1, 0.3),
 
@@ -168,8 +206,14 @@ export const PARAMS = [
     { value: 'antennae', label: 'antennae' },
     { value: 'dreads', label: 'dreads' },
     { value: 'crest', label: 'crest' },
+    { value: 'fur', label: 'fur' },
+    { value: 'quills', label: 'quills' },
+    { value: 'fronds', label: 'fronds' },
   ], 'tendrils', {
-    random: (rng) => weighted(rng, [['none', 3], ['tendrils', 3], ['bristles', 3], ['antennae', 2], ['dreads', 2], ['crest', 2]]),
+    random: (rng) => weighted(rng, [
+      ['none', 3], ['tendrils', 3], ['bristles', 3], ['antennae', 2],
+      ['dreads', 2], ['crest', 2], ['fur', 3], ['quills', 3], ['fronds', 2],
+    ]),
   }),
   int('tendrils', 'growths', 'hair count', 0, 14, 0, { random: (rng) => weighted(rng, [[0, 3], [4, 3], [8, 3], [14, 2]]) }),
   range('tendrilLen', 'growths', 'hair length', 0.15, 1.2, 0.45),
