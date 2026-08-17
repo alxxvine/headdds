@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { withOutline } from './materials.js';
+import { warpGeometry, warpRoll } from './warp.js';
 
 // Arms are built one at a time so the two sides can differ: length, splay and
 // lift all get a per-side wobble from `asymmetry`. Everything hangs along the
@@ -89,7 +90,7 @@ const MAX_LEAN = 1.05;
 
 // ------------------------------------------------------------------ HANDS ---
 
-function addHand(parent, p, mats, { limbR, ink, tip, dir }) {
+function addHand(parent, p, mats, rng, { limbR, ink, tip, dir }) {
   if (p.handType === 'none') return;
 
   const frame = new THREE.Group();
@@ -97,7 +98,11 @@ function addHand(parent, p, mats, { limbR, ink, tip, dir }) {
   frame.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir.clone().normalize());
   parent.add(frame);
 
-  const palmGeo = new THREE.SphereGeometry(limbR * (p.handType === 'club' ? 1.5 : 0.9), 8, 6);
+  // A hand is a ball at this size, and a perfect ball is the one thing that
+  // never reads as flesh. Knocked out of true like everything else.
+  const palmGeo = warpGeometry(
+    new THREE.SphereGeometry(limbR * (p.handType === 'club' ? 1.5 : 0.9), 9, 7),
+    rng(), warpRoll(p, rng, 0.6));
   const palm = new THREE.Mesh(palmGeo, mats.trim);
   if (p.handType === 'club') palm.scale.set(1.1, 1.3, 1.1);
   withOutline(frame, palm, palmGeo, ink, mats.outline);
@@ -105,7 +110,9 @@ function addHand(parent, p, mats, { limbR, ink, tip, dir }) {
 
   // claws and pincers are cones fanned around the tip
   const fingers = p.handType === 'pincer' ? 2 : 3;
-  const fingerGeo = new THREE.ConeGeometry(limbR * 0.5, limbR * (p.handType === 'pincer' ? 3.8 : 2.9), 4);
+  const fingerGeo = warpGeometry(
+    new THREE.ConeGeometry(limbR * 0.5, limbR * (p.handType === 'pincer' ? 3.8 : 2.9), 5, 3),
+    rng(), warpRoll(p, rng, 0.7));
   for (let i = 0; i < fingers; i++) {
     const a = fingers === 2 ? (i === 0 ? -1 : 1) : (i - 1);
     const finger = new THREE.Mesh(fingerGeo, mats.growth);
@@ -213,7 +220,7 @@ export function buildArm(p, mats, rng, opts) {
   const shoulder = new THREE.Group();
   shoulder.position.set(side * shoulderX, shoulderY, shoulderZ);
   const { tip, dir } = addSegments(shoulder, p, mats, { limbR, ink, len, side });
-  addHand(shoulder, p, mats, { limbR, ink, tip, dir });
+  addHand(shoulder, p, mats, rng, { limbR, ink, tip, dir });
 
   // lift swings the arm forward or back; the wobble keeps the sides apart
   shoulder.rotation.x = -p.armLift * 0.7 + wonk * 0.2;

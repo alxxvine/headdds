@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { withOutline } from './materials.js';
+import { warpGeometry, warpRoll } from './warp.js';
 import { buildArm } from './arms.js';
 import { makeTorsoGeometry, bodyProfile, profilePeak } from './torso.js';
 
@@ -180,10 +181,14 @@ export function buildBody(p, mats, headBox, rng) {
   const legGeo = new THREE.CapsuleGeometry(legR, legLen, 3, 7);
   const armLen = Math.max(0.03, p.armLen * bodyH * 0.75);
 
+  // A foot is a ball or a stub, and both used to be the same ball or stub on
+  // every creature that rolled them. Warped, so a hoof is a worn hoof and a
+  // splayed foot has toes rather than being a squashed marble.
   const footR = legR * (p.footType === 'hoof' ? 1.05 : 1.25);
-  const footGeo = p.footType === 'hoof'
-    ? new THREE.CylinderGeometry(footR, footR * 1.15, footR * 1.4, 7)
-    : new THREE.SphereGeometry(footR, 8, 6);
+  const footGeo = warpGeometry(p.footType === 'hoof'
+    ? new THREE.CylinderGeometry(footR, footR * 1.15, footR * 1.4, 8, 3)
+    : new THREE.SphereGeometry(footR, 9, 7),
+  rng(), warpRoll(p, rng, 0.6));
 
   const legs = [];
   const shoulders = [];

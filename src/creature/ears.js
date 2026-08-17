@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { surfaceByDir, orientTo } from './surface.js';
 import { withOutline } from './materials.js';
+import { warpGeometry, warpRoll } from './warp.js';
 
 // Ears are the one part that changes the silhouette from the side without
 // touching the face, which is why they are here at all: two freaks with the
@@ -30,7 +31,8 @@ export function addEars(parent, p, mats, S, rng) {
 
     if (kind === 'holes') {
       // no ear at all, just a hole and a rim around it
-      const rimGeo = new THREE.TorusGeometry(size * 0.5, size * 0.16, 5, 12);
+      const rimGeo = warpGeometry(new THREE.TorusGeometry(size * 0.5, size * 0.16, 6, 14),
+        rng(), warpRoll(p, rng, 0.5));
       withOutline(pivot, new THREE.Mesh(rimGeo, mats.trim), rimGeo, p.outline * 0.4 * S, mats.outline);
       const pit = new THREE.Mesh(new THREE.SphereGeometry(size * 0.42, 8, 6), mats.cavity);
       pit.position.z = -size * 0.16;
@@ -53,14 +55,14 @@ export function addEars(parent, p, mats, S, rng) {
     let mesh;
     if (kind === 'flaps') {
       // broad and hanging: down and a little out, tapering to a point
-      geo = new THREE.SphereGeometry(1, 9, 7);
+      geo = warpGeometry(new THREE.SphereGeometry(1, 11, 9), rng(), warpRoll(p, rng));
       mesh = new THREE.Mesh(geo, mats.trim);
       mesh.scale.set(size * 0.3, size * 1.5, size * 0.85);
       mesh.rotation.x = 2.6;                    // +Y swings to (0, -0.86, 0.51)
       mesh.position.set(0, -size * 1.2, size * 0.72);
     } else if (kind === 'fins') {
       // stiff and standing, up and a little out
-      geo = new THREE.SphereGeometry(1, 9, 7);
+      geo = warpGeometry(new THREE.SphereGeometry(1, 11, 9), rng(), warpRoll(p, rng));
       mesh = new THREE.Mesh(geo, mats.trim);
       mesh.scale.set(size * 0.24, size * 1.25, size * 0.8);
       mesh.rotation.x = 0.46;                   // +Y swings to (0, 0.9, 0.44)
@@ -69,7 +71,8 @@ export function addEars(parent, p, mats, S, rng) {
       // Trumpets: an open cone aimed straight out, dark inside. Open-ended, so
       // there is no lid — and its point is pushed back into the skull, so the
       // one hard edge it does have is the rim you are meant to see.
-      geo = new THREE.ConeGeometry(size * 1.05, size * 1.9, 9, 1, true);
+      geo = warpGeometry(new THREE.ConeGeometry(size * 1.05, size * 1.9, 10, 3, true),
+        rng(), warpRoll(p, rng, 0.7));
       mesh = new THREE.Mesh(geo, mats.trim);
       mesh.rotation.x = Math.PI / 2;            // +Y swings to +Z, straight out
       mesh.position.set(0, 0, size * 0.62);
