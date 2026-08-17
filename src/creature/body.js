@@ -15,9 +15,53 @@ export function buildBody(p, mats, headBox, rng) {
 
   const legH = bodyH * THREE.MathUtils.clamp(0.22 + p.legLen * 0.28, 0.12, 0.7);
   const torsoH = bodyH - legH;
-  const torsoW = Math.max(0.04, p.bodyWidth * headW * 0.26);
-  const limbR = Math.max(0.012, p.limbThick * headW * 0.045);
+  // A limb has to grow out of the body, not float beside it. The order here is
+  // what makes that true: limbs are sized against the body the player asked
+  // for, then the spread floors that keep them from fusing are worked out, and
+  // only then is the torso widened — if it still has to be — to reach its own
+  // attachment points. Sizing the torso first and spacing the limbs afterwards,
+  // which is the obvious order, left the arms of a narrow freak hanging in
+  // space several body-widths out.
+  const wantW = Math.max(0.04, p.bodyWidth * headW * 0.26);
+  // a slender body carries slender limbs
+  const limbR = Math.min(Math.max(0.012, p.limbThick * headW * 0.045), wantW * 0.42);
   const ink = p.outline * headW * 0.5;
+
+  // The skull gets a silhouette of its own; the torso used to be whichever
+  // primitive its kind named, at the same proportions every time. Give this one
+  // its own — squat and deep, or narrow and tall, sitting a little high or low
+  // on the legs. Rolled here, before the widths, because a torso that came out
+  // narrow has to be taken into account when working out how far a limb may
+  // root from the middle.
+  const wide = 0.82 + rng() * 0.45;
+  const tall = 0.78 + rng() * 0.5;
+  const deep = 0.7 + rng() * 0.7;
+  const torsoDrop = rng() * 0.16;
+  const pearTop = 0.4 + rng() * 0.35;
+  const pearFoot = 1.05 + rng() * 0.3;
+
+  // How wide the leg is at its widest, which is usually the foot rather than
+  // the shin: a splayed foot is nearly twice the leg above it.
+  const legRPre = Math.min(limbR * (p.legType === 'thick' ? 2.1 : p.legType === 'stump' ? 2.6 : 1), wantW * 0.55);
+  const footRPre = legRPre * (p.footType === 'hoof' ? 1.05 : 1.25);
+  const legHalf = Math.max(legRPre, p.footType === 'none' ? 0
+    : p.footType === 'splay' ? footRPre * 1.8
+    : p.footType === 'hoof' ? footRPre * 1.15
+    : footRPre * 1.1);
+
+  // Now the torso: as wide as asked for, but never narrower than the hips and
+  // shoulders it has to carry. `narrow` is how much of that width the body
+  // actually has at the height a limb attaches — a pear is slim at the
+  // shoulder however wide it is at the hip, and a slab is cut square.
+  const narrow = wide * (p.bodyType === 'pear' ? pearTop * 1.1
+    : p.bodyType === 'segmented' ? 0.8
+    : p.bodyType === 'slab' ? 0.9
+    : 1);
+  const hipFloor = legHalf * 1.45;
+  const shoulderFloor = hipFloor + legHalf + limbR * 1.4;
+  const torsoW = Math.max(wantW, shoulderFloor / (narrow * 0.95));
+  // the furthest out a limb may root and still be inside the body
+  const attach = torsoW * narrow * 0.95;
 
   const group = new THREE.Group();
 
@@ -26,7 +70,7 @@ export function buildBody(p, mats, headBox, rng) {
   // arms and legs hang off it exactly as before — only the mass between them
   // changes. `torso` is handed back for the animator to breathe with, so
   // whatever is built here goes under one mesh or one group.
-  const torsoY = legH + torsoH * 0.5;
+  const torsoY = legH + torsoH * (0.42 + torsoDrop);
   let torso;
   if (p.bodyType === 'segmented') {
     // an insect: a small thorax with a heavy abdomen slung behind and below
@@ -40,26 +84,26 @@ export function buildBody(p, mats, headBox, rng) {
     for (const q of parts) {
       const geo = new THREE.SphereGeometry(1, 11, 9);
       const seg = new THREE.Mesh(geo, mats.body);
-      seg.scale.set(torsoW * q.r, torsoH * 0.5 * q.r * q.squash, torsoW * q.r * 0.9);
+      seg.scale.set(torsoW * q.r * wide, torsoH * 0.5 * q.r * q.squash * tall, torsoW * q.r * 0.9 * deep);
       seg.position.set(0, q.y, q.z);
       withOutline(torso, seg, geo, ink / Math.max(torsoW * q.r, torsoH * 0.4), mats.outline);
     }
   } else {
     let geo;
-    let sx = torsoW;
-    let sy = torsoH * 0.62;
-    let sz = torsoW * 0.82;
+    let sx = torsoW * wide;
+    let sy = torsoH * 0.62 * tall;
+    let sz = torsoW * 0.82 * deep;
     if (p.bodyType === 'slab') {
       geo = new THREE.BoxGeometry(2, 2, 2);
-      sx = torsoW * 0.92;
-      sz = torsoW * 0.6;
+      sx = torsoW * 0.92 * wide;
+      sz = torsoW * 0.6 * deep;
     } else if (p.bodyType === 'barrel') {
       geo = new THREE.CylinderGeometry(1, 1, 2, 12);
-      sy = torsoH * 0.55;
+      sy = torsoH * 0.55 * tall;
     } else if (p.bodyType === 'pear') {
       // narrow at the shoulders, wide at the hips
-      geo = new THREE.CylinderGeometry(0.55, 1.15, 2, 12);
-      sy = torsoH * 0.55;
+      geo = new THREE.CylinderGeometry(pearTop, pearFoot, 2, 12);
+      sy = torsoH * 0.55 * tall;
     } else {
       geo = new THREE.SphereGeometry(1, 12, 10);
     }
@@ -73,7 +117,7 @@ export function buildBody(p, mats, headBox, rng) {
   // A leg is a capsule of some thickness, and the whole limb has to fit inside
   // `legH` whatever kind it is — the creature stands with its feet at y = 0 and
   // nothing here may push them through the floor.
-  const legR = limbR * (p.legType === 'thick' ? 2.1 : p.legType === 'stump' ? 2.6 : 1);
+  const legR = Math.min(limbR * (p.legType === 'thick' ? 2.1 : p.legType === 'stump' ? 2.6 : 1), wantW * 0.55);
   const legLen = Math.max(0.02, legH - legR * 2);
   const legGeo = new THREE.CapsuleGeometry(legR, legLen, 3, 7);
   const armLen = Math.max(0.03, p.armLen * bodyH * 0.75);
@@ -92,15 +136,15 @@ export function buildBody(p, mats, headBox, rng) {
   // The gap has to clear the widest thing on the leg, which is usually not the
   // leg: a splayed foot is nearly twice the width of the shin above it, and
   // spacing the hips by the shin alone fuses the feet into one paddle.
-  const footHalf = p.footType === 'none' ? 0
-    : p.footType === 'splay' ? footR * 1.8
-    : p.footType === 'hoof' ? footR * 1.15
-    : footR * 1.1;
-  const legHalf = Math.max(legR, footHalf);
-  const hipSpread = Math.max(torsoW * 0.4 + p.stance * torsoW * 0.55, legHalf * 1.45);
+  // Stance opens the hips, but never so far that the shoulders — which have to
+  // clear the hips by a leg's width — no longer fit inside the body either.
+  // Letting stance run free is what pushed the arms out into space.
+  const hipRoom = Math.max(hipFloor, attach - (legHalf + limbR * 1.4));
+  const hipSpread = THREE.MathUtils.clamp(torsoW * 0.4 + p.stance * torsoW * 0.55, hipFloor, hipRoom);
   // Shoulders sit outboard of the hips by more than both limb radii, so an arm
   // never runs alongside a leg; angling the arm outward only widens that gap.
-  const shoulderSpread = Math.max(torsoW * 0.92, hipSpread + legHalf + limbR * 1.4);
+  const shoulderSpread = Math.min(attach, Math.max(torsoW * 0.8, hipSpread + legHalf + limbR * 1.4));
+
 
   for (const side of [-1, 1]) {
     // leg: hangs from a hip pivot so the animator can shift weight from one

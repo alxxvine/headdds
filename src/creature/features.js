@@ -620,7 +620,7 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
 
   // hair of whatever kind lives in hair.js
   // Ears sway with the hair, so they join the same list the animator drives.
-  const tendrils = addHair(parent, p, mats, rng, S).concat(addEars(parent, p, mats, S));
+  const tendrils = addHair(parent, p, mats, rng, S).concat(addEars(parent, p, mats, S, rng));
 
   // spore cloud above the skull, in a group of its own so it can drift
   let spores = null;

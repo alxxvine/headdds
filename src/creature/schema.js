@@ -79,6 +79,12 @@ export const PARAMS = [
   range('boxiness', 'head', 'boxiness', 0, 1, 0.15),
   range('taper', 'head', 'taper', -0.75, 0.75, 0, { random: (rng) => (rng() * 2 - 1) * 0.7 }),
   range('jaw', 'head', 'jaw', 0, 0.8, 0.15),
+  // The skull used to be one shape all the way up — a cone, a ball or a box.
+  // These three widen or pinch it at brow, eye and jaw height independently,
+  // which is what makes a silhouette instead of a solid.
+  range('browWide', 'head', 'brow width', -0.5, 0.7, 0, { random: (rng) => (rng() * 2 - 1) * 0.6 }),
+  range('midWide', 'head', 'temple width', -0.5, 0.7, 0, { random: (rng) => (rng() * 2 - 1) * 0.6 }),
+  range('chinWide', 'head', 'jaw width', -0.5, 0.7, 0, { random: (rng) => (rng() * 2 - 1) * 0.6 }),
   range('lumps', 'head', 'lumps', 0, 0.35, 0.08),
   // a freak is rarely symmetric and rarely undamaged
   range('lopsided', 'head', 'lopsidedness', 0, 1, 0, { random: (rng) => (rng() < 0.3 ? 0 : rng() * 0.9) }),

@@ -10,14 +10,17 @@ import { withOutline } from './materials.js';
 // one gets its own pivot, so a flap can swing with the head — the animator
 // takes them alongside the hair strands.
 
-export function addEars(parent, p, mats, S) {
+export function addEars(parent, p, mats, S, rng) {
   const kind = p.earType;
   if (kind === 'none') return [];
 
-  const size = p.earSize * S;
+  const base = p.earSize * S;
   const pivots = [];
 
   for (const side of [-1, 1]) {
+    // Nothing says the two have to match, and a head where they do not is a
+    // better head. Lopsidedness drives how far apart they get.
+    const size = base * (1 + (rng() * 2 - 1) * (0.18 + p.lopsided * 0.5));
     // out and a little up: on a skull this round, straight out of the side sits
     // too low to read as an ear
     const hit = surfaceByDir(p, side * 1, p.earY * 0.9, -0.15);
