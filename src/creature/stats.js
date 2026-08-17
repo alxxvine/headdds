@@ -41,6 +41,11 @@ export const ARCHETYPES = {
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
+// How the newer part types tilt the raw stats before the budget is applied.
+const HAND_BITE = { none: -0.06, ball: 0, claw: 0.12, pincer: 0.14, club: 0.06 };
+const EYE_SIGHT = { ball: 0, hole: -0.08, bead: -0.04, stalk: 0.1 };
+const HAIR_DREAD = { none: -0.04, tendrils: 0.04, bristles: 0.08, antennae: 0.02, dreads: 0.06, crest: 0.1 };
+
 /**
  * Scales raw stats so they sum to exactly BUDGET while every value stays in
  * [STAT_MIN, STAT_MAX]. Clamping steals points from the pool, so the leftover
@@ -145,6 +150,23 @@ export const TRAITS = [
     mods: { dread: 5, balance: -5 },
   },
   { id: 'lumpen', label: 'LUMPEN', when: (p) => p.lumps >= 0.24, mods: { vigor: 5, dread: 4, sight: -3 } },
+  {
+    id: 'clawed',
+    label: 'CLAWED',
+    when: (p) => p.armType !== 'none' && (p.handType === 'claw' || p.handType === 'pincer'),
+    mods: { bite: 8, dread: 5 },
+  },
+  {
+    id: 'armless',
+    label: 'ARMLESS',
+    when: (p) => p.armType === 'none',
+    mods: { speed: 6, vigor: -8, bite: -4 },
+  },
+  { id: 'stalkEyed', label: 'STALK-EYED', when: (p) => p.eyeStyle === 'stalk' && p.eyeCount > 0, mods: { sight: 12, vigor: -5 } },
+  { id: 'crested', label: 'CRESTED', when: (p) => p.hairType === 'crest', mods: { dread: 9, balance: -3 } },
+  { id: 'bristled', label: 'BRISTLED', when: (p) => p.hairType === 'bristles' && p.tendrils >= 6, mods: { dread: 6, vigor: 3 } },
+  { id: 'pinEyed', label: 'PIN-EYED', when: (p) => p.pupilShape === 'blind', mods: { sight: -14, dread: 8 } },
+  { id: 'hooded', label: 'HOODED', when: (p) => p.eyeLid >= 0.6, mods: { dread: 6, sight: -6 } },
 ];
 
 /**
@@ -168,7 +190,8 @@ export function computeStats(p) {
       0.08 * nk(p, 'jaw'),
     bite:
       (0.4 * teeth + 0.24 * nk(p, 'toothSize') + 0.22 * nk(p, 'mouthWidth') + 0.14 * nk(p, 'toothJag')) *
-      (p.teethTop + p.teethBottom > 0 ? 1 : 0.3),
+      (p.teethTop + p.teethBottom > 0 ? 1 : 0.3) +
+      HAND_BITE[p.handType] * (p.armType === 'none' ? 0 : 1),
     speed:
       0.44 * nk(p, 'legLen') +
       0.22 * (1 - mass) +
@@ -179,14 +202,16 @@ export function computeStats(p) {
       0.24 * nk(p, 'eyeSize') +
       0.2 * nk(p, 'eyeBulge') +
       0.16 * nk(p, 'eyeSpread') -
-      (p.eyeStyle === 'hole' ? 0.08 : p.eyeStyle === 'bead' ? 0.04 : 0),
+      0.12 * nk(p, 'eyeLid') +
+      EYE_SIGHT[p.eyeStyle],
     dread:
       0.24 * teeth +
       0.2 * nk(p, 'horns') +
       0.14 * nk(p, 'tendrils') +
       0.14 * nk(p, 'spores') +
       0.14 * nk(p, 'lumps') +
-      0.14 * dark,
+      0.14 * dark +
+      HAIR_DREAD[p.hairType],
     balance:
       0.34 * nk(p, 'stance') +
       0.3 * (1 - nk(p, 'headRatio')) +

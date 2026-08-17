@@ -34,7 +34,7 @@ export function buildCreature(rawParams) {
 
   // --- body derived from the head share
   const skull = headGeo.boundingBox;
-  const body = buildBody(p, mats, skull);
+  const body = buildBody(p, mats, skull, rng);
 
   // The head hangs on a pivot at the neck rather than at the skull's centre:
   // a top-heavy head has to swing from where it meets the body, otherwise
@@ -58,6 +58,21 @@ export function buildCreature(rawParams) {
   // spore cloud pushes the camera back and the character becomes a dot.
   const fitBox = new THREE.Box3().setFromObject(body.group);
   fitBox.union(skull.clone().translate(new THREE.Vector3(0, headPivot.position.y + head.position.y, 0)));
+
+  // Hair belongs to the silhouette — a crest cropped in half looks broken — but
+  // long tendrils must not shrink the creature to a dot either, so hair may
+  // grow the frame by at most a quarter of the body height.
+  if (growths.tendrils.length) {
+    group.updateMatrixWorld(true);
+    const hairBox = new THREE.Box3();
+    for (const t of growths.tendrils) hairBox.expandByObject(t.pivot);
+    if (!hairBox.isEmpty()) {
+      const cap = fitBox.max.y + (fitBox.max.y - fitBox.min.y) * 0.25;
+      fitBox.union(hairBox);
+      fitBox.max.y = Math.min(fitBox.max.y, cap);
+      fitBox.min.y = Math.max(fitBox.min.y, 0);
+    }
+  }
   const fitSize = new THREE.Vector3();
   const fitCenter = new THREE.Vector3();
   fitBox.getSize(fitSize);

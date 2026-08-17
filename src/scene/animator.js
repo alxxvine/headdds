@@ -39,6 +39,7 @@ function captureBase(rig) {
     legs: rig.legs.map(node),
     shoulders: rig.shoulders.map(node),
     eyes: rig.eyes.map((e) => node(e.pivot)),
+    stalks: rig.eyes.map((e) => node(e.stalk)),
     jaw: node(rig.jaw),
     tendrils: rig.tendrils.map((t) => node(t.pivot)),
     spores: node(rig.spores),
@@ -97,7 +98,10 @@ export function createAnimator() {
     put(rig.bodyPivot, base.body);
     rig.legs.forEach((o, i) => put(o, base.legs[i]));
     rig.shoulders.forEach((o, i) => put(o, base.shoulders[i]));
-    rig.eyes.forEach((e, i) => put(e.pivot, base.eyes[i]));
+    rig.eyes.forEach((e, i) => {
+      put(e.pivot, base.eyes[i]);
+      put(e.stalk, base.stalks[i]);
+    });
     put(rig.jaw, base.jaw);
     rig.tendrils.forEach((t, i) => put(t.pivot, base.tendrils[i]));
     put(rig.spores, base.spores);
@@ -145,8 +149,11 @@ export function createAnimator() {
 
     // --- arms dangle a beat behind the body --------------------------------
     rig.shoulders.forEach((sh, i) => {
-      const lag = Math.sin(t * 1.7 - 0.7 + i * 0.4);
-      spin(sh, base.shoulders[i], lag * 0.12 * (0.4 + T.weight), 0, sway * 0.1);
+      // the two arms run at slightly different rates, so a lopsided creature
+      // never looks like it is doing calisthenics in sync
+      const rate = 1.7 + (i === 0 ? -0.22 : 0.22) * (1 + T.wobble);
+      const lag = Math.sin(t * rate - 0.7 + i * 1.9);
+      spin(sh, base.shoulders[i], lag * 0.14 * (0.4 + T.weight), lag * 0.05, sway * 0.1);
     });
 
     // --- head on a critically-ish damped spring ----------------------------
@@ -208,6 +215,18 @@ export function createAnimator() {
 
     rig.eyes.forEach((eye, i) => {
       const eb = base.eyes[i];
+      // a stalk sways on its own and leans further into whatever the eye
+      // is tracking than the head ever could
+      if (eye.stalk) {
+        const sb = base.stalks[i];
+        const w = t * 1.35 + i * 1.7;
+        spin(
+          eye.stalk, sb,
+          Math.sin(w) * 0.16 - S.look.y * 0.3,
+          Math.cos(w * 0.8) * 0.16 + S.look.x * 0.3,
+          0,
+        );
+      }
       // multi-eyed freaks blink in a ripple instead of all at once
       const stagger = clamp01(blink * 1.6 - i * 0.18);
       const lid = 1 - 0.92 * stagger;
@@ -240,10 +259,12 @@ export function createAnimator() {
     spin(rig.jaw, base.jaw, S.jaw * 0.09, 0, 0);
 
     // --- secondary motion: tendrils lag behind, spores drift ---------------
+    // bristles barely twitch, antennae whip: each strand carries its own
+    // stiffness from hair.js
     rig.tendrils.forEach((td, i) => {
       const tb = base.tendrils[i];
       const w = t * 1.1 + td.phase;
-      const amp = 0.12 + td.len * 0.1;
+      const amp = (0.12 + td.len * 0.1) * (td.stiffness ?? 1);
       spin(td.pivot, tb, Math.sin(w) * amp, 0, Math.cos(w * 0.7) * amp);
     });
 

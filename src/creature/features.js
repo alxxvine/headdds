@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { surfaceAt, surfaceByDir, orientTo, decalGeometry } from './surface.js';
 import { withOutline } from './materials.js';
+import { addHair } from './hair.js';
 
 // Feature sizes are expressed in "head units" so that an eye stays an eye
 // both on a squashed pancake and on a long cucumber.
@@ -51,24 +52,76 @@ function eyePositions(p, rng) {
 }
 
 /**
- * Every eye lives in its own pivot group: the eyeball, its outline shell and
- * the pupil are children, so blinking and looking around move all three
+ * The pupil, sitting on the front of an eyeball of radius `size`.
+ * Shapes are built from primitives rather than textures: at this resolution a
+ * squashed capsule reads as a slit and a torus reads as a ring.
+ */
+function addPupil(pivot, p, mats, size) {
+  if (p.pupilShape === 'blind') return;
+
+  const r = size * 0.52 * p.pupilSize + size * 0.08;
+  const z = size * 0.82;
+  const put = (geo, rot) => {
+    const m = new THREE.Mesh(geo, mats.pupil);
+    m.position.set(0, 0, z);
+    if (rot !== undefined) m.rotation.z = rot;
+    pivot.add(m);
+    return m;
+  };
+
+  if (p.pupilShape === 'slit' || p.pupilShape === 'goat') {
+    const bar = new THREE.CapsuleGeometry(r * 0.42, size * 1.15, 2, 6);
+    const m = put(bar, p.pupilShape === 'goat' ? Math.PI / 2 : 0);
+    m.scale.z = 0.4;
+    return;
+  }
+  if (p.pupilShape === 'cross') {
+    const bar = new THREE.CapsuleGeometry(r * 0.34, size * 1.1, 2, 6);
+    put(bar, 0).scale.z = 0.4;
+    put(bar, Math.PI / 2).scale.z = 0.4;
+    return;
+  }
+  if (p.pupilShape === 'ring') {
+    const ring = new THREE.TorusGeometry(r * 0.9, r * 0.32, 5, 12);
+    put(ring).scale.z = 0.5;
+    return;
+  }
+  put(new THREE.SphereGeometry(r, 10, 8));
+}
+
+/** A heavy lid dropping over the top of the eye. */
+function addLid(pivot, p, mats, size, S) {
+  if (p.eyeLid <= 0.02) return;
+  const lidGeo = new THREE.SphereGeometry(size * 1.06, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.42);
+  const lid = new THREE.Mesh(lidGeo, mats.skin);
+  // rotate the cap down over the eyeball; a full lid covers just past halfway
+  lid.rotation.x = Math.PI * (0.5 - 0.42 * p.eyeLid);
+  withOutline(pivot, lid, lidGeo, p.outline * 0.35 * S, mats.outline);
+}
+
+/**
+ * Every eye lives in its own pivot group: the eyeball, its outline shell, the
+ * pupil and the lid are children, so blinking and looking around move them
  * together. The outline is a separate mesh (see withOutline), so animating a
  * bare eyeball would leave its own outline behind.
+ * Stalk eyes get a second pivot at the root of the stalk for the animator.
  * Returns the pivots so the animator can drive them.
  */
 export function addEyes(parent, headMesh, p, mats, rng) {
   const S = headUnit(p);
-  const size = p.eyeSize * S;
+  const baseSize = p.eyeSize * S;
   // Keep eyes out of the maw: "cluster" and "scatter" otherwise plant an
   // eyeball straight into the teeth on a regular basis.
   const mouthTop = p.mouthY * p.headHeight * 0.8 + p.mouthOpen * p.headHeight * 0.72;
-  const positions = eyePositions(p, rng).map(([x, y]) => [x, Math.max(y, mouthTop + size * 0.9)]);
+  const positions = eyePositions(p, rng).map(([x, y]) => [x, Math.max(y, mouthTop + baseSize * 0.9)]);
   const eyes = [];
 
   for (const [x, y] of positions) {
+    // no two eyes are quite the same once jitter is up
+    const size = baseSize * (1 + (rng() * 2 - 1) * p.eyeJitter * 0.55);
     const hit = surfaceAt(headMesh, p, x, y);
     const pivot = new THREE.Group();
+    let stalk = null;
 
     if (p.eyeStyle === 'hole') {
       const socket = decalGeometry(headMesh, p, {
@@ -87,23 +140,41 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.3 * p.eyeBulge), hit.normal);
       const beadGeo = new THREE.SphereGeometry(size * 0.55, 10, 8);
       withOutline(pivot, new THREE.Mesh(beadGeo, mats.pupil), beadGeo, p.outline * 0.6 * S, mats.outline);
+    } else if (p.eyeStyle === 'stalk') {
+      // the eyeball rides at the end of a stalk growing out of the skull
+      const len = size * (2.2 + p.eyeBulge * 2.6);
+      stalk = new THREE.Group();
+      orientTo(stalk, hit.point, hit.normal);
+      parent.add(stalk);
+
+      const stalkGeo = new THREE.CylinderGeometry(size * 0.22, size * 0.3, len, 5);
+      const tube = new THREE.Mesh(stalkGeo, mats.growth);
+      tube.rotation.x = Math.PI / 2; // grow along the stalk's +Z
+      tube.position.set(0, 0, len * 0.5);
+      withOutline(stalk, tube, stalkGeo, p.outline * 0.4 * S, mats.outline);
+
+      pivot.position.set(0, 0, len);
+      stalk.add(pivot);
+
+      const ballGeo = new THREE.SphereGeometry(size * 0.8, 12, 10);
+      withOutline(pivot, new THREE.Mesh(ballGeo, mats.eye), ballGeo, p.outline * 0.6 * S, mats.outline);
+      addPupil(pivot, p, mats, size * 0.8);
+      addLid(pivot, p, mats, size * 0.8, S);
+
+      eyes.push({ pivot, stalk, kind: 'stalk', base: pivot.position.clone(), size: size * 0.8 });
+      continue;
     } else {
       // ball: sunk into the socket by (1 - bulge)
       orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * (p.eyeBulge - 0.62)), hit.normal);
 
       const ballGeo = new THREE.SphereGeometry(size, 12, 10);
       withOutline(pivot, new THREE.Mesh(ballGeo, mats.eye), ballGeo, p.outline * 0.7 * S, mats.outline);
-
-      const pupil = new THREE.Mesh(
-        new THREE.SphereGeometry(size * 0.52 * p.pupilSize + size * 0.08, 10, 8),
-        mats.pupil,
-      );
-      pupil.position.set(0, 0, size * 0.82);
-      pivot.add(pupil);
+      addPupil(pivot, p, mats, size);
+      addLid(pivot, p, mats, size, S);
     }
 
     parent.add(pivot);
-    eyes.push({ pivot, kind: p.eyeStyle, base: pivot.position.clone(), size });
+    eyes.push({ pivot, stalk, kind: p.eyeStyle, base: pivot.position.clone(), size });
   }
 
   return eyes;
@@ -281,29 +352,8 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
     parent.add(frame);
   }
 
-  // tendrils are curved tubes sprouting from the crown; each one hangs in its
-  // own group placed at its root, so the animator can swing it from the base
-  const tendrils = [];
-  for (let i = 0; i < p.tendrils; i++) {
-    const a = (i / Math.max(1, p.tendrils)) * Math.PI * 2;
-    const spread = 0.25 + rng() * 0.45;
-    dir.set(Math.cos(a) * spread, 1, Math.sin(a) * spread).normalize();
-    const hit = surfaceByDir(p, dir.x, dir.y, dir.z);
-    const len = p.tendrilLen * S * (0.6 + rng() * 0.8);
-    const bend = new THREE.Vector3((rng() - 0.5) * len * 0.9, 0, (rng() - 0.5) * len * 0.9);
-    const pts = [0, 0.35, 0.7, 1].map((t) =>
-      hit.point.clone()
-        .addScaledVector(hit.normal, len * t)
-        .addScaledVector(bend, t * t)
-        .sub(hit.point),
-    );
-    const geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 6, S * 0.028, 4, false);
-    const pivot = new THREE.Group();
-    pivot.position.copy(hit.point);
-    pivot.add(new THREE.Mesh(geo, mats.growth));
-    parent.add(pivot);
-    tendrils.push({ pivot, len, phase: rng() * Math.PI * 2 });
-  }
+  // hair of whatever kind lives in hair.js
+  const tendrils = addHair(parent, p, mats, rng, S);
 
   // spore cloud above the skull, in a group of its own so it can drift
   let spores = null;

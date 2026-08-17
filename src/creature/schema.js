@@ -89,13 +89,28 @@ export const PARAMS = [
     { value: 'ball', label: 'ball' },
     { value: 'hole', label: 'hole' },
     { value: 'bead', label: 'bead' },
-  ], 'ball'),
+    { value: 'stalk', label: 'on stalks' },
+  ], 'ball', {
+    random: (rng) => weighted(rng, [['ball', 5], ['hole', 3], ['bead', 3], ['stalk', 2]]),
+  }),
+  select('pupilShape', 'eyes', 'pupil shape', [
+    { value: 'round', label: 'round' },
+    { value: 'slit', label: 'slit' },
+    { value: 'goat', label: 'goat' },
+    { value: 'cross', label: 'cross' },
+    { value: 'ring', label: 'ring' },
+    { value: 'blind', label: 'blind' },
+  ], 'round', {
+    random: (rng) => weighted(rng, [['round', 5], ['slit', 3], ['goat', 2], ['cross', 2], ['ring', 2], ['blind', 1]]),
+  }),
   range('eyeSize', 'eyes', 'size', 0.05, 0.4, 0.16),
   range('eyeSpread', 'eyes', 'spread', 0.1, 1.0, 0.42),
   range('eyeY', 'eyes', 'height', -0.4, 0.8, 0.28),
   range('eyeBulge', 'eyes', 'bulge', 0, 1, 0.5),
   range('pupilSize', 'eyes', 'pupil', 0.12, 0.95, 0.42),
   range('eyeTilt', 'eyes', 'tilt', -0.6, 0.6, 0),
+  range('eyeLid', 'eyes', 'eyelid', 0, 1, 0, { random: (rng) => (rng() < 0.45 ? 0 : rng() * 0.85) }),
+  range('eyeJitter', 'eyes', 'size jitter', 0, 1, 0, { random: (rng) => rng() * 0.8 }),
   color('eyeColor', 'eyes', 'sclera', EYE_COLORS, '#fdf6e3'),
   color('pupilColor', 'eyes', 'pupil hue', PUPIL_COLORS, '#0d0a12'),
 
@@ -129,15 +144,47 @@ export const PARAMS = [
   range('wartSize', 'growths', 'wart size', 0.02, 0.16, 0.06),
   int('horns', 'growths', 'horns', 0, 8, 0, { random: (rng) => weighted(rng, [[0, 5], [2, 3], [4, 2], [6, 1]]) }),
   range('hornLen', 'growths', 'horn length', 0.1, 0.9, 0.35),
-  int('tendrils', 'growths', 'tendrils', 0, 14, 0, { random: (rng) => weighted(rng, [[0, 5], [4, 2], [8, 2], [14, 1]]) }),
-  range('tendrilLen', 'growths', 'tendril len', 0.15, 1.2, 0.45),
+  // `tendrils` / `tendrilLen` keep their keys — renaming them would break every
+  // link shared so far — but they now mean "how much hair" of whatever kind.
+  select('hairType', 'growths', 'hair', [
+    { value: 'none', label: 'none' },
+    { value: 'tendrils', label: 'tendrils' },
+    { value: 'bristles', label: 'bristles' },
+    { value: 'antennae', label: 'antennae' },
+    { value: 'dreads', label: 'dreads' },
+    { value: 'crest', label: 'crest' },
+  ], 'tendrils', {
+    random: (rng) => weighted(rng, [['none', 3], ['tendrils', 3], ['bristles', 3], ['antennae', 2], ['dreads', 2], ['crest', 2]]),
+  }),
+  int('tendrils', 'growths', 'hair count', 0, 14, 0, { random: (rng) => weighted(rng, [[0, 3], [4, 3], [8, 3], [14, 2]]) }),
+  range('tendrilLen', 'growths', 'hair length', 0.15, 1.2, 0.45),
   int('spores', 'growths', 'spore cloud', 0, 220, 0, { random: (rng) => weighted(rng, [[0, 6], [60, 2], [140, 1], [220, 1]]) }),
 
   // --- BODY --------------------------------------------------------------
   range('headRatio', 'body', 'head share', 0.5, 0.88, 0.7),
   range('bodyWidth', 'body', 'body width', 0.3, 1.3, 0.7),
   range('limbThick', 'body', 'limb width', 0.3, 1.4, 0.7),
+  select('armType', 'body', 'arms', [
+    { value: 'none', label: 'none' },
+    { value: 'stub', label: 'stubs' },
+    { value: 'stick', label: 'sticks' },
+    { value: 'noodle', label: 'noodles' },
+    { value: 'mantis', label: 'mantis' },
+  ], 'stick', {
+    random: (rng) => weighted(rng, [['none', 1], ['stub', 3], ['stick', 4], ['noodle', 3], ['mantis', 3]]),
+  }),
+  select('handType', 'body', 'hands', [
+    { value: 'none', label: 'none' },
+    { value: 'ball', label: 'ball' },
+    { value: 'claw', label: 'claws' },
+    { value: 'pincer', label: 'pincer' },
+    { value: 'club', label: 'club' },
+  ], 'ball', {
+    random: (rng) => weighted(rng, [['none', 1], ['ball', 4], ['claw', 3], ['pincer', 2], ['club', 2]]),
+  }),
   range('armLen', 'body', 'arm length', 0.2, 1.5, 1.0),
+  range('armLift', 'body', 'arm lift', -1, 1, 0, { random: (rng) => rng() * 2 - 1 }),
+  range('asymmetry', 'body', 'lopsidedness', 0, 1, 0, { random: (rng) => (rng() < 0.35 ? 0 : rng() * 0.9) }),
   range('legLen', 'body', 'leg length', 0.2, 1.5, 0.8),
   range('stance', 'body', 'stance', 0, 1, 0.45),
 
