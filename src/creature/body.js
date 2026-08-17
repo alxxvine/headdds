@@ -34,16 +34,26 @@ export function buildBody(p, mats, headBox) {
   const armGeo = new THREE.CapsuleGeometry(limbR * 0.85, armLen, 3, 6);
   const handGeo = new THREE.SphereGeometry(limbR * 1.1, 8, 6);
 
+  const legs = [];
+  const shoulders = [];
+
   for (const side of [-1, 1]) {
-    // leg
+    // leg: hangs from a hip pivot so the animator can shift weight from one
+    // foot to the other; the foot rides along with it
+    const hipX = side * (torsoW * 0.4 + p.stance * torsoW * 0.55);
+    const legPivot = new THREE.Group();
+    legPivot.position.set(hipX, legH, 0);
+    group.add(legPivot);
+    legs.push(legPivot);
+
     const leg = new THREE.Mesh(legGeo, mats.body);
-    leg.position.set(side * (torsoW * 0.4 + p.stance * torsoW * 0.55), limbR + legLen * 0.5, 0);
-    withOutline(group, leg, legGeo, ink, mats.outline);
+    leg.position.set(0, limbR + legLen * 0.5 - legH, 0);
+    withOutline(legPivot, leg, legGeo, ink, mats.outline);
 
     const foot = new THREE.Mesh(footGeo, mats.body);
-    foot.position.set(leg.position.x, limbR * 0.7, limbR * 0.9);
+    foot.position.set(0, limbR * 0.7 - legH, limbR * 0.9);
     foot.scale.set(1.1, 0.7, 1.5);
-    withOutline(group, foot, footGeo, ink, mats.outline);
+    withOutline(legPivot, foot, footGeo, ink, mats.outline);
 
     // arm: a shoulder plus a limb dangling down and outwards.
     // The shoulder sits low and wide, otherwise the whole arm hides
@@ -59,7 +69,8 @@ export function buildBody(p, mats, headBox) {
     hand.position.y = -armLen - limbR * 0.4;
     withOutline(shoulder, hand, handGeo, ink, mats.outline);
     group.add(shoulder);
+    shoulders.push(shoulder);
   }
 
-  return { group, bodyH, legH, torsoH };
+  return { group, bodyH, legH, torsoH, torso, legs, shoulders };
 }

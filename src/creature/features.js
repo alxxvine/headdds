@@ -50,6 +50,13 @@ function eyePositions(p, rng) {
   return out;
 }
 
+/**
+ * Every eye lives in its own pivot group: the eyeball, its outline shell and
+ * the pupil are children, so blinking and looking around move all three
+ * together. The outline is a separate mesh (see withOutline), so animating a
+ * bare eyeball would leave its own outline behind.
+ * Returns the pivots so the animator can drive them.
+ */
 export function addEyes(parent, headMesh, p, mats, rng) {
   const S = headUnit(p);
   const size = p.eyeSize * S;
@@ -57,42 +64,49 @@ export function addEyes(parent, headMesh, p, mats, rng) {
   // eyeball straight into the teeth on a regular basis.
   const mouthTop = p.mouthY * p.headHeight * 0.8 + p.mouthOpen * p.headHeight * 0.72;
   const positions = eyePositions(p, rng).map(([x, y]) => [x, Math.max(y, mouthTop + size * 0.9)]);
+  const eyes = [];
 
   for (const [x, y] of positions) {
     const hit = surfaceAt(headMesh, p, x, y);
+    const pivot = new THREE.Group();
 
     if (p.eyeStyle === 'hole') {
       const socket = decalGeometry(headMesh, p, {
         cx: x, cy: y, rx: size, ry: size * 1.15, offset: 0.01, rings: 2, segs: 16,
       });
       parent.add(new THREE.Mesh(socket, mats.socket));
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(size * 0.34 * (0.5 + p.pupilSize), 8, 6), mats.eye);
-      dot.position.copy(hit.point).addScaledVector(hit.normal, size * 0.18);
-      parent.add(dot);
-      continue;
-    }
 
-    if (p.eyeStyle === 'bead') {
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.18), hit.normal);
+      pivot.add(new THREE.Mesh(new THREE.SphereGeometry(size * 0.34 * (0.5 + p.pupilSize), 8, 6), mats.eye));
+    } else if (p.eyeStyle === 'bead') {
       const socket = decalGeometry(headMesh, p, {
         cx: x, cy: y, rx: size * 1.25, ry: size * 1.25, offset: 0.008, rings: 2, segs: 16,
       });
       parent.add(new THREE.Mesh(socket, mats.socket));
-      const bead = new THREE.Mesh(new THREE.SphereGeometry(size * 0.55, 10, 8), mats.pupil);
-      bead.position.copy(hit.point).addScaledVector(hit.normal, size * 0.3 * p.eyeBulge);
-      withOutline(parent, bead, bead.geometry, p.outline * 0.6 * S, mats.outline);
-      continue;
+
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.3 * p.eyeBulge), hit.normal);
+      const beadGeo = new THREE.SphereGeometry(size * 0.55, 10, 8);
+      withOutline(pivot, new THREE.Mesh(beadGeo, mats.pupil), beadGeo, p.outline * 0.6 * S, mats.outline);
+    } else {
+      // ball: sunk into the socket by (1 - bulge)
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * (p.eyeBulge - 0.62)), hit.normal);
+
+      const ballGeo = new THREE.SphereGeometry(size, 12, 10);
+      withOutline(pivot, new THREE.Mesh(ballGeo, mats.eye), ballGeo, p.outline * 0.7 * S, mats.outline);
+
+      const pupil = new THREE.Mesh(
+        new THREE.SphereGeometry(size * 0.52 * p.pupilSize + size * 0.08, 10, 8),
+        mats.pupil,
+      );
+      pupil.position.set(0, 0, size * 0.82);
+      pivot.add(pupil);
     }
 
-    // ball: sunk into the socket by (1 - bulge)
-    const ballGeo = new THREE.SphereGeometry(size, 12, 10);
-    const ball = new THREE.Mesh(ballGeo, mats.eye);
-    ball.position.copy(hit.point).addScaledVector(hit.normal, size * (p.eyeBulge - 0.62));
-    withOutline(parent, ball, ballGeo, p.outline * 0.7 * S, mats.outline);
-
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(size * 0.52 * p.pupilSize + size * 0.08, 10, 8), mats.pupil);
-    pupil.position.copy(ball.position).addScaledVector(hit.normal, size * 0.82);
-    parent.add(pupil);
+    parent.add(pivot);
+    eyes.push({ pivot, kind: p.eyeStyle, base: pivot.position.clone(), size });
   }
+
+  return eyes;
 }
 
 // ------------------------------------------------------------------ MAW ----
@@ -122,6 +136,9 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, side, count }) {
     tooth.position.set(0, -side * len * 0.45, 0.02 * S);
     tooth.scale.z = 0.7;
     withOutline(frame, tooth, geo, p.outline * 0.45 * S, mats.outline);
+    // The jaw group hangs at the hinge, so its children are stored relative
+    // to it — otherwise chewing would swing them around the head's origin.
+    frame.position.sub(parent.position);
     parent.add(frame);
   }
 }
@@ -145,8 +162,17 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   });
   parent.add(new THREE.Mesh(cavity, mats.cavity));
 
+  // The cavity and the lips are decals glued to the skull — moving them would
+  // peel them off. Only the lower row of teeth swings, on a hinge sitting
+  // behind and below the maw.
+  const jaw = new THREE.Group();
+  jaw.position.set(0, my - mh * 0.2, -p.headDepth * 0.35);
+  parent.add(jaw);
+
   addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, side: 1, count: p.teethTop });
-  addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, side: -1, count: p.teethBottom });
+  addTeeth(jaw, headMesh, p, mats, rng, { mw, mh, my, side: -1, count: p.teethBottom });
+
+  return { jaw };
 }
 
 // ----------------------------------------------------------------- NOSE ----
@@ -255,7 +281,9 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
     parent.add(frame);
   }
 
-  // tendrils are curved tubes sprouting from the crown
+  // tendrils are curved tubes sprouting from the crown; each one hangs in its
+  // own group placed at its root, so the animator can swing it from the base
+  const tendrils = [];
   for (let i = 0; i < p.tendrils; i++) {
     const a = (i / Math.max(1, p.tendrils)) * Math.PI * 2;
     const spread = 0.25 + rng() * 0.45;
@@ -266,13 +294,19 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
     const pts = [0, 0.35, 0.7, 1].map((t) =>
       hit.point.clone()
         .addScaledVector(hit.normal, len * t)
-        .addScaledVector(bend, t * t),
+        .addScaledVector(bend, t * t)
+        .sub(hit.point),
     );
     const geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 6, S * 0.028, 4, false);
-    parent.add(new THREE.Mesh(geo, mats.growth));
+    const pivot = new THREE.Group();
+    pivot.position.copy(hit.point);
+    pivot.add(new THREE.Mesh(geo, mats.growth));
+    parent.add(pivot);
+    tendrils.push({ pivot, len, phase: rng() * Math.PI * 2 });
   }
 
-  // spore cloud above the skull
+  // spore cloud above the skull, in a group of its own so it can drift
+  let spores = null;
   if (p.spores > 0) {
     const geo = new THREE.BoxGeometry(S * 0.035, S * 0.035, S * 0.035);
     const inst = new THREE.InstancedMesh(geo, mats.growth, p.spores);
@@ -292,6 +326,10 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
       inst.setMatrixAt(i, m4);
     }
     inst.instanceMatrix.needsUpdate = true;
-    parent.add(inst);
+    spores = new THREE.Group();
+    spores.add(inst);
+    parent.add(spores);
   }
+
+  return { tendrils, spores };
 }

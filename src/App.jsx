@@ -4,9 +4,14 @@ import Panel from './ui/Panel.jsx';
 import { DEFAULTS, randomize, randomSeed } from './creature/schema.js';
 import { readUrlParams, syncUrl, shareUrl, copyText, prettyJson } from './lib/codec.js';
 
+// Someone who asked the system for less motion should not be met by a
+// twitching freak; they can still switch it on with the IDLE button.
+const WANTS_MOTION = !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+
 export default function App() {
   const [params, setParams] = useState(() => readUrlParams() || { ...DEFAULTS });
   const [note, setNote] = useState('');
+  const [idle, setIdle] = useState(WANTS_MOTION);
   const noteTimer = useRef(0);
 
   // The scene gets a deferred value: the slider stays responsive even when
@@ -53,20 +58,29 @@ export default function App() {
     flash(ok ? 'link copied' : 'link is in the address bar');
   }, [params, flash]);
 
+  const onToggleIdle = useCallback(() => {
+    setIdle((v) => {
+      flash(v ? 'idle motion off' : 'idle motion on');
+      return !v;
+    });
+  }, [flash]);
+
   return (
     <div className="app">
       <div className="viewport">
-        <Stage params={scene} />
+        <Stage params={scene} idle={idle} />
       </div>
       <Panel
         params={params}
         note={note}
+        idle={idle}
         onChange={setParam}
         onRandom={onRandom}
         onSeed={onSeed}
         onReset={onReset}
         onCopyJson={onCopyJson}
         onCopyLink={onCopyLink}
+        onToggleIdle={onToggleIdle}
       />
     </div>
   );

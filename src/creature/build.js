@@ -5,6 +5,7 @@ import { makeMaterials, withOutline } from './materials.js';
 import { addEyes, addMouth, addNose, addGrowths, headUnit } from './features.js';
 import { buildBody } from './body.js';
 import { sanitize } from './schema.js';
+import { computeStats } from './stats.js';
 
 /**
  * params -> a ready THREE.Group. Fully deterministic: the same parameter set
@@ -26,19 +27,26 @@ export function buildCreature(rawParams) {
 
   const head = new THREE.Group();
   withOutline(head, headMesh, headGeo, p.outline * S, mats.outline);
-  addGrowths(head, headMesh, p, mats, rng);
+  const growths = addGrowths(head, headMesh, p, mats, rng);
   addNose(head, headMesh, p, mats);
-  addEyes(head, headMesh, p, mats, rng);
-  addMouth(head, headMesh, p, mats, rng);
+  const eyes = addEyes(head, headMesh, p, mats, rng);
+  const { jaw } = addMouth(head, headMesh, p, mats, rng);
 
   // --- body derived from the head share
   const skull = headGeo.boundingBox;
   const body = buildBody(p, mats, skull);
-  head.position.y = body.legH + body.torsoH * 0.86 - skull.min.y;
+
+  // The head hangs on a pivot at the neck rather than at the skull's centre:
+  // a top-heavy head has to swing from where it meets the body, otherwise
+  // nodding looks like the skull spinning on the spot.
+  const headPivot = new THREE.Group();
+  headPivot.position.y = body.legH + body.torsoH * 0.86;
+  head.position.y = -skull.min.y;
+  headPivot.add(head);
 
   const group = new THREE.Group();
   group.add(body.group);
-  group.add(head);
+  group.add(headPivot);
 
   const bbox = new THREE.Box3().setFromObject(group);
   const size = new THREE.Vector3();
@@ -49,7 +57,7 @@ export function buildCreature(rawParams) {
   // Frame on "skull plus body", ignoring spores and tendrils: otherwise the
   // spore cloud pushes the camera back and the character becomes a dot.
   const fitBox = new THREE.Box3().setFromObject(body.group);
-  fitBox.union(skull.clone().translate(new THREE.Vector3(0, head.position.y, 0)));
+  fitBox.union(skull.clone().translate(new THREE.Vector3(0, headPivot.position.y + head.position.y, 0)));
   const fitSize = new THREE.Vector3();
   const fitCenter = new THREE.Vector3();
   fitBox.getSize(fitSize);
@@ -67,5 +75,29 @@ export function buildCreature(rawParams) {
     mats.gradientMap.dispose();
   };
 
-  return { group, bbox, size, center, fitSize, fitCenter, params: p, dispose };
+  // Named pivots for the animator. Everything here is a group that owns both
+  // its mesh and its outline shell, so animating it keeps the two together.
+  const rig = {
+    root: group,
+    headPivot,
+    bodyPivot: body.group,
+    torso: body.torso,
+    legs: body.legs,
+    shoulders: body.shoulders,
+    eyes,
+    jaw,
+    tendrils: growths.tendrils,
+    spores: growths.spores,
+    scale: S,
+    neckY: headPivot.position.y,
+  };
+
+  return {
+    group,
+    rig,
+    stats: computeStats(p),
+    bbox, size, center, fitSize, fitCenter,
+    params: p,
+    dispose,
+  };
 }

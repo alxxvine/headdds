@@ -38,7 +38,10 @@ function Stats({ params }) {
   );
 }
 
-export default function Panel({ params, onChange, onRandom, onSeed, onReset, onCopyJson, onCopyLink, note }) {
+export default function Panel({
+  params, note, idle,
+  onChange, onRandom, onSeed, onReset, onCopyJson, onCopyLink, onToggleIdle,
+}) {
   return (
     <aside className="panel">
       <header className="panel-head">
@@ -62,6 +65,14 @@ export default function Panel({ params, onChange, onRandom, onSeed, onReset, onC
         <button type="button" onClick={onCopyLink}>LINK</button>
         <button type="button" onClick={onCopyJson}>JSON</button>
         <button type="button" onClick={onReset}>RESET</button>
+        <button
+          type="button"
+          className={idle ? 'toggle on' : 'toggle'}
+          onClick={onToggleIdle}
+          title="idle motion — breathing, blinking, wobble"
+        >
+          IDLE
+        </button>
       </div>
       <div className="note">{note || HINT}</div>
 

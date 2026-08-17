@@ -3,8 +3,9 @@ import * as THREE from 'three';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildCreature } from '../creature/build.js';
+import { createAnimator } from './animator.js';
 
-function Creature({ params, onBuilt }) {
+function Creature({ params, onBuilt, idle, poke }) {
   const { camera, controls } = useThree();
   const lastFit = useRef(0);
   const fitted = useRef(false);
@@ -41,6 +42,43 @@ function Creature({ params, onBuilt }) {
       controls.update();
     }
   }, [built, camera, controls, onBuilt]);
+
+  // The animator lives outside the built creature: buildCreature() throws the
+  // whole mesh away on every slider move, and the pose must not restart with it.
+  const animator = useMemo(() => createAnimator(), []);
+  const pointer = useThree((s) => s.pointer);
+  const dom = useThree((s) => s.gl.domElement);
+  const hovering = useRef(false);
+  const wasIdle = useRef(idle);
+
+  useEffect(() => {
+    poke.current = () => animator.poke();
+  }, [animator, poke]);
+
+  useEffect(() => {
+    const enter = () => { hovering.current = true; };
+    const leave = () => { hovering.current = false; };
+    dom.addEventListener('pointerenter', enter);
+    dom.addEventListener('pointerleave', leave);
+    return () => {
+      dom.removeEventListener('pointerenter', enter);
+      dom.removeEventListener('pointerleave', leave);
+    };
+  }, [dom]);
+
+  useFrame((_, dt) => {
+    if (!idle) {
+      // snap back to the built pose once, then stay out of the way
+      if (wasIdle.current) animator.rest(built.rig);
+      wasIdle.current = false;
+      return;
+    }
+    wasIdle.current = true;
+    animator.update(built.rig, built.stats, dt, {
+      pointer: { x: pointer.x, y: pointer.y },
+      active: hovering.current,
+    });
+  });
 
   return <primitive object={built.group} />;
 }
@@ -85,13 +123,25 @@ function Controls() {
   return null;
 }
 
-export default function Stage({ params, onBuilt }) {
+export default function Stage({ params, onBuilt, idle = true }) {
+  const poke = useRef(() => {});
+  const down = useRef({ x: 0, y: 0 });
+
+  // A click pokes the creature, a drag orbits the camera — tell them apart by
+  // how far the pointer travelled.
+  const onDown = (e) => { down.current = { x: e.clientX, y: e.clientY }; };
+  const onUp = (e) => {
+    if (Math.hypot(e.clientX - down.current.x, e.clientY - down.current.y) < 5) poke.current();
+  };
+
   return (
     <Canvas
       className="stage"
       dpr={1 / params.pixelSize}
       gl={{ antialias: false, alpha: false, preserveDrawingBuffer: true }}
       camera={{ fov: 34, position: [0, 1.5, 6] }}
+      onPointerDown={onDown}
+      onPointerUp={onUp}
     >
       <color attach="background" args={[params.bgColor]} />
       <ambientLight intensity={0.55} />
@@ -100,7 +150,7 @@ export default function Stage({ params, onBuilt }) {
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
       <PixelScale pixelSize={params.pixelSize} />
       <Controls />
-      <Creature params={params} onBuilt={onBuilt} />
+      <Creature params={params} onBuilt={onBuilt} idle={idle} poke={poke} />
     </Canvas>
   );
 }
