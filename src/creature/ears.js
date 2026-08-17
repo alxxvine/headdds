@@ -51,9 +51,98 @@ export function addEars(parent, p, mats, S, rng) {
     // turned that base showed as a hard disc hanging off the head — an ear with
     // a lid on it. An ellipsoid has no flat face to show, so the shapes here
     // are all spheres under a scale.
+    // Ellipsoids under a scale, because a cone has a flat base and whichever
+    // way it is turned that base shows as a hard disc hanging off the head.
+    // What separates one kind from another is where it sits, how it leans and
+    // how it is squashed — plus the warp, which stops the two sides matching.
+    const ell = (sx, sy, sz, lean, px, py, pz) => {
+      geo = warpGeometry(new THREE.SphereGeometry(1, 11, 9), rng(), warpRoll(p, rng));
+      mesh = new THREE.Mesh(geo, mats.trim);
+      mesh.scale.set(size * sx, size * sy, size * sz);
+      mesh.rotation.x = lean;
+      mesh.position.set(px * size, py * size, pz * size);
+    };
+
     let geo;
     let mesh;
-    if (kind === 'flaps') {
+    if (kind === 'cups') {
+      // a dish turned forward, listening at you
+      ell(0.95, 1.05, 0.42, 1.35, 0, 0.25, 0.72);
+    } else if (kind === 'leaf') {
+      // broad and flat, standing off the skull like a leaf on a stem
+      ell(0.22, 1.5, 1.1, 0.9, 0, 0.5, 0.9);
+    } else if (kind === 'bat') {
+      // tall, narrow and swept back
+      ell(0.2, 1.9, 0.55, -0.35, 0, 1.5, 0.35);
+    } else if (kind === 'droop') {
+      // a long lobe hanging straight down the side of the head
+      ell(0.3, 2.1, 0.6, 3.0, 0, -1.7, 0.5);
+    } else if (kind === 'stub') {
+      // barely an ear: a knob on the side of the skull
+      ell(0.6, 0.6, 0.6, 0, 0, 0.15, 0.4);
+    } else if (kind === 'tube') {
+      // a pipe stuck out sideways, open at the far end
+      geo = warpGeometry(new THREE.CylinderGeometry(size * 0.4, size * 0.55, size * 1.6, 9, 3, true),
+        rng(), warpRoll(p, rng, 0.7));
+      mesh = new THREE.Mesh(geo, mats.trim);
+      mesh.rotation.x = Math.PI / 2;
+      mesh.position.set(0, 0, size * 0.75);
+      const bore = new THREE.Mesh(new THREE.CylinderGeometry(size * 0.3, size * 0.42, size * 1.4, 8), mats.cavity);
+      bore.rotation.x = Math.PI / 2;
+      bore.position.set(0, 0, size * 0.7);
+      pivot.add(bore);
+    } else if (kind === 'frills') {
+      // not one ear but a row of small ones down the jaw line
+      for (let i = 0; i < 3; i++) {
+        const g = warpGeometry(new THREE.SphereGeometry(1, 9, 7), rng(), warpRoll(p, rng));
+        const m = new THREE.Mesh(g, mats.trim);
+        const k = size * (0.85 - i * 0.18);
+        m.scale.set(k * 0.18, k * 0.85, k * 0.6);
+        m.rotation.x = 2.2 + i * 0.25;
+        m.position.set(0, -i * size * 0.55 - size * 0.3, size * (0.55 - i * 0.08));
+        withOutline(pivot, m, g, p.outline * 0.4 * S, mats.outline);
+      }
+      pivots.push({ pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0.45 });
+      continue;
+    } else if (kind === 'spines') {
+      // a cluster of small spikes where an ear would be
+      for (let i = 0; i < 4; i++) {
+        const g = warpGeometry(new THREE.ConeGeometry(size * 0.16, size * (0.8 + i * 0.22), 5, 3),
+          rng(), warpRoll(p, rng, 0.8));
+        const m = new THREE.Mesh(g, mats.growth);
+        m.rotation.x = Math.PI / 2 - 0.5 + i * 0.28;
+        m.rotation.z = (i - 1.5) * 0.3;
+        m.position.set(0, (i - 1.5) * size * 0.22, size * 0.5);
+        withOutline(pivot, m, g, p.outline * 0.4 * S, mats.outline);
+      }
+      pivots.push({ pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0.05 });
+      continue;
+    } else if (kind === 'curl') {
+      // a ram's curl, three segments tightening as they go
+      for (let i = 0; i < 3; i++) {
+        const g = warpGeometry(new THREE.SphereGeometry(size * (0.5 - i * 0.11), 9, 7),
+          rng(), warpRoll(p, rng, 0.6));
+        const m = new THREE.Mesh(g, mats.growth);
+        const a = i * 1.15;
+        m.position.set(0, Math.sin(a) * size * 0.75, size * (0.4 + Math.cos(a) * 0.7));
+        withOutline(pivot, m, g, p.outline * 0.4 * S, mats.outline);
+      }
+      pivots.push({ pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0.05 });
+      continue;
+    } else if (kind === 'fan') {
+      // a pleated fan standing off the skull, three blades from one root
+      for (let i = 0; i < 3; i++) {
+        const g = warpGeometry(new THREE.SphereGeometry(1, 9, 7), rng(), warpRoll(p, rng));
+        const m = new THREE.Mesh(g, mats.trim);
+        m.scale.set(size * 0.14, size * (1.3 - i * 0.15), size * 0.55);
+        m.rotation.x = 0.2;
+        m.rotation.z = (i - 1) * 0.42;
+        m.position.set(0, size * 1.0, size * 0.5);
+        withOutline(pivot, m, g, p.outline * 0.4 * S, mats.outline);
+      }
+      pivots.push({ pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0.35 });
+      continue;
+    } else if (kind === 'flaps') {
       // broad and hanging: down and a little out, tapering to a point
       geo = warpGeometry(new THREE.SphereGeometry(1, 11, 9), rng(), warpRoll(p, rng));
       mesh = new THREE.Mesh(geo, mats.trim);
