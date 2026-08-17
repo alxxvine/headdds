@@ -1,6 +1,9 @@
 import { GROUPS, PARAMS } from '../creature/schema.js';
 import Control from './Control.jsx';
 
+const TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+const HINT = TOUCH ? 'тащи — вращать, щипок — зум' : 'ЛКМ — вращать, колесо — зум';
+
 export default function Panel({ params, onChange, onRandom, onSeed, onReset, onCopyJson, onCopyLink, note }) {
   return (
     <aside className="panel">
@@ -26,7 +29,7 @@ export default function Panel({ params, onChange, onRandom, onSeed, onReset, onC
         <button type="button" onClick={onCopyJson}>JSON</button>
         <button type="button" onClick={onReset}>СБРОС</button>
       </div>
-      <div className="note">{note || 'ЛКМ — вращать, колесо — зум'}</div>
+      <div className="note">{note || HINT}</div>
 
       <div className="groups">
         {GROUPS.map((g) => (

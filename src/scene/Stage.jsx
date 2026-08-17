@@ -45,6 +45,22 @@ function Creature({ params, onBuilt }) {
   return <primitive object={built.group} />;
 }
 
+// Ниже этой ширины буфера пиксели превращаются в кашу: на телефоне
+// 412 CSS-пикселей при делителе 4 давали бы картинку в 103 пикселя.
+const MIN_BUFFER_WIDTH = 190;
+
+function PixelScale({ pixelSize }) {
+  const width = useThree((s) => s.size.width);
+  const setDpr = useThree((s) => s.setDpr);
+
+  useEffect(() => {
+    const dpr = Math.min(1, Math.max(1 / pixelSize, MIN_BUFFER_WIDTH / Math.max(1, width)));
+    setDpr(dpr);
+  }, [pixelSize, width, setDpr]);
+
+  return null;
+}
+
 function Controls() {
   const { camera, gl, set } = useThree();
   const ref = useRef();
@@ -82,6 +98,7 @@ export default function Stage({ params, onBuilt }) {
       <hemisphereLight args={['#8fa6c4', '#241a2b', 1.1]} />
       <directionalLight position={[3, 5, 6]} intensity={2.6} />
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
+      <PixelScale pixelSize={params.pixelSize} />
       <Controls />
       <Creature params={params} onBuilt={onBuilt} />
     </Canvas>
