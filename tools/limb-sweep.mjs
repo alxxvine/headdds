@@ -26,8 +26,22 @@ function capsules(root, out, inv) {
     const k = Math.max(s.x, s.y, s.z);
     const put = (a, b, r) => out.push({ a: a.applyMatrix4(inv), b: b.applyMatrix4(inv), r });
     if (g.type === 'SphereGeometry') {
+      // A squashed sphere is an ellipsoid, and calling it a ball of its LARGEST
+      // semi-axis is the same overestimate a bounding box would make: a splayed
+      // foot is scaled 1.1 across and 2.2 deep, so measuring it 2.2 wide
+      // reported the two feet touching while a two-pixel gap sat between them.
+      // The tight enclosure is a capsule down the long axis with the radius of
+      // the other two.
+      const r0 = par.radius ?? 0;
+      const semi = [s.x, s.y, s.z].map((v) => Math.abs(v) * r0);
+      const long = semi.indexOf(Math.max(...semi));
+      const rad = Math.max(...semi.filter((_, i) => i !== long));
+      const axis = new THREE.Vector3(long === 0 ? 1 : 0, long === 1 ? 1 : 0, long === 2 ? 1 : 0);
+      const half = Math.max(0, semi[long] - rad);
       const c = new THREE.Vector3(); o.getWorldPosition(c);
-      put(c.clone(), c.clone(), (par.radius ?? 0) * k);
+      const q = new THREE.Quaternion(); o.getWorldQuaternion(q);
+      axis.applyQuaternion(q).multiplyScalar(half);
+      put(c.clone().add(axis), c.clone().sub(axis), rad);
     } else if (['CapsuleGeometry', 'CylinderGeometry', 'ConeGeometry'].includes(g.type)) {
       const h = (par.height ?? par.length ?? 0) / 2;
       const r = Math.max(par.radius ?? 0, par.radiusTop ?? 0, par.radiusBottom ?? 0) * k;

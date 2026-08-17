@@ -64,16 +64,18 @@ export function makeMaterials(p) {
 }
 
 /**
- * Outline thickness for a part of a given radius. The shell is pushed out by
- * an ABSOLUTE distance, and everything below the neck takes its ink from the
- * skull — so on a freak whose legs are a fortieth of its head, the rim came out
- * thicker than the leg inside it and the limb rendered as a solid black stick.
- * That was 513 of 600 random creatures, at a median of twice the leg's radius.
- *
- * An outline is a rim, not a coating: never more than a third of what it is
- * drawn around.
+ * How thin the part is at its thinnest, from the geometry itself. This is what
+ * an outline has to stay inside of.
  */
-export const rim = (ink, radius) => Math.min(ink, Math.max(radius, 1e-6) * 0.34);
+function thinnestHalf(geo) {
+  if (!geo.boundingBox) geo.computeBoundingBox();
+  const b = geo.boundingBox;
+  return Math.max(1e-6, Math.min(
+    b.max.x - b.min.x,
+    b.max.y - b.min.y,
+    b.max.z - b.min.z,
+  ) / 2);
+}
 
 /**
  * Inverted-hull outline: a copy of the mesh, inflated along its normals and
@@ -93,13 +95,32 @@ export function outlineGeometry(geo, thickness) {
     );
   }
   pos.needsUpdate = true;
+  // The clone inherits whatever bounds the source had cached, and the vertices
+  // it inherited them with have just moved. Both have to be redone, not only
+  // the sphere the renderer culls by.
   out.computeBoundingSphere();
+  out.computeBoundingBox();
   return out;
 }
 
-/** A mesh plus its outline in one call. */
+/**
+ * A mesh plus its outline in one call.
+ *
+ * The thickness every caller asks for is an ABSOLUTE distance scaled off the
+ * skull, because that is the one size the whole creature shares. On the head
+ * itself that is right. On everything small it was not: a needle tooth is a
+ * hundredth of the skull across, so a rim two hundredths wide turned each white
+ * sliver into a black bar with a highlight, and a row of them into a barcode.
+ * The same arithmetic made legs into black sticks — 400 of 600 creatures — and
+ * did it to quills, tendrils, horns and eye beads too.
+ *
+ * So the cap lives here rather than at the thirty call sites that would each
+ * have to remember it: an outline is a rim, never more than a third of the
+ * part it is drawn around, measured on the part's own geometry.
+ */
 export function withOutline(parent, mesh, geo, thickness, outlineMat) {
   parent.add(mesh);
+  thickness = Math.min(thickness, thinnestHalf(geo) * 0.34);
   if (thickness > 0) {
     const shell = new THREE.Mesh(outlineGeometry(geo, thickness), outlineMat);
     shell.position.copy(mesh.position);
