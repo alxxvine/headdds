@@ -214,7 +214,10 @@ export const PARAMS = [
     { value: 'crust', label: 'crust' },
     { value: 'belly', label: 'pale belly' },
   ], 'none', {
-    random: (rng) => weighted(rng, [['none', 2], ['spots', 3], ['stripes', 3], ['blotches', 3], ['veins', 2], ['crust', 2], ['belly', 2]]),
+    // A random freak comes out in one colour: two-tone skin fights the flat
+    // toon shading and makes the silhouette harder to read. Markings are here
+    // for whoever wants them, not for every roll of RANDOM.
+    random: () => 'none',
   }),
   color('patternColor', 'style', 'marking hue', PATTERN_COLORS, '#f6f0dc', {
     // toon shading has no gradients, so a marking close in brightness to the

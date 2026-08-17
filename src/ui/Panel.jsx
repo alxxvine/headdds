@@ -85,7 +85,7 @@ export default function Panel({
           type="button"
           className={sfx ? 'toggle on' : 'toggle'}
           onClick={onToggleSound}
-          title="procedural voice — every noise is synthesised from the stats"
+          title="procedural voice, synthesised from the stats — on an iPhone the ring/silent switch mutes it"
         >
           SOUND
         </button>

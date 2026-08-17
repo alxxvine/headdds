@@ -75,7 +75,9 @@ export default function App() {
     const state = sound.toggle();
     if (state === null) { flash('no audio in this browser'); return; }
     setSfx(state);
-    flash(state ? 'sound on' : 'sound off');
+    // an iPhone's ring/silent switch mutes web audio outright, and the only
+    // symptom is a button that appears to do nothing
+    flash(state ? 'sound on — iPhone: check the ring switch' : 'sound off');
   }, [sound, flash]);
 
   return (
