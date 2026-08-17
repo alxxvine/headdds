@@ -61,6 +61,15 @@ Defaults are the tame end of every menu, so a link shared before a kind existed
 still opens the creature it was saved as. The variety comes from the weights in
 the randomizer, not from the defaults.
 
+An eye only reads as an eye if it stands apart from what surrounds it, and two
+things make sure it does. Every eyeball sits in a ring of skin **half as bright
+as the face**, so a pale eye on a pale head is an eye rather than a lump with a
+dot on it — the black outline is one pixel wide at this resolution and cannot
+separate the two by itself. And RANDOM reconciles the palettes after the fact:
+the sclera is kept clear of the skin's brightness and the pupil clear of the
+sclera's, which is why the pupil palette has pale entries as well as dark ones.
+Colours you pick by hand are left exactly as you picked them.
+
 Ears are the newest of these and the only part that changes the silhouette from
 the side without touching the face, which is why they exist: two freaks with the
 same skull read as two creatures the moment one of them has flaps. They sway

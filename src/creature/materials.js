@@ -55,7 +55,10 @@ export function makeMaterials(p) {
     }),
     pupil: new THREE.MeshBasicMaterial({ color: new THREE.Color(p.pupilColor) }),
     cavity: new THREE.MeshBasicMaterial({ color: shade(p.lipColor, 0.78) }),
-    socket: new THREE.MeshBasicMaterial({ color: shade(p.skinColor, 0.85) }),
+    // The rim an eyeball sits in. Well darker than the face on purpose: a
+    // bulging eye the same tone as the skin reads as a lump, and the thin
+    // outline around it is not enough to separate the two.
+    socket: new THREE.MeshBasicMaterial({ color: shade(p.skinColor, 0.5) }),
     outline: new THREE.MeshBasicMaterial({ color: INK.clone(), side: THREE.BackSide }),
   };
 }
