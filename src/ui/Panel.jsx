@@ -42,8 +42,8 @@ const MOOD_HINT = 'how it feels about you right now: it warms up when you hover 
   + 'and spin the camera, gets angry if you keep poking it, and tires out';
 
 export default function Panel({
-  params, note, idle, mood,
-  onChange, onRandom, onSeed, onReset, onCopyJson, onCopyLink, onToggleIdle,
+  params, note, idle, mood, sfx,
+  onChange, onRandom, onSeed, onReset, onCopyJson, onCopyLink, onToggleIdle, onToggleSound,
 }) {
   return (
     <aside className="panel">
@@ -71,6 +71,8 @@ export default function Panel({
         <button type="button" onClick={onCopyLink}>LINK</button>
         <button type="button" onClick={onCopyJson}>JSON</button>
         <button type="button" onClick={onReset}>RESET</button>
+      </div>
+      <div className="actions">
         <button
           type="button"
           className={idle ? 'toggle on' : 'toggle'}
@@ -78,6 +80,14 @@ export default function Panel({
           title="idle motion — breathing, blinking, wobble"
         >
           IDLE
+        </button>
+        <button
+          type="button"
+          className={sfx ? 'toggle on' : 'toggle'}
+          onClick={onToggleSound}
+          title="procedural voice — every noise is synthesised from the stats"
+        >
+          SOUND
         </button>
       </div>
       <div className="note">{note || HINT}</div>

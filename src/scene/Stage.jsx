@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildCreature } from '../creature/build.js';
 import { createAnimator } from './animator.js';
 
-function Creature({ params, onBuilt, idle, poke, onMood }) {
+function Creature({ params, onBuilt, idle, poke, onMood, sound }) {
   const { camera, controls } = useThree();
   const lastFit = useRef(0);
   const fitted = useRef(false);
@@ -52,10 +52,19 @@ function Creature({ params, onBuilt, idle, poke, onMood }) {
   const wasIdle = useRef(idle);
   const azimuth = useRef(null);
   const mood = useRef(null);
+  const acted = useRef(null);
 
   useEffect(() => {
-    poke.current = () => animator.poke();
-  }, [animator, poke]);
+    poke.current = () => {
+      animator.poke();
+      sound?.cue('poke', animator.drives.anger);
+    };
+  }, [animator, poke, sound]);
+
+  // the voice is derived from the stats, so it is rerolled with the creature
+  useEffect(() => {
+    sound?.setVoice(built.stats, built.params.seed);
+  }, [built, sound]);
 
   useEffect(() => {
     const enter = () => { hovering.current = true; };
@@ -104,6 +113,13 @@ function Creature({ params, onBuilt, idle, poke, onMood }) {
       mood.current = animator.mood;
       onMood?.(animator.moodLabel);
     }
+
+    // a gesture makes its noise when it starts, not every frame it runs
+    if (animator.action !== acted.current) {
+      acted.current = animator.action;
+      const d = animator.drives;
+      if (acted.current) sound?.cue(acted.current, Math.max(d.arousal, d.anger));
+    }
   });
 
   return <primitive object={built.group} />;
@@ -149,7 +165,7 @@ function Controls() {
   return null;
 }
 
-export default function Stage({ params, onBuilt, idle = true, onMood }) {
+export default function Stage({ params, onBuilt, idle = true, onMood, sound }) {
   const poke = useRef(() => {});
   const down = useRef({ x: 0, y: 0 });
 
@@ -176,7 +192,7 @@ export default function Stage({ params, onBuilt, idle = true, onMood }) {
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
       <PixelScale pixelSize={params.pixelSize} />
       <Controls />
-      <Creature params={params} onBuilt={onBuilt} idle={idle} poke={poke} onMood={onMood} />
+      <Creature params={params} onBuilt={onBuilt} idle={idle} poke={poke} onMood={onMood} sound={sound} />
     </Canvas>
   );
 }

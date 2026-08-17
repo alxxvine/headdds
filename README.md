@@ -33,6 +33,7 @@ Deployment to GitHub Pages is set up in `.github/workflows/pages.yml`
 - **JSON** — copies the same creature as a parameter object.
 - **IDLE** — pauses the idle motion (handy for screenshots); off by default for
   anyone whose system asks for reduced motion.
+- **SOUND** — the creature's voice, off until you ask for it.
 - Drag to spin, wheel (or pinch) to zoom. Click the creature to poke it.
 
 ## Parts
@@ -110,6 +111,7 @@ src/creature/build.js    buildCreature(params) -> { group, rig, stats, dispose, 
 src/scene/animator.js    idle motion: springs, blinking, saccades, secondary sway
 src/scene/behaviour.js   what it does between idles: twelve gestures, personality
 src/scene/mood.js        how it feels about you: four drives, five moods
+src/scene/sound.js       its voice: oscillators, noise and envelopes, no samples
 src/scene/Stage.jsx      canvas, lights, pixelated render, camera orbit
 src/ui/                  the panel, generated straight from the schema
 src/lib/noise.js         seeded RNG plus value/fbm noise
@@ -203,6 +205,25 @@ Posture is written from the drives, not from the mood name, so it slides in and
 out instead of snapping; the name only picks the gesture weights and the label.
 And it goes into the same pose struct the gestures write, so the animator still
 applies every transform in one place.
+
+## Voice
+
+Nothing in this repository is a sound file either. `src/scene/sound.js` is a
+small synthesiser: oscillators with pitch sweeps, one buffer of white noise
+through a band-pass, envelopes, and a soft clipper with a low-pass after it so
+the noises are as coarse as the picture.
+
+Every gesture that should make a noise has one — roar, chomp, the landing of a
+hop, sniffing, shivering, a scratch, a groan — and the voice behind them comes
+out of the stats, exactly as the body comes out of the parameters: VIGOR sets
+the pitch (a heavy freak roars around 90 Hz, a light one nearer 270), DREAD sets
+how much noise rides on the tone, BITE the sharpness of a chew, SPEED the tempo
+of the envelopes. The seed adds the last third, so two creatures with the same
+stats still do not sound alike.
+
+Sound is off until the SOUND button is pressed: browsers refuse to start an
+AudioContext without a gesture, and a page that greets you with a roar is a page
+you close.
 
 ## What comes next (gameplay)
 

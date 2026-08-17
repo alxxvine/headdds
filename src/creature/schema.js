@@ -84,7 +84,7 @@ export const PARAMS = [
   range('lumps', 'head', 'lumps', 0, 0.35, 0.08),
   // a freak is rarely symmetric and rarely undamaged
   range('lopsided', 'head', 'lopsidedness', 0, 1, 0, { random: (rng) => (rng() < 0.3 ? 0 : rng() * 0.9) }),
-  range('wear', 'head', 'wear and tear', 0, 1, 0, { random: (rng) => (rng() < 0.35 ? 0 : rng() * 0.9) }),
+  range('wear', 'head', 'wear', 0, 1, 0, { random: (rng) => (rng() < 0.35 ? 0 : rng() * 0.9) }),
   range('lumpScale', 'head', 'lump scale', 0.7, 6, 2.2),
   range('speckle', 'head', 'skin speckle', 0, 1, 0.25),
   range('profile', 'head', 'profile lean', -0.45, 0.45, 0),

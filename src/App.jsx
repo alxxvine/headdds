@@ -1,5 +1,6 @@
-import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import Stage from './scene/Stage.jsx';
+import { createSound } from './scene/sound.js';
 import Panel from './ui/Panel.jsx';
 import { DEFAULTS, randomize, randomSeed } from './creature/schema.js';
 import { readUrlParams, syncUrl, shareUrl, copyText, prettyJson } from './lib/codec.js';
@@ -13,6 +14,10 @@ export default function App() {
   const [note, setNote] = useState('');
   const [idle, setIdle] = useState(WANTS_MOTION);
   const [mood, setMood] = useState(null);
+  const [sfx, setSfx] = useState(false);
+  // Off until asked for: a browser will not start an AudioContext without a
+  // gesture anyway, and a page that greets you with a roar is one you close.
+  const sound = useMemo(() => createSound(), []);
   const noteTimer = useRef(0);
 
   // The scene gets a deferred value: the slider stays responsive even when
@@ -66,16 +71,24 @@ export default function App() {
     });
   }, [flash]);
 
+  const onToggleSound = useCallback(() => {
+    const state = sound.toggle();
+    if (state === null) { flash('no audio in this browser'); return; }
+    setSfx(state);
+    flash(state ? 'sound on' : 'sound off');
+  }, [sound, flash]);
+
   return (
     <div className="app">
       <div className="viewport">
-        <Stage params={scene} idle={idle} onMood={setMood} />
+        <Stage params={scene} idle={idle} onMood={setMood} sound={sound} />
       </div>
       <Panel
         params={params}
         note={note}
         idle={idle}
         mood={mood}
+        sfx={sfx}
         onChange={setParam}
         onRandom={onRandom}
         onSeed={onSeed}
@@ -83,6 +96,7 @@ export default function App() {
         onCopyJson={onCopyJson}
         onCopyLink={onCopyLink}
         onToggleIdle={onToggleIdle}
+        onToggleSound={onToggleSound}
       />
     </div>
   );
