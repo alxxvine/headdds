@@ -3,6 +3,7 @@ import { surfaceAt, surfaceByDir, orientTo, decalGeometry } from './surface.js';
 import { withOutline } from './materials.js';
 import { addHair } from './hair.js';
 import { addEars } from './ears.js';
+import { addAura } from './aura.js';
 
 // Feature sizes are expressed in "head units" so that an eye stays an eye
 // both on a squashed pancake and on a long cucumber.
@@ -623,30 +624,9 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
   const tendrils = addHair(parent, p, mats, rng, S).concat(addEars(parent, p, mats, S, rng));
 
   // spore cloud above the skull, in a group of its own so it can drift
-  let spores = null;
-  if (p.spores > 0) {
-    const geo = new THREE.BoxGeometry(S * 0.035, S * 0.035, S * 0.035);
-    const inst = new THREE.InstancedMesh(geo, mats.growth, p.spores);
-    const top = p.headHeight * 1.02;
-    for (let i = 0; i < p.spores; i++) {
-      const t = rng();
-      const a = rng() * Math.PI * 2;
-      const r = Math.sqrt(rng()) * (0.08 + t * 0.75) * S;
-      const s = 0.5 + rng() * 1.2;
-      scl.set(s, s, s);
-      q.setFromAxisAngle(dir.set(rng(), rng(), rng()).normalize(), rng() * Math.PI);
-      m4.compose(
-        new THREE.Vector3(Math.cos(a) * r, top + t * S * 1.1, Math.sin(a) * r),
-        q,
-        scl,
-      );
-      inst.setMatrixAt(i, m4);
-    }
-    inst.instanceMatrix.needsUpdate = true;
-    spores = new THREE.Group();
-    spores.add(inst);
-    parent.add(spores);
-  }
+  // whatever floats around this one, hung on the head so it travels with it
+  const spores = addAura(p, mats, rng, S, p.headHeight * 1.02);
+  if (spores) parent.add(spores);
 
   return { tendrils, spores };
 }
