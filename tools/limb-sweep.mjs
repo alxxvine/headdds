@@ -1,10 +1,22 @@
-import * as THREE from 'three';
-import { buildCreature } from '/home/user/headdds/src/creature/build.js';
-import { randomize } from '/home/user/headdds/src/creature/schema.js';
-import { createAnimator } from '/home/user/headdds/src/scene/animator.js';
+// Checks the limb invariants over a whole population of animated freaks:
+//   node tools/limb-sweep.mjs [creatures]
+//
+// Three things must hold in every pose the animator can reach — the two arms
+// never cross, the two legs never fuse, and no arm dips below the feet. They
+// are easy to break from a distance: a gesture, a mood posture and the weight
+// shift each add their own rotation, and the build only guarantees the rest
+// pose. Every failure is reported with the gesture that was running.
+//
+// Limbs are measured as the real capsules and spheres, never as bounding
+// boxes: a rotated sphere's AABB is far larger than the sphere, and a tube
+// that curves sideways has an AABB the size of the room.
 
-// Every limb reduced to world-space capsules (segment + radius), measured on
-// the real shapes: a rotated sphere's AABB is far bigger than the sphere.
+import * as THREE from 'three';
+import { buildCreature } from '../src/creature/build.js';
+import { randomize } from '../src/creature/schema.js';
+import { createAnimator } from '../src/scene/animator.js';
+
+/** Every limb reduced to capsules — a segment and a radius — in `inv`'s frame. */
 function capsules(root, out, inv) {
   root.updateMatrixWorld(true);
   root.traverse((o) => {
@@ -69,6 +81,8 @@ const overlap = (A, B) => {
   return worst;
 };
 
+// The mood posture is held pinned at each extreme instead of being played out,
+// so a rare state gets as much coverage as a common one.
 const MOODS = [
   ['calm', { arousal: 0, anger: 0, fatigue: 0, attention: 0 }],
   ['alert', { arousal: 0.3, anger: 0, fatigue: 0, attention: 1 }],

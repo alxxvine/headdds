@@ -116,6 +116,7 @@ src/scene/Stage.jsx      canvas, lights, pixelated render, camera orbit
 src/ui/                  the panel, generated straight from the schema
 src/lib/noise.js         seeded RNG plus value/fbm noise
 src/lib/codec.js         params <-> base64url for the share link
+tools/limb-sweep.mjs     checks the limb invariants over a population
 ```
 
 Three ideas hold the whole thing together:
@@ -169,6 +170,13 @@ twelve gestures — look around, fidget, scratch, stretch, shiver, sniff, chomp,
 roar, hop, slump, inspect a hand, shake — and picks one every few seconds. Each
 one drives the whole body: arms, legs, torso, jaw, eyes and hair all move, not
 just the head.
+
+`node tools/limb-sweep.mjs 300` sweeps a population of animated freaks and
+checks the three things that must hold in any pose: the two arms never cross,
+the two legs never fuse, and no arm dips below the feet. Limbs are measured as
+the real capsules and spheres — a rotated sphere's bounding box is far larger
+than the sphere, and every mistaken "fix" in this repository so far started
+with a bounding box.
 
 Actions never touch the rig. They write offsets into a pose struct which the
 animator adds on top of its idle layers and applies in one place, so the two can
