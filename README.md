@@ -223,6 +223,17 @@ past its own hip line rather than merely down to it: a rounded body narrows
 towards its ends, and a joint measured at the very bottom sits where the width
 has already fallen to a third, which is a third every limb then gets divided by.
 
+`headRatio` saturates at the top of its own range, and this is the one place a
+slider does not deliver exactly what it says. The trunk is the last thing the
+head's share takes from, so at r = 0.88 with long legs there was nothing left of
+it — 4% of the head's height — and the arms and legs hung straight off the skull
+with no body between them. A freak that is mostly head is the point; a freak
+with no torso at all is four sticks and a face. So the trunk keeps at least a
+tenth of the skull's height and past that the character grows rather than the
+trunk vanishing: exact until about r = 0.76, then easing off. Measured over 600
+creatures, the asked-for share and the delivered one differ by a median of 0.071
+either way — the growths above the skull already move it further than this does.
+
 The outline obeys the same discipline, and for the same reason. It is an
 inverted hull pushed out along the normals by an **absolute** distance, and
 everything below the neck takes that distance from the skull — so on a freak

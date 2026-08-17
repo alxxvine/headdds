@@ -6,6 +6,13 @@ import { makeTorsoGeometry, bodyProfile, profilePeak } from './torso.js';
 /**
  * The body is whatever height is left after the head: bodyH = headH * (1-r)/r.
  * At r = 0.7 the head honestly takes up 70% of the character.
+ *
+ * With one saturation, at the very top of the slider: the trunk never goes
+ * below a tenth of the head's height, and past that point the character grows
+ * taller instead of the trunk disappearing. So the head's share is exact until
+ * about r = 0.76 and then eases off — which is invisible next to the spread the
+ * growths above the skull already put on it.
+ *
  * Feet stand at y = 0.
  */
 export function buildBody(p, mats, headBox, rng) {
@@ -15,7 +22,14 @@ export function buildBody(p, mats, headBox, rng) {
   const bodyH = (headH * (1 - r)) / r;
 
   const legH = bodyH * THREE.MathUtils.clamp(0.22 + p.legLen * 0.28, 0.12, 0.7);
-  const torsoH = bodyH - legH;
+  // The trunk is the last thing the head's share takes from, and at the top of
+  // that share there is nothing left: at headRatio 0.88 with long legs it comes
+  // to 4% of the head's height, so the arms and legs hang straight off the
+  // skull with no body between them and nothing to grow out of. A freak that is
+  // mostly head is the point; a freak with no torso at all is four sticks and a
+  // face. Below a tenth of the skull the character grows rather than the trunk
+  // vanishing; the docstring above says what that costs.
+  const torsoH = Math.max(bodyH - legH, headH * 0.1);
   // A limb has to grow out of the body, not float beside it. The order here is
   // what makes that true: limbs are sized against the body the player asked
   // for, then the spread floors that keep them from fusing are worked out, and
