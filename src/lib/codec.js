@@ -1,8 +1,8 @@
 import { sanitize, DEFAULTS, PARAMS } from '../creature/schema.js';
 
-// Персонаж целиком помещается в ссылку: params -> компактный JSON -> base64url.
-// В URL пишем только то, что отличается от дефолтов, — так ссылка короче
-// и старые ссылки не ломаются при добавлении новых параметров.
+// A whole creature fits into a link: params -> compact JSON -> base64url.
+// Only values that differ from the defaults go into the URL, which keeps links
+// short and stops old links from breaking when new parameters are added.
 
 const round = (v) => Math.round(v * 1000) / 1000;
 
@@ -42,7 +42,7 @@ export function shareUrl(params) {
   return url.toString();
 }
 
-/** Тихо кладёт текущего уродца в адресную строку, без перезагрузки. */
+/** Quietly puts the current freak into the address bar, without a reload. */
 export function syncUrl(params) {
   if (typeof history === 'undefined') return;
   history.replaceState(null, '', `?c=${encodeParams(params)}`);

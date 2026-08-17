@@ -1,17 +1,17 @@
 import * as THREE from 'three';
 import { headSurfaceByDir } from './head.js';
 
-// Детали не «висят» перед лицом — каждая сажается на реальную кожу черепа.
-// Для точек, заданных фронтальными координатами (x, y), стреляем лучом из +Z;
-// если луч промахнулся (сильная конусность, узкая макушка) — падаем на
-// аналитическую поверхность по направлению.
+// Features never float in front of the face — each one is planted on the
+// actual skin of the skull. For points given in frontal coordinates (x, y) we
+// shoot a ray from +Z; if the ray misses (heavy taper, narrow crown) we fall
+// back to the analytic surface along a direction.
 
 const raycaster = new THREE.Raycaster();
 const DOWN_Z = new THREE.Vector3(0, 0, -1);
 const ORIGIN = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 
-/** Луч по фронтали: возвращает { point, normal } в системе координат головы. */
+/** Frontal raycast: returns { point, normal } in head-local coordinates. */
 export function surfaceAt(headMesh, p, x, y) {
   ORIGIN.set(x, y, 60);
   raycaster.set(ORIGIN, DOWN_Z);
@@ -23,7 +23,7 @@ export function surfaceAt(headMesh, p, x, y) {
       normal: h.face ? h.face.normal.clone().normalize() : new THREE.Vector3(0, 0, 1),
     };
   }
-  // фолбэк: направление к точке на эллипсоиде габаритов черепа
+  // fallback: aim at a point on the ellipsoid of the skull's extents
   const u = THREE.MathUtils.clamp(x / (p.headWidth * 1.05), -0.98, 0.98);
   const v = THREE.MathUtils.clamp(y / (p.headHeight * 1.05), -0.98, 0.98);
   const w = Math.sqrt(Math.max(0.02, 1 - u * u - v * v));
@@ -32,7 +32,7 @@ export function surfaceAt(headMesh, p, x, y) {
   return { point: s.point.clone(), normal: s.normal.clone() };
 }
 
-/** Точка кожи по направлению (для рогов, бородавок, щупалец). */
+/** Skin point along a direction (for horns, warts, tendrils). */
 export function surfaceByDir(p, x, y, z) {
   _dir.set(x, y, z);
   const s = headSurfaceByDir(p, _dir);
@@ -44,7 +44,7 @@ const _x = new THREE.Vector3();
 const _y = new THREE.Vector3();
 const _z = new THREE.Vector3();
 
-/** Ставит объект в точку так, чтобы его +Z смотрел по нормали кожи. */
+/** Places an object at a point with its +Z pointing along the skin normal. */
 export function orientTo(obj, point, normal) {
   _z.copy(normal).normalize();
   _y.set(0, 1, 0);
@@ -58,8 +58,8 @@ export function orientTo(obj, point, normal) {
 }
 
 /**
- * «Пластырь» — эллиптический диск (или кольцо), облегающий череп.
- * Им рисуются полость пасти, губы и глазницы-дыры.
+ * A decal patch: an elliptical disc (or ring) that hugs the skull.
+ * Used for the maw cavity, the lips and hollow eye sockets.
  */
 export function decalGeometry(headMesh, p, {
   cx = 0, cy = 0, rx = 0.3, ry = 0.2,

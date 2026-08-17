@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const INK = new THREE.Color('#07060a');
 
-/** Ступенчатый тон: 3 ступени света вместо плавного градиента. */
+/** Stepped tone: a few bands of light instead of a smooth gradient. */
 function toonGradient(steps) {
   const n = Math.max(2, Math.min(5, Math.round(steps)));
   const data = new Uint8Array(n);
@@ -18,7 +18,7 @@ function toonGradient(steps) {
   return tex;
 }
 
-/** Приглушает цвет в сторону чернил (amount 0..1). */
+/** Pushes a color towards ink (amount 0..1). */
 export function shade(hex, amount) {
   return new THREE.Color(hex).lerp(INK, THREE.MathUtils.clamp(amount, 0, 1));
 }
@@ -43,8 +43,8 @@ export function makeMaterials(p) {
 }
 
 /**
- * Контур методом inverted hull: копия меша, раздутая по нормалям и
- * вывернутая наизнанку. Дёшево и даёт ту самую «мультяшную» обводку.
+ * Inverted-hull outline: a copy of the mesh, inflated along its normals and
+ * turned inside out. Cheap, and it gives exactly that cartoon edge.
  */
 export function outlineGeometry(geo, thickness) {
   const out = geo.clone();
@@ -64,7 +64,7 @@ export function outlineGeometry(geo, thickness) {
   return out;
 }
 
-/** Меш + его контур одной строкой. */
+/** A mesh plus its outline in one call. */
 export function withOutline(parent, mesh, geo, thickness, outlineMat) {
   parent.add(mesh);
   if (thickness > 0) {

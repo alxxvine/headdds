@@ -9,8 +9,8 @@ export default function App() {
   const [note, setNote] = useState('');
   const noteTimer = useRef(0);
 
-  // Сцену кормим отложенным значением: слайдер остаётся отзывчивым,
-  // даже если пересборка меша занимает пару кадров.
+  // The scene gets a deferred value: the slider stays responsive even when
+  // rebuilding the mesh takes a couple of frames.
   const scene = useDeferredValue(params);
 
   const flash = useCallback((text) => {
@@ -31,26 +31,26 @@ export default function App() {
   const onRandom = useCallback(() => {
     const seed = randomSeed();
     setParams(randomize(seed));
-    flash(`новый уродец #${seed}`);
+    flash(`new freak #${seed}`);
   }, [flash]);
 
   const onSeed = useCallback((seed) => setParams(randomize(seed)), []);
 
   const onReset = useCallback(() => {
     setParams({ ...DEFAULTS });
-    flash('параметры сброшены');
+    flash('parameters reset');
   }, [flash]);
 
   const onCopyJson = useCallback(async () => {
     const ok = await copyText(prettyJson(params));
-    flash(ok ? 'JSON скопирован' : 'не дали доступ к буферу');
+    flash(ok ? 'JSON copied' : 'clipboard access denied');
   }, [params, flash]);
 
   const onCopyLink = useCallback(async () => {
     const url = shareUrl(params);
     syncUrl(params);
     const ok = await copyText(url);
-    flash(ok ? 'ссылка скопирована' : 'ссылка в адресной строке');
+    flash(ok ? 'link copied' : 'link is in the address bar');
   }, [params, flash]);
 
   return (

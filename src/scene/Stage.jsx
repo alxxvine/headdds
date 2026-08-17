@@ -15,12 +15,12 @@ function Creature({ params, onBuilt }) {
 
   useEffect(() => {
     onBuilt?.(built);
-    // Ждём OrbitControls: без них controls.target останется в нуле и
-    // сам утащит камеру обратно на следующем кадре.
+    // Wait for OrbitControls: without them controls.target stays at zero and
+    // drags the camera back on the very next frame.
     if (!controls) return;
     const h = built.fitSize.y;
-    // Перенацеливаем камеру только когда персонаж заметно сменил рост,
-    // иначе каждое движение слайдера сбрасывало бы вращение.
+    // Re-aim the camera only when the character noticeably changed height,
+    // otherwise every slider move would reset the user's rotation.
     const changed = Math.abs(h - lastFit.current) / (lastFit.current || 1) > 0.12;
     if (fitted.current && !changed) return;
     fitted.current = true;
@@ -45,8 +45,8 @@ function Creature({ params, onBuilt }) {
   return <primitive object={built.group} />;
 }
 
-// Ниже этой ширины буфера пиксели превращаются в кашу: на телефоне
-// 412 CSS-пикселей при делителе 4 давали бы картинку в 103 пикселя.
+// Below this buffer width the pixels turn to mush: on a phone 412 CSS pixels
+// divided by 4 would render the creature into just 103 pixels.
 const MIN_BUFFER_WIDTH = 190;
 
 function PixelScale({ pixelSize }) {
