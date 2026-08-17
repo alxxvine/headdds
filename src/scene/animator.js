@@ -77,8 +77,9 @@ export function createAnimator() {
     chewIn: 4,
     chewLeft: 0,
     // previous frame's value of everything the event bus below watches
-    lastBreath: 0,
-    lastSwayVel: 0,
+    lastSwivel: 0,
+    turnRising: false,
+    turnGap: 0,
     jawFloor: 0,
     lastSwing: 0,
     lastLift: 0,
@@ -89,9 +90,16 @@ export function createAnimator() {
 
   // The event bus. A sound must be a consequence of a motion, not a thing on
   // its own timer running alongside it — so the animator reports what the body
-  // just did and the sound layer decides what that is worth hearing. Cleared
-  // and refilled every frame; `act` carries the gesture in progress, so the
-  // same dip can be a sniff during a sniff and a groan during a slump.
+  // just did and the sound layer decides what that is worth hearing.
+  //
+  // The bar is that you can SEE it happen. Breathing swells the body by two
+  // percent and the weight shift tilts it by a couple of degrees; at this
+  // render resolution neither is visible, so a noise hung off them reads as the
+  // creature making sounds by itself. Only motion you can point at gets one:
+  // an arm swinging, the head whipping round, a jump, a blink, the jaw.
+  //
+  // Cleared and refilled every frame; `act` carries the gesture in progress, so
+  // the sound layer can tell a yawn from a roar.
   const events = [];
   const fire = (id, power = 1) => events.push({ id, power, act: behaviour.current });
 
@@ -191,11 +199,6 @@ export function createAnimator() {
 
     // --- breathing: the body swells, the head rides on top -----------------
     const breath = Math.sin(t * 1.7);
-    // the turn of the breath, not the frame: a breath noise hung off this lands
-    // with the body swelling instead of drifting against it
-    if (breath > 0 && S.lastBreath <= 0) fire('breathIn');
-    if (breath <= 0 && S.lastBreath > 0) fire('breathOut');
-    S.lastBreath = breath;
     const b = base.body;
     rig.bodyPivot.scale.set(
       b.scale.x * (1 + breath * 0.02 - pose.body.squash * 0.35),
@@ -207,28 +210,23 @@ export function createAnimator() {
     // --- weight shift from foot to foot ------------------------------------
     const sway = Math.sin(t * 0.42);
     const swayAmp = 0.03 + T.wobble * 0.05 + T.menace * 0.02;
-    // The weight arrives at the ends of the swing, not as it passes through the
-    // middle: watch where the sway turns around.
-    const swayVel = Math.cos(t * 0.42);
-    if (swayVel * S.lastSwayVel < 0) fire('step', 0.4 + T.weight * 0.6);
-    S.lastSwayVel = swayVel;
-
-    // Landing: the body coming back down through its resting height, whether a
-    // hop threw it up there or a stretch lifted it.
+    // A jump: off the ground, and back onto it.
     const lift = pose.root.y;
+    if (lift > 0.06 && S.lastLift <= 0.06) fire('launch', Math.min(1, lift * 6));
     if (S.lastLift > 0.06 && lift <= 0.06) fire('land', Math.min(1, S.lastLift * 6));
     S.lastLift = lift;
 
-    // Anything the limbs and hair are doing. One scalar covers fidgeting,
-    // scratching, shivering and shaking, and its peaks are where the rustle is.
+    // The arms. `stir` is how far they are from hanging, and its peaks are the
+    // moment a swing turns around — which is where you would hear the limb
+    // whip through the air. Hair counts for a little; it moves with them.
     const stir = Math.abs(pose.arms[0].lift) + Math.abs(pose.arms[1].lift)
-      + Math.abs(pose.arms[0].swing) + Math.abs(pose.arms[1].swing) + pose.hair * 0.4;
+      + Math.abs(pose.arms[0].swing) + Math.abs(pose.arms[1].swing) + pose.hair * 0.3;
     S.stirGap -= step;
     if (stir > S.lastStir) S.stirRising = true;
-    else if (S.stirRising && S.lastStir > 0.35 && S.stirGap <= 0) {
+    else if (S.stirRising && S.lastStir > 0.5 && S.stirGap <= 0) {
       S.stirRising = false;
-      S.stirGap = 0.1; // a fast shiver must not turn into a machine gun
-      fire('rustle', Math.min(1, S.lastStir / 2.2));
+      S.stirGap = 0.12; // a fast shiver must not turn into a machine gun
+      fire('move', Math.min(1, S.lastStir / 2.2));
     } else if (stir < S.lastStir) S.stirRising = false;
     S.lastStir = stir;
     spin(rig.root, base.root, 0, pose.root.yaw, sway * swayAmp + pose.root.roll);
@@ -306,6 +304,19 @@ export function createAnimator() {
     }
     S.head.set(cur[0], cur[1], cur[2]);
     S.headVel.set(vel[0], vel[1], vel[2]);
+
+    // The head whipping round. Measured on the spring's own speed, so a lazy
+    // drift is silent and a snap to look at you is not; fired as the turn tops
+    // out, which is when the mass is really moving.
+    const swivel = Math.hypot(vel[0], vel[1]) + Math.abs(vel[2]) * 0.5;
+    S.turnGap -= step;
+    if (swivel > S.lastSwivel) S.turnRising = true;
+    else if (S.turnRising && S.lastSwivel > 1.1 && S.turnGap <= 0) {
+      S.turnRising = false;
+      S.turnGap = 0.3;
+      fire('turn', Math.min(1, (S.lastSwivel - 1.1) / 4));
+    } else if (swivel < S.lastSwivel) S.turnRising = false;
+    S.lastSwivel = swivel;
     spin(rig.headPivot, base.head, S.head.x, S.head.y, S.head.z);
     rig.headPivot.position.set(
       base.head.pos.x,
@@ -374,7 +385,10 @@ export function createAnimator() {
     // --- maw: an occasional chew, plus whatever poke() threw in ------------
     S.chewIn -= step;
     if (S.chewIn <= 0) {
-      S.chewIn = 3 + Math.random() * 6;
+      // A chew is meant to read as the creature doing something, not as a
+      // metronome: at one every few seconds its click became the loudest thing
+      // about a freak standing still.
+      S.chewIn = 6 + Math.random() * 9;
       S.chewLeft = 2 + Math.floor(Math.random() * 3);
     }
     if (S.chewLeft > 0 && S.jaw < 0.05 && S.jawVel <= 0) {

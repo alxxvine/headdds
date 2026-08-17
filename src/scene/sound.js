@@ -1,16 +1,22 @@
 import { makeRng } from '../lib/noise.js';
 
 // The freaks are procedural down to the last vertex, so their noises are too:
-// no samples, just oscillators, a white-noise buffer and envelopes. A voice is
-// derived from the stats, the same way the body is derived from the parameters
-// — a heavy creature is low and slow, a fanged one is sharp and dry.
+// no samples, just oscillators, a buffer of white noise and filters.
 //
-// Nothing here plays on a timer of its own. The animator reports what the body
-// just did — the breath turned, the jaw shut, a foot took the weight, the eyes
-// blinked — and every creature noise is the answer to one of those. A sound
-// that ran alongside the animation instead of out of it would drift against it
-// within seconds, and drifting is exactly what makes a soundtrack feel bolted
-// on.
+// Two rules shape everything here.
+//
+// One: nothing plays on a timer of its own, and nothing plays for a motion you
+// cannot see. The animator reports what the body just did — an arm swung, the
+// head whipped round, it jumped, it blinked, the jaw shut — and every creature
+// noise is the answer to one of those. A sound running alongside the animation
+// instead of out of it drifts against it within seconds, and a noise with
+// nothing visible behind it reads as the creature making sounds by itself.
+//
+// Two: a raw oscillator is a synthesiser, not an animal. Every voiced sound
+// here goes through a throat — a resonant lowpass that tracks the pitch, two
+// formant peaks, vibrato and a growl — and every envelope opens from silence
+// rather than snapping on. That is most of the difference between a creature
+// and a beep.
 //
 // Nothing runs at all until the player switches sound on: browsers refuse to
 // start an AudioContext without a gesture, and a page that greets you with a
@@ -18,7 +24,7 @@ import { makeRng } from '../lib/noise.js';
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
-/** soft clip: gives the tone teeth without turning it into a fuzz pedal */
+/** gentle saturation — warmth, not a fuzz pedal */
 function driveCurve(amount) {
   const n = 1024;
   const curve = new Float32Array(n);
@@ -34,10 +40,9 @@ export function createSound() {
   let ctx = null;
   let master = null;
   let noise = null;
-  let voice = { base: 120, grit: 0.5, bite: 0.5, quick: 1, wet: 0.4 };
+  let voice = { base: 120, grit: 0.5, bite: 0.5, quick: 1 };
   let on = false;
-  // what it is feeling: the ambient layer is entirely built out of this
-  let feel = 'calm';
+  let feel = 'calm';   // the mood, which colours the timbre of everything
   let lastUi = -1;
 
   function start() {
@@ -46,150 +51,250 @@ export function createSound() {
     if (!AC) return false;
     ctx = new AC();
 
-    // one second of white noise, reused by every breath, chomp and footfall
-    const len = Math.floor(ctx.sampleRate);
+    // two seconds of white noise, reused by every rush, scrape and footfall
+    const len = Math.floor(ctx.sampleRate * 2);
     noise = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = noise.getChannelData(0);
     for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
 
     const shaper = ctx.createWaveShaper();
-    shaper.curve = driveCurve(0.35);
+    shaper.curve = driveCurve(0.12);
+    const rumble = ctx.createBiquadFilter();
+    rumble.type = 'highpass';
+    rumble.frequency.value = 70;   // nothing below this survives a small speaker
     const tame = ctx.createBiquadFilter();
     tame.type = 'lowpass';
-    tame.frequency.value = 5200; // matches the render: nothing here is crisp
+    tame.frequency.value = 5000;   // matches the render: nothing here is crisp
     master = ctx.createGain();
     master.gain.value = 0;
 
-    master.connect(shaper).connect(tame).connect(ctx.destination);
+    master.connect(shaper).connect(rumble).connect(tame).connect(ctx.destination);
     return true;
   }
 
-  /** white noise through a band, shaped by an envelope */
-  function puff(t, { dur, from, to, q = 1, gain = 0.5, type = 'bandpass' }) {
+  /**
+   * The envelope every sound uses: up from actual silence over `attack`, then
+   * an exponential fall. Opening from 0.0001 with an exponential ramp — the
+   * obvious way — starts with a click, and a few hundred of those an hour is
+   * most of what makes a soundtrack sound cheap.
+   */
+  function env(t, dur, peak, attack = 0.012) {
+    const g = ctx.createGain();
+    const a = Math.min(attack, dur * 0.4);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + a);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    return g;
+  }
+
+  const grain = (t, dur) => {
     const src = ctx.createBufferSource();
     src.buffer = noise;
     src.loop = true;
-    const f = ctx.createBiquadFilter();
-    f.type = type;
-    f.Q.value = q;
-    f.frequency.setValueAtTime(from, t);
-    f.frequency.exponentialRampToValueAtTime(Math.max(40, to), t + dur);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain, t + dur * 0.15);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(f).connect(g).connect(master);
+    src.playbackRate.value = 0.7 + Math.random() * 0.6; // never the same grain twice
     src.start(t);
     src.stop(t + dur + 0.05);
+    return src;
+  };
+
+  /**
+   * Air: noise through one band. Anything that is a rush rather than a voice —
+   * a limb through the air, a scrape, a scuff. `to` defaults to `from`, because
+   * a swept short noise burst is how you make a laser, not a creature.
+   */
+  function air(t, { dur, from, to = from, q = 1.4, gain = 0.1, attack = 0.02 }) {
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.Q.value = q;
+    f.frequency.setValueAtTime(from, t);
+    if (to !== from) f.frequency.exponentialRampToValueAtTime(Math.max(40, to), t + dur);
+    grain(t, dur).connect(f).connect(env(t, dur, gain, attack)).connect(master);
   }
 
-  /** a pitched voice: one oscillator sweeping, with its own envelope */
-  function tone(t, { dur, from, to, type = 'sawtooth', gain = 0.3, detune = 0, partial = true }) {
+  /** An impact: a pitched drop with a scrap of noise on the front of it. */
+  function knock(t, { dur = 0.18, f = 90, gain = 0.3, grit = 0.4 }) {
     const o = ctx.createOscillator();
-    o.type = type;
-    o.detune.value = detune;
-    o.frequency.setValueAtTime(from, t);
-    o.frequency.exponentialRampToValueAtTime(Math.max(20, to), t + dur);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain, t + dur * 0.12);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(master);
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f * 2.2, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(24, f * 0.5), t + dur * 0.7);
+    o.connect(env(t, dur, gain, 0.004)).connect(master);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+    if (grit > 0) air(t, { dur: dur * 0.35, from: 500, q: 0.8, gain: gain * grit, attack: 0.002 });
+  }
+
+  /** A dry tap — teeth, an eyelid. Fixed band, no sweep, very short. */
+  function tap(t, { dur = 0.035, f = 2400, q = 2.2, gain = 0.14 }) {
+    air(t, { dur, from: f, q, gain, attack: 0.001 });
+  }
+
+  /**
+   * A voice. A sawtooth is a buzz until it is given a throat: a resonant lowpass
+   * riding the pitch, two formant peaks, a little vibrato so the pitch is never
+   * perfectly steady, and — when it is angry — an amplitude flutter, which is
+   * all a growl really is.
+   */
+  function say(t, { dur, f0, f1 = f0 * 0.7, gain = 0.2, growl = 0, breath = 0.25, open = 1 }) {
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(24, f1), t + dur);
+
+    // vibrato, a fifth of a semitone or so. Without it a pitch sweep is a slide
+    // whistle and the ear hears a machine.
+    const vib = ctx.createOscillator();
+    vib.frequency.value = 4.5 + Math.random() * 2.5;
+    const vibDepth = ctx.createGain();
+    vibDepth.gain.value = 12 + Math.random() * 18;
+    vib.connect(vibDepth).connect(o.detune);
+    vib.start(t);
+    vib.stop(t + dur + 0.05);
+
+    // the throat: cutoff tracks the pitch, so the timbre stays voiced whatever
+    // the note is instead of turning into a buzz at the bottom
+    const throat = ctx.createBiquadFilter();
+    throat.type = 'lowpass';
+    throat.Q.value = 6;
+    throat.frequency.setValueAtTime(f0 * (3 + open * 3), t);
+    throat.frequency.exponentialRampToValueAtTime(Math.max(120, f1 * (2 + open * 2)), t + dur);
+
+    const out = env(t, dur, gain, Math.min(0.05, dur * 0.18));
+    const mix = ctx.createGain();
+    o.connect(throat).connect(mix);
+
+    // two resonances are enough for the ear to hear a mouth rather than a filter
+    for (const [hz, q, level] of [[320 + open * 380, 8, 0.5], [1100 + open * 900, 10, 0.3]]) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = hz;
+      bp.Q.value = q;
+      const lv = ctx.createGain();
+      lv.gain.value = level;
+      o.connect(bp).connect(lv).connect(mix);
+    }
+
+    if (growl > 0) {
+      // a growl is amplitude flutter, nothing more exotic than that
+      const am = ctx.createGain();
+      am.gain.value = 1 - growl * 0.5;
+      const lfo = ctx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = 22 + growl * 26;
+      const depth = ctx.createGain();
+      depth.gain.value = growl * 0.5;
+      lfo.connect(depth).connect(am.gain);
+      lfo.start(t);
+      lfo.stop(t + dur + 0.05);
+      mix.connect(am).connect(out);
+    } else {
+      mix.connect(out);
+    }
+    out.connect(master);
+
     o.start(t);
     o.stop(t + dur + 0.05);
 
-    // A phone speaker cannot move enough air for the low end: a heavy freak
-    // roaring at 90 Hz is inaudible on one. Double the fundamental quietly
-    // underneath so the voice still carries, without raising its pitch.
-    if (partial && from < 190) {
-      tone(t, { dur, from: from * 2, to: to * 2, type, gain: gain * 0.4, detune, partial: false });
+    // breathiness, riding the same range the throat sits in
+    if (breath > 0) air(t, { dur, from: f0 * 4, to: f1 * 3, q: 1, gain: gain * breath, attack: 0.03 });
+
+    // a low voice on a phone speaker is no voice at all; an octave up carries it
+    if (f0 < 190) {
+      const up = ctx.createOscillator();
+      up.type = 'triangle';
+      up.frequency.setValueAtTime(f0 * 2, t);
+      up.frequency.exponentialRampToValueAtTime(Math.max(48, f1 * 2), t + dur);
+      up.connect(env(t, dur, gain * 0.3, Math.min(0.05, dur * 0.18))).connect(master);
+      up.start(t);
+      up.stop(t + dur + 0.05);
     }
   }
 
-  // What each motion sounds like. Everything is scaled by the voice, so the
-  // same event on two creatures is two creatures — and by `p`, the strength the
-  // animator measured, so a hard landing lands harder than a soft one.
+  // How the mood colours the voice: how much flutter, how far the throat opens,
+  // where the pitch sits. The mood is not a sound of its own — it is the tone
+  // of every other sound.
+  const COLOUR = {
+    calm: { growl: 0, open: 0.9, pitch: 1 },
+    alert: { growl: 0.1, open: 1.1, pitch: 1.1 },
+    wired: { growl: 0.2, open: 1.2, pitch: 1.2 },
+    hostile: { growl: 0.75, open: 0.7, pitch: 0.85 },
+    spent: { growl: 0.15, open: 0.5, pitch: 0.8 },
+  };
+  const colour = () => COLOUR[feel] ?? COLOUR.calm;
+
+  // One entry per thing the body can do. `p` is how hard it did it.
   const CUES = {
-    /** The breath turning inwards. Its shape is the mood, nothing else. */
-    breathIn(t, p) {
-      const d = 0.55 / voice.quick;
-      if (feel === 'hostile') {
-        // it never stops growling, it only gets louder on the way in
-        tone(t, { dur: d * 1.7, from: voice.base * 0.64, to: voice.base * 0.5, gain: 0.1 });
-        puff(t, { dur: d * 1.7, from: 340, to: 210, q: 1.1, gain: 0.06 * voice.grit });
-      } else if (feel === 'spent') {
-        puff(t, { dur: d, from: 700, to: 260, q: 1.8, gain: 0.16 });
-      } else if (feel === 'wired') {
-        puff(t, { dur: 0.15, from: 600, to: 1500, q: 2.5, gain: 0.16 });
-        puff(t + 0.19, { dur: 0.15, from: 700, to: 1350, q: 2.5, gain: 0.13 });
-      } else if (feel === 'alert') {
-        puff(t, { dur: 0.28, from: 520, to: 1300, q: 2, gain: 0.15 });
-      } else {
-        puff(t, { dur: d, from: 380, to: 780, q: 1.4, gain: 0.1 });
+    /** An arm swinging through the air, or hair whipping after it. */
+    move(t, p) {
+      const c = colour();
+      air(t, {
+        dur: 0.09 + p * 0.13,
+        from: 500 + p * 700,
+        to: 260 + p * 300,
+        q: 1.1,
+        gain: 0.06 + p * 0.11,
+        attack: 0.03 + (1 - p) * 0.03, // a slow swing has no edge on it
+      });
+      // a heavy swing drags a little voice along with it
+      if (p > 0.65) {
+        say(t + 0.02, {
+          dur: 0.16, f0: voice.base * 1.1 * c.pitch, f1: voice.base * 0.8,
+          gain: 0.05 * p, growl: c.growl * 0.5, breath: 0.5, open: c.open,
+        });
       }
     },
-    /** And back out. Quieter than the intake, and where the gut noises live. */
-    breathOut(t, p) {
-      const d = 0.5 / voice.quick;
-      if (feel === 'spent') {
-        puff(t, { dur: d, from: 800, to: 1700, q: 3.5, gain: 0.12 }); // the rasp
-      } else if (feel === 'hostile') {
-        tone(t, { dur: d, from: voice.base * 0.55, to: voice.base * 0.46, gain: 0.07 });
-      } else {
-        puff(t, { dur: d, from: 760, to: 330, q: 1.4, gain: 0.085 });
-      }
-      // a gut is a wet place; now and then it says so, on the way out
-      if (Math.random() < 0.22) {
-        const f = voice.base * 0.5;
-        tone(t + 0.1, { dur: 0.5, from: f * 1.15, to: f * 0.7, gain: 0.07, type: 'sine' });
-        puff(t + 0.1, { dur: 0.5, from: 280, to: 150, q: 3, gain: 0.05 });
-      }
+    /** The head whipping round. */
+    turn(t, p) {
+      air(t, { dur: 0.14 + p * 0.1, from: 380 + p * 420, to: 220, q: 0.9, gain: 0.07 + p * 0.1, attack: 0.035 });
     },
-    /** The jaw shutting. Teeth on a small one, a whole bite on a big one. */
+    /** Off the ground. */
+    launch(t, p) {
+      air(t, { dur: 0.1, from: 900, to: 1500, q: 1.6, gain: 0.07 + p * 0.08, attack: 0.008 });
+    },
+    /** And back onto it. */
+    land(t, p) {
+      knock(t, { dur: 0.16 + p * 0.08, f: voice.base * 0.75, gain: 0.12 + p * 0.16, grit: 0.45 });
+    },
+    /** An eyelid. Barely there, but a face with wet eyes is a face. */
+    blink(t) {
+      tap(t, { dur: 0.03, f: 1900, q: 3, gain: 0.12 });
+    },
+    /** The jaw shutting: teeth, from a dry tick to a real snap. */
     bite(t, p) {
-      // squared, not linear: an idle chew ticks away in the background while a
-      // real bite still snaps
-      puff(t, { dur: 0.04 + p * 0.05, from: 2600 + voice.bite * 2600, to: 700, q: 1.6, gain: 0.04 + p * p * 0.26 });
-      if (p > 0.3) {
-        tone(t, { dur: 0.09, from: voice.base * 1.1, to: voice.base * 0.6, gain: 0.12 * p, type: 'triangle' });
+      const c = colour();
+      tap(t, { dur: 0.03 + p * 0.03, f: 1800 + voice.bite * 1500, q: 2, gain: 0.03 + p * p * 0.17 });
+      if (p > 0.45) knock(t, { dur: 0.08, f: voice.base * 1.4, gain: 0.06 * p, grit: 0 });
+      if (p > 0.8) {
+        say(t, { dur: 0.12, f0: voice.base * c.pitch, f1: voice.base * 0.7, gain: 0.07, growl: c.growl, breath: 0.2, open: 0.5 });
       }
     },
     /**
-     * The jaw opening wide. This is where a roar comes from: not from the
-     * gesture being chosen, but from the mouth actually being open, so the
-     * sound and the maw peak together however the gesture happens to be timed.
+     * The jaw opening wide — where the voice comes from. Not from a gesture
+     * being chosen: from the mouth actually being open, so the sound and the
+     * maw peak together however that gesture happens to be timed.
      */
     gape(t, p, act) {
-      const yawn = act === 'stretch' || feel === 'spent';
-      const d = (yawn ? 1.0 : 0.55 + voice.grit * 0.45) / voice.quick;
-      const f = voice.base * (1 + p * 0.35);
-      if (yawn) {
-        tone(t, { dur: d, from: f * 0.8, to: f * 1.2, gain: 0.16 * p, type: 'triangle' });
-        puff(t, { dur: d, from: 400, to: 900, q: 1.2, gain: 0.08 * p });
+      const c = colour();
+      const f = voice.base * c.pitch;
+      if (act === 'stretch' || feel === 'spent') {
+        say(t, { dur: 0.9 / voice.quick, f0: f * 0.85, f1: f * 1.25, gain: 0.15 * p, growl: 0.08, breath: 0.7, open: 1.4 });
         return;
       }
-      tone(t, { dur: d, from: f * 1.6, to: f * 0.55, gain: 0.16 * p });
-      tone(t + 0.02, { dur: d, from: f * 1.58, to: f * 0.54, gain: 0.085 * p, detune: 14, type: 'square' });
-      puff(t, { dur: d * 0.9, from: 900 + voice.bite * 1800, to: 320, q: 0.8, gain: 0.18 * voice.grit * p });
+      say(t, {
+        dur: (0.5 + voice.grit * 0.4) / voice.quick,
+        f0: f * 1.5, f1: f * 0.6, gain: 0.17 * p,
+        growl: Math.max(c.growl, voice.grit * 0.5),
+        breath: 0.3 + voice.grit * 0.3,
+        open: c.open + 0.5,
+      });
     },
-    /** The body arriving back at its own height. */
-    land(t, p) {
-      tone(t, { dur: 0.16, from: voice.base * 0.9, to: voice.base * 0.28, gain: 0.12 + p * 0.22, type: 'sine' });
-      puff(t, { dur: 0.11, from: 900, to: 180, q: 0.7, gain: 0.06 + p * 0.12 });
+    /** A jab from the player. Not a motion — the motion is the answer to it. */
+    poke(t, m) {
+      const c = colour();
+      say(t, {
+        dur: 0.22, f0: voice.base * (1.6 + m) * c.pitch, f1: voice.base * 1.1,
+        gain: 0.16, growl: c.growl * 0.6, breath: 0.4, open: 1.2,
+      });
     },
-    /** A foot taking the weight at the end of the sway. */
-    step(t, p) {
-      puff(t, { dur: 0.09, from: 620, to: 200, q: 1.4, gain: 0.05 + p * 0.07 });
-    },
-    /** Eyelids. Barely there, but a face with wet eyes is a face. */
-    blink(t) {
-      puff(t, { dur: 0.035, from: 2200, to: 1300, q: 4, gain: 0.05 });
-    },
-    /** Limbs and hair changing direction — the peak of any thrash. */
-    rustle(t, p) {
-      puff(t, { dur: 0.06 + p * 0.05, from: 1800 + p * 1400, to: 900, q: 3, gain: 0.05 + p * 0.1 });
-    },
-
     /**
      * A new freak has just appeared. Its voice is already the new one, so the
      * cry is how you find out what this creature sounds like. The one creature
@@ -197,47 +302,38 @@ export function createSound() {
      */
     spawn(t) {
       const f = voice.base;
-      puff(t, { dur: 0.18, from: 340, to: 1600, q: 1.2, gain: 0.16 });
-      tone(t + 0.06, { dur: 0.3, from: f * 0.8, to: f * 2.1, gain: 0.2, type: 'sawtooth' });
-      tone(t + 0.3, { dur: 0.34, from: f * 2.1, to: f * 1.3, gain: 0.16, type: 'square', detune: 10 });
+      air(t, { dur: 0.2, from: 400, to: 1500, q: 1.2, gain: 0.1, attack: 0.05 });
+      say(t + 0.05, { dur: 0.42, f0: f * 0.7, f1: f * 1.7, gain: 0.18, growl: 0.15, breath: 0.45, open: 1.3 });
+      say(t + 0.42, { dur: 0.3, f0: f * 1.7, f1: f * 1.1, gain: 0.12, growl: 0.1, breath: 0.5, open: 1 });
     },
-
-    // played the moment sound is switched on: without it the first noise waits
-    // for a gesture, and a silent button reads as a broken one
+    /** Played the moment sound is switched on, so the button is obviously live. */
     hello(t) {
-      tone(t, { dur: 0.1, from: voice.base * 1.6, to: voice.base * 2.4, gain: 0.22, type: 'triangle' });
-      tone(t + 0.1, { dur: 0.16, from: voice.base * 2.4, to: voice.base * 3.2, gain: 0.22, type: 'triangle' });
-    },
-    poke(t, m) {
-      tone(t, { dur: 0.16, from: voice.base * (2.1 + m), to: voice.base * 1.1, gain: 0.2, type: 'square' });
-      puff(t, { dur: 0.1, from: 1800, to: 600, q: 1.4, gain: 0.12 });
-    },
-    /** A nose working. The one gesture with no motion channel of its own. */
-    sniff(t) {
-      for (let i = 0; i < 3; i++) {
-        puff(t + 0.22 + i * 0.16, { dur: 0.13, from: 500, to: 2400, q: 3, gain: 0.2 });
-      }
+      const f = voice.base;
+      say(t, { dur: 0.12, f0: f * 1.5, f1: f * 1.5, gain: 0.12, breath: 0.3, open: 1.1 });
+      say(t + 0.13, { dur: 0.2, f0: f * 2.2, f1: f * 2.2, gain: 0.12, breath: 0.3, open: 1.1 });
     },
   };
 
-  // The panel's own noises. These are not the creature: they use fixed
-  // frequencies rather than its voice, so a button sounds like a button no
-  // matter which freak is on screen.
+  // The panel's own noises. Soft filtered triangles rather than the square-wave
+  // blips they started as: next to a creature that breathes, a chiptune beep is
+  // the one thing on the page that sounds like a computer.
+  const beep = (t, f, dur, gain = 0.11) => {
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(f, t);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = f * 3.5;
+    o.connect(lp).connect(env(t, dur, gain, 0.006)).connect(master);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  };
+
   const UI = {
-    tap(t) {
-      tone(t, { dur: 0.05, from: 660, to: 880, gain: 0.12, type: 'square', partial: false });
-    },
-    ok(t) {
-      tone(t, { dur: 0.06, from: 780, to: 780, gain: 0.12, type: 'square', partial: false });
-      tone(t + 0.07, { dur: 0.1, from: 1170, to: 1170, gain: 0.12, type: 'square', partial: false });
-    },
-    nope(t) {
-      tone(t, { dur: 0.07, from: 420, to: 420, gain: 0.13, type: 'square', partial: false });
-      tone(t + 0.08, { dur: 0.13, from: 280, to: 240, gain: 0.13, type: 'square', partial: false });
-    },
-    reset(t) {
-      tone(t, { dur: 0.22, from: 900, to: 300, gain: 0.13, type: 'square', partial: false });
-    },
+    tap(t) { beep(t, 740, 0.06); },
+    ok(t) { beep(t, 660, 0.07); beep(t + 0.075, 990, 0.11); },
+    nope(t) { beep(t, 420, 0.08); beep(t + 0.085, 300, 0.14); },
+    reset(t) { beep(t, 700, 0.07); beep(t + 0.07, 420, 0.16); },
   };
 
   return {
@@ -280,17 +376,7 @@ export function createSound() {
       };
     },
 
-    /** A button in the panel. Not the creature's voice — the interface's own. */
-    ui(id) {
-      if (!on || !ctx || !UI[id]) return;
-      // a colour picker fires while you drag inside it; without this the panel
-      // turns into a machine gun
-      if (ctx.currentTime - lastUi < 0.08) return;
-      lastUi = ctx.currentTime;
-      UI[id](ctx.currentTime + 0.01);
-    },
-
-    /** The mood the ambient layer should sound like. Cheap: called every frame. */
+    /** The mood. Not a sound of its own — the tone of every other sound. */
     setMood(id) {
       if (id) feel = id;
     },
@@ -309,12 +395,22 @@ export function createSound() {
     },
 
     /**
-     * A gesture started, or the player jabbed it. `m` is 0..1 agitation.
+     * The handful of noises with no motion behind them: a birth, a jab.
      * `delay` pushes it into the future; only the offline level tests use it.
      */
     cue(id, m = 0, delay = 0) {
       if (!on || !ctx || !CUES[id]) return;
       CUES[id](ctx.currentTime + 0.01 + delay, clamp01(m));
+    },
+
+    /** A button in the panel. Not the creature's voice — the interface's own. */
+    ui(id) {
+      if (!on || !ctx || !UI[id]) return;
+      // a colour picker fires while you drag inside it; without this the panel
+      // turns into a machine gun
+      if (ctx.currentTime - lastUi < 0.08) return;
+      lastUi = ctx.currentTime;
+      UI[id](ctx.currentTime + 0.01);
     },
 
     dispose() {
