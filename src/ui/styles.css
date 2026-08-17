@@ -1,0 +1,232 @@
+:root {
+  --bg: #0b0a10;
+  --panel: #131119;
+  --line: #262233;
+  --ink: #e8e4f0;
+  --dim: #7d7691;
+  --accent: #8ef0a0;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow: hidden;
+}
+
+.app {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+.viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* весь пиксель-арт живёт здесь: буфер маленький, картинка растянута nearest'ом */
+.stage canvas,
+canvas.stage {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  display: block;
+  touch-action: none;
+}
+
+/* ------------------------------------------------------------------ панель */
+
+.panel {
+  flex: 0 0 268px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.panel-head {
+  padding: 12px 12px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.title {
+  font-size: 15px;
+  letter-spacing: 3px;
+  font-weight: 700;
+}
+
+.sub {
+  color: var(--dim);
+  letter-spacing: 1px;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 0;
+}
+
+.actions button {
+  flex: 1 1 auto;
+  padding: 6px 4px;
+  background: #1c1926;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font: inherit;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+.actions button:hover { border-color: #4a4162; }
+.actions button.primary { background: #2a2440; border-color: #4a4162; font-weight: 700; }
+
+.seed {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--dim);
+}
+
+.seed input {
+  width: 78px;
+  padding: 5px 4px;
+  background: #1c1926;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font: inherit;
+}
+
+.note {
+  padding: 8px 12px;
+  color: var(--dim);
+  min-height: 28px;
+}
+
+.groups { padding: 0 0 40px; }
+
+details {
+  border-top: 1px solid var(--line);
+}
+
+summary {
+  padding: 7px 12px;
+  cursor: pointer;
+  letter-spacing: 2px;
+  color: var(--dim);
+  user-select: none;
+}
+
+summary::marker { color: #453c5e; }
+details[open] > summary { color: var(--ink); }
+
+.group-body { padding: 2px 12px 10px; }
+
+/* --------------------------------------------------------------- контролы */
+
+.row {
+  display: grid;
+  grid-template-columns: 92px 1fr 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.row-label { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-value { text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.row select {
+  grid-column: 2 / span 2;
+  background: #1c1926;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font: inherit;
+  padding: 3px 4px;
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 14px;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 2px;
+  background: #332d47;
+}
+
+input[type='range']::-moz-range-track {
+  height: 2px;
+  background: #332d47;
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 9px;
+  height: 14px;
+  margin-top: -6px;
+  background: var(--ink);
+  border: 0;
+  border-radius: 1px;
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 9px;
+  height: 14px;
+  background: var(--ink);
+  border: 0;
+  border-radius: 1px;
+}
+
+.row-color { grid-template-columns: 92px 1fr; }
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.swatch {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid #000;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.swatch.on { outline: 1px solid var(--ink); outline-offset: 1px; }
+
+.swatch.pick {
+  background: repeating-conic-gradient(#666 0% 25%, #222 0% 50%) 50% / 6px 6px;
+}
+
+/* ------------------------------------------------------------------ мобилы */
+
+@media (max-width: 720px) {
+  .app { flex-direction: column; }
+  .viewport { flex: 1 1 55%; }
+  .panel {
+    flex: 1 1 45%;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .row { grid-template-columns: 84px 1fr 30px; }
+}
