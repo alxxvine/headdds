@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { withOutline } from './materials.js';
+import { withOutline, rim } from './materials.js';
 
 // Arms are built one at a time so the two sides can differ: length, splay and
 // lift all get a per-side wobble from `asymmetry`. Everything hangs along the
@@ -88,7 +88,7 @@ function addHand(parent, p, mats, { limbR, ink, tip, dir }) {
   const palmGeo = new THREE.SphereGeometry(limbR * (p.handType === 'club' ? 1.5 : 0.9), 8, 6);
   const palm = new THREE.Mesh(palmGeo, mats.trim);
   if (p.handType === 'club') palm.scale.set(1.1, 1.3, 1.1);
-  withOutline(frame, palm, palmGeo, ink, mats.outline);
+  withOutline(frame, palm, palmGeo, rim(ink, limbR * (p.handType === 'club' ? 1.5 : 0.9)), mats.outline);
   if (p.handType === 'ball' || p.handType === 'club') return;
 
   // claws and pincers are cones fanned around the tip
@@ -104,7 +104,7 @@ function addHand(parent, p, mats, { limbR, ink, tip, dir }) {
     finger.translateY(-limbR * 0.6);
     // cones point +Y by default; flip so they grow away from the palm
     finger.rotateZ(Math.PI);
-    withOutline(frame, finger, fingerGeo, ink * 0.7, mats.outline);
+    withOutline(frame, finger, fingerGeo, rim(ink * 0.7, limbR * 0.5), mats.outline);
   }
 }
 
@@ -120,7 +120,7 @@ function addSegments(parent, p, mats, { limbR, ink, len, side }) {
     const geo = new THREE.CapsuleGeometry(limbR * 1.05, stubLen, 3, 6);
     const stub = new THREE.Mesh(geo, mats.body);
     stub.position.y = -stubLen * 0.5;
-    withOutline(parent, stub, geo, ink, mats.outline);
+    withOutline(parent, stub, geo, rim(ink, limbR * 1.05), mats.outline);
     tip.set(0, -stubLen - limbR * 0.6, 0);
     return { tip, dir };
   }
@@ -148,7 +148,7 @@ function addSegments(parent, p, mats, { limbR, ink, len, side }) {
     const upGeo = new THREE.CapsuleGeometry(limbR * 0.9, upper, 3, 6);
     const upperMesh = new THREE.Mesh(upGeo, mats.body);
     upperMesh.position.y = -upper * 0.5;
-    withOutline(parent, upperMesh, upGeo, ink, mats.outline);
+    withOutline(parent, upperMesh, upGeo, rim(ink, limbR * 0.9), mats.outline);
 
     const elbow = new THREE.Group();
     elbow.position.y = -upper;
@@ -161,7 +161,7 @@ function addSegments(parent, p, mats, { limbR, ink, len, side }) {
     const foreGeo = new THREE.CapsuleGeometry(limbR * 0.75, fore, 3, 6);
     const foreMesh = new THREE.Mesh(foreGeo, mats.body);
     foreMesh.position.y = -fore * 0.5;
-    withOutline(elbow, foreMesh, foreGeo, ink, mats.outline);
+    withOutline(elbow, foreMesh, foreGeo, rim(ink, limbR * 0.75), mats.outline);
 
     elbow.updateMatrix();
     tip.set(0, -fore - limbR * 0.5, 0).applyMatrix4(elbow.matrix);
@@ -173,7 +173,7 @@ function addSegments(parent, p, mats, { limbR, ink, len, side }) {
   const geo = new THREE.CapsuleGeometry(limbR * 0.85, len, 3, 6);
   const arm = new THREE.Mesh(geo, mats.body);
   arm.position.y = -len * 0.5;
-  withOutline(parent, arm, geo, ink, mats.outline);
+  withOutline(parent, arm, geo, rim(ink, limbR * 0.85), mats.outline);
   tip.set(0, -len - limbR * 0.4, 0);
   return { tip, dir };
 }
