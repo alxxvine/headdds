@@ -8,10 +8,23 @@ import { withOutline } from './materials.js';
 //
 // Each strand reports a `stiffness`: bristles barely move, antennae whip.
 
-const CROWN = (i, n, rng) => {
+const CROWN = (i, n, rng, spreadMax = 0.45) => {
   const a = (i / Math.max(1, n)) * Math.PI * 2;
-  const spread = 0.25 + rng() * 0.45;
+  const spread = 0.25 + rng() * spreadMax;
   return new THREE.Vector3(Math.cos(a) * spread, 1, Math.sin(a) * spread).normalize();
+};
+
+// Fur covers the skull rather than sprouting from the crown, so it needs a
+// direction that reaches down the sides and round the back too.
+const PELT = (i, n, rng) => {
+  const k = (i + 0.5) / Math.max(1, n);
+  const phi = Math.acos(1 - k * 1.35);       // crown down past the ear line
+  const theta = i * 2.399 + rng() * 0.4;     // golden angle: a scatter, not a lattice
+  return new THREE.Vector3(
+    Math.sin(phi) * Math.cos(theta),
+    Math.cos(phi),
+    Math.sin(phi) * Math.sin(theta),
+  ).normalize();
 };
 
 /** A curved tube from the root, already translated into the pivot's space. */
@@ -63,15 +76,57 @@ export function addHair(parent, p, mats, rng, S) {
     return strands;
   }
 
-  for (let i = 0; i < count; i++) {
-    const dir = CROWN(i, count, rng);
+  // fur is a coat, not a hairdo: many more tufts, spread over the whole skull
+  const total = kind === 'fur' ? count * 3 + 6 : count;
+
+  for (let i = 0; i < total; i++) {
+    const dir = kind === 'fur' ? PELT(i, total, rng)
+      : kind === 'quills' ? CROWN(i, total, rng, 0.75)
+      : CROWN(i, total, rng);
     const hit = surfaceByDir(p, dir.x, dir.y, dir.z);
     const len = p.tendrilLen * S * (0.6 + rng() * 0.8);
     const pivot = new THREE.Group();
     pivot.position.copy(hit.point);
 
+    // ----------------------------------------------------------------- fur ---
+    if (kind === 'fur') {
+      // short, blunt and lying against the skull rather than standing off it
+      const h = len * 0.3;
+      const lie = new THREE.Vector3(-dir.x, -0.35, -dir.z).normalize();
+      const geo = new THREE.ConeGeometry(S * 0.035, h, 3);
+      const tuft = new THREE.Mesh(geo, mats.growth);
+      tuft.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        hit.normal.clone().addScaledVector(lie, 0.55).normalize(),
+      );
+      tuft.position.copy(hit.normal).multiplyScalar(h * 0.35);
+      pivot.add(tuft); // no outline: at this size the shell swallows the tuft
+      strands.push({ pivot, len: h, phase: rng() * Math.PI * 2, stiffness: 0.08 });
+    // -------------------------------------------------------------- quills ---
+    } else if (kind === 'quills') {
+      // long and swept back, like a startled porcupine that never calmed down
+      const h = len * 1.45;
+      const geo = new THREE.ConeGeometry(S * 0.032, h, 4);
+      const quill = new THREE.Mesh(geo, mats.growth);
+      const aim = hit.normal.clone().add(new THREE.Vector3(0, 0.25, -0.85)).normalize();
+      quill.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), aim);
+      quill.position.copy(aim).multiplyScalar(h * 0.48);
+      withOutline(pivot, quill, geo, p.outline * 0.4 * S, mats.outline);
+      strands.push({ pivot, len: h, phase: rng() * Math.PI * 2, stiffness: 0.2 });
+    // -------------------------------------------------------------- fronds ---
+    } else if (kind === 'fronds') {
+      // flat leaves fanning off the crown, each turned a different way
+      const h = len * 1.1;
+      const geo = new THREE.ConeGeometry(S * 0.14, h, 3);
+      const leaf = new THREE.Mesh(geo, mats.growth);
+      leaf.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), hit.normal);
+      leaf.position.copy(hit.normal).multiplyScalar(h * 0.5);
+      leaf.scale.z = 0.2;                       // a blade, not a spike
+      leaf.rotateOnAxis(new THREE.Vector3(0, 1, 0), rng() * Math.PI);
+      withOutline(pivot, leaf, geo, p.outline * 0.4 * S, mats.outline);
+      strands.push({ pivot, len: h, phase: rng() * Math.PI * 2, stiffness: 0.75 });
     // ------------------------------------------------------------ bristles ---
-    if (kind === 'bristles') {
+    } else if (kind === 'bristles') {
       const h = len * 0.55;
       const geo = new THREE.ConeGeometry(S * 0.05, h, 4);
       const spike = new THREE.Mesh(geo, mats.growth);

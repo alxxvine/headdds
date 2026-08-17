@@ -42,9 +42,24 @@ export const ARCHETYPES = {
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
 // How the newer part types tilt the raw stats before the budget is applied.
+// What each kind of part is worth. Read them through `from`, never directly:
+// a kind added to the schema but forgotten here used to come back `undefined`,
+// which turned the whole stat block into NaN and emptied the panel.
+const from = (table, key) => table[key] ?? 0;
+
 const HAND_BITE = { none: -0.06, ball: 0, claw: 0.12, pincer: 0.14, club: 0.06 };
-const EYE_SIGHT = { ball: 0, hole: -0.08, bead: -0.04, stalk: 0.1 };
-const HAIR_DREAD = { none: -0.04, tendrils: 0.04, bristles: 0.08, antennae: 0.02, dreads: 0.06, crest: 0.1 };
+const EYE_SIGHT = {
+  ball: 0, hole: -0.08, bead: -0.04, stalk: 0.1,
+  compound: 0.14, lantern: 0.02, gash: -0.1,
+};
+const HAIR_DREAD = {
+  none: -0.04, tendrils: 0.04, bristles: 0.08, antennae: 0.02, dreads: 0.06,
+  crest: 0.1, fur: -0.02, quills: 0.09, fronds: 0.03,
+};
+const TOOTH_BITE = { fangs: 0, needles: 0.06, blocks: -0.04, tusks: 0.1 };
+const NOSE_DREAD = { none: 0, bump: 0, beak: 0.03, snout: 0.02, holes: 0.01, trunk: 0.04, tusks: 0.09, pig: 0 };
+// no hearing stat, so ears count towards the sense the creature does have
+const EAR_SIGHT = { none: 0, flaps: 0.07, fins: 0.05, trumpets: 0.1, holes: 0.03 };
 
 /**
  * Scales raw stats so they sum to exactly BUDGET while every value stays in
@@ -166,6 +181,14 @@ export const TRAITS = [
   { id: 'crested', label: 'CRESTED', when: (p) => p.hairType === 'crest', mods: { dread: 9, balance: -3 } },
   { id: 'bristled', label: 'BRISTLED', when: (p) => p.hairType === 'bristles' && p.tendrils >= 6, mods: { dread: 6, vigor: 3 } },
   { id: 'pinEyed', label: 'PIN-EYED', when: (p) => p.pupilShape === 'blind', mods: { sight: -14, dread: 8 } },
+  { id: 'compound', label: 'COMPOUND-EYED', when: (p) => p.eyeStyle === 'compound' && p.eyeCount > 0, mods: { sight: 14, dread: 5, balance: -4 } },
+  { id: 'lantern', label: 'LANTERN-EYED', when: (p) => p.eyeStyle === 'lantern' && p.eyeCount > 0, mods: { sight: 8, dread: 7 } },
+  { id: 'tusked', label: 'TUSKED', when: (p) => p.toothType === 'tusks' && p.teethTop + p.teethBottom >= 4, mods: { bite: 12, dread: 6, speed: -4 } },
+  { id: 'needled', label: 'NEEDLE-TOOTHED', when: (p) => p.toothType === 'needles' && p.teethTop + p.teethBottom >= 10, mods: { bite: 9, dread: 5 } },
+  { id: 'eared', label: 'BIG-EARED', when: (p) => p.earType !== 'none' && p.earType !== 'holes' && p.earSize > 0.35, mods: { sight: 10, dread: -4 } },
+  { id: 'furred', label: 'FURRED', when: (p) => p.hairType === 'fur' && p.tendrils >= 4, mods: { vigor: 6, speed: -3 } },
+  { id: 'quilled', label: 'QUILLED', when: (p) => p.hairType === 'quills' && p.tendrils >= 5, mods: { dread: 10, vigor: 3 } },
+  { id: 'trunked', label: 'TRUNKED', when: (p) => p.noseType === 'trunk', mods: { sight: 6, dread: 4, speed: -3 } },
   { id: 'hooded', label: 'HOODED', when: (p) => p.eyeLid >= 0.6, mods: { dread: 6, sight: -6 } },
 ];
 
@@ -191,7 +214,8 @@ export function computeStats(p) {
     bite:
       (0.4 * teeth + 0.24 * nk(p, 'toothSize') + 0.22 * nk(p, 'mouthWidth') + 0.14 * nk(p, 'toothJag')) *
       (p.teethTop + p.teethBottom > 0 ? 1 : 0.3) +
-      HAND_BITE[p.handType] * (p.armType === 'none' ? 0 : 1),
+      from(HAND_BITE, p.handType) * (p.armType === 'none' ? 0 : 1) +
+      from(TOOTH_BITE, p.toothType) * (p.teethTop + p.teethBottom > 0 ? 1 : 0),
     speed:
       0.44 * nk(p, 'legLen') +
       0.22 * (1 - mass) +
@@ -203,7 +227,8 @@ export function computeStats(p) {
       0.2 * nk(p, 'eyeBulge') +
       0.16 * nk(p, 'eyeSpread') -
       0.12 * nk(p, 'eyeLid') +
-      EYE_SIGHT[p.eyeStyle],
+      from(EYE_SIGHT, p.eyeStyle) +
+      from(EAR_SIGHT, p.earType) * (0.5 + nk(p, 'earSize') * 0.8),
     dread:
       0.24 * teeth +
       0.2 * nk(p, 'horns') +
@@ -211,7 +236,8 @@ export function computeStats(p) {
       0.14 * nk(p, 'spores') +
       0.14 * nk(p, 'lumps') +
       0.14 * dark +
-      HAIR_DREAD[p.hairType],
+      from(HAIR_DREAD, p.hairType) +
+      from(NOSE_DREAD, p.noseType),
     balance:
       0.34 * nk(p, 'stance') +
       0.3 * (1 - nk(p, 'headRatio')) +

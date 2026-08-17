@@ -43,16 +43,28 @@ Most of a freak is a menu of kinds, each with its own scatter on top:
 
 | | |
 |---|---|
-| arms | none, stubs, sticks, noodles, mantis — plus lift, and a lopsidedness slider that makes the two sides differ |
+| eyes | ball, hollow, bead, on stalks, compound, lantern, gash — 7 kinds |
+| pupils | round, slit, goat, cross, ring, square, double, blind — plus eyelids and per-eye size jitter |
+| teeth | fangs, needles, blocks, tusks |
+| nose | none, bump, beak, snout, nostrils, trunk, tusks, disc |
+| ears | none, flaps, fins, trumpets, holes — with size and height |
+| hair | none, tendrils, bristles, antennae, dreads, crest, fur, quills, fronds — 9 kinds |
+| arms | none, stubs, sticks, noodles, mantis — plus lift and a lopsidedness slider |
 | hands | none, ball, claws, pincer, club |
-| hair | none, tendrils, bristles, antennae, dreads, a bony crest |
-| eyes | ball, hollow, bead, on stalks; pupils round / slit / goat / cross / ring / blind; eyelids; per-eye size jitter |
+
+That is 7 × 8 × 4 × 8 × 5 × 9 × 5 × 5 ways to pick the parts alone, before any
+of the sliders, the colours or the per-seed scatter inside each kind.
 | skin | markings — spots, stripes, blotches, veins, crust, a pale belly — with their own hue, coverage and scale, plus a wet sheen and an emissive glow |
 | damage | lopsidedness pulls the face out of true; wear knocks out teeth, snaps horns to stumps and stitches scars across the skull |
 
 Defaults are the tame end of every menu, so a link shared before a kind existed
 still opens the creature it was saved as. The variety comes from the weights in
 the randomizer, not from the defaults.
+
+Ears are the newest of these and the only part that changes the silhouette from
+the side without touching the face, which is why they exist: two freaks with the
+same skull read as two creatures the moment one of them has flaps. They sway
+with the hair — the animator drives them from the same list.
 
 Markings are painted as vertex colours **after** the creature is assembled, in
 one shared space, so a pattern runs across the skull, the torso and the limbs as
@@ -107,7 +119,8 @@ src/creature/stats.js    six stats and traits derived from the parameters
 src/creature/head.js     the skull: direction -> point of skin (headPoint)
 src/creature/surface.js  planting features on skin: raycasts, orientation, decals
 src/creature/features.js eyes, toothed maw, nose, warts, horns, spores
-src/creature/hair.js     tendrils, bristles, antennae, dreads, a bony crest
+src/creature/hair.js     nine kinds of hair, from fur to a bony crest
+src/creature/ears.js     flaps, fins, trumpets, holes
 src/creature/arms.js     arm and hand kinds, pose, and keeping limbs off the floor
 src/creature/body.js     the body derived from the head share: bodyH = headH * (1-r)/r
 src/creature/skin.js     markings painted as vertex colours across the whole body

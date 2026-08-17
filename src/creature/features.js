@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { surfaceAt, surfaceByDir, orientTo, decalGeometry } from './surface.js';
 import { withOutline } from './materials.js';
 import { addHair } from './hair.js';
+import { addEars } from './ears.js';
 
 // Feature sizes are expressed in "head units" so that an eye stays an eye
 // both on a squashed pancake and on a long cucumber.
@@ -56,6 +57,11 @@ function eyePositions(p, rng) {
  * Shapes are built from primitives rather than textures: at this resolution a
  * squashed capsule reads as a slit and a torus reads as a ring.
  */
+// the pupil helper has no rng of its own and does not need a good one: this is
+// only here to keep a square pupil from sitting perfectly straight
+let rollState = 1;
+const rngRoll = () => { rollState = (rollState * 48271) % 2147483647; return rollState / 2147483647; };
+
 function addPupil(pivot, p, mats, size) {
   if (p.pupilShape === 'blind') return;
 
@@ -84,6 +90,19 @@ function addPupil(pivot, p, mats, size) {
   if (p.pupilShape === 'ring') {
     const ring = new THREE.TorusGeometry(r * 0.9, r * 0.32, 5, 12);
     put(ring).scale.z = 0.5;
+    return;
+  }
+  if (p.pupilShape === 'square') {
+    put(new THREE.BoxGeometry(r * 1.5, r * 1.5, r * 0.5), (rngRoll() - 0.5) * 0.5);
+    return;
+  }
+  if (p.pupilShape === 'double') {
+    // two of them, side by side — the eye never quite looks at you
+    for (const dx of [-1, 1]) {
+      const m = put(new THREE.SphereGeometry(r * 0.62, 8, 6));
+      m.position.x = dx * r * 0.7;
+      m.position.z = z * 0.97;
+    }
     return;
   }
   put(new THREE.SphereGeometry(r, 10, 8));
@@ -166,6 +185,56 @@ export function addEyes(parent, headMesh, p, mats, rng) {
 
       eyes.push({ pivot, stalk, kind: 'stalk', base: pivot.position.clone(), size: size * 0.8 });
       continue;
+    } else if (p.eyeStyle === 'compound') {
+      // an insect's eye: a dark dome studded with facets, no pupil at all
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * (p.eyeBulge - 0.5)), hit.normal);
+      const domeGeo = new THREE.SphereGeometry(size, 10, 8);
+      withOutline(pivot, new THREE.Mesh(domeGeo, mats.pupil), domeGeo, p.outline * 0.7 * S, mats.outline);
+
+      const facetGeo = new THREE.SphereGeometry(size * 0.26, 6, 5);
+      const facets = new THREE.InstancedMesh(facetGeo, mats.eye, 14);
+      const m4 = new THREE.Matrix4();
+      for (let i = 0; i < 14; i++) {
+        // a spiral over the front of the dome, so the facets never line up
+        const k = (i + 0.5) / 14;
+        const phi = Math.acos(1 - k * 0.75);
+        const theta = i * 2.399; // the golden angle: an even scatter, no lattice
+        m4.makeTranslation(
+          Math.sin(phi) * Math.cos(theta) * size * 0.88,
+          Math.sin(phi) * Math.sin(theta) * size * 0.88,
+          Math.cos(phi) * size * 0.88,
+        );
+        facets.setMatrixAt(i, m4);
+      }
+      pivot.add(facets);
+    } else if (p.eyeStyle === 'lantern') {
+      // a glowing orb set back in a bony rim
+      const socket = decalGeometry(headMesh, p, {
+        cx: x, cy: y, rx: size * 1.15, ry: size * 1.15, offset: 0.008, rings: 2, segs: 16,
+      });
+      parent.add(new THREE.Mesh(socket, mats.socket));
+
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.1), hit.normal);
+      const rimGeo = new THREE.TorusGeometry(size * 0.92, size * 0.2, 5, 14);
+      withOutline(pivot, new THREE.Mesh(rimGeo, mats.growth), rimGeo, p.outline * 0.4 * S, mats.outline);
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(size * 0.62, 10, 8), mats.eye);
+      orb.position.z = -size * 0.1;
+      pivot.add(orb);
+      addPupil(pivot, p, mats, size * 0.62);
+    } else if (p.eyeStyle === 'gash') {
+      // no eyeball: a torn slit with something wet showing through it
+      const slit = decalGeometry(headMesh, p, {
+        cx: x, cy: y, rx: size * 1.5, ry: size * 0.42, offset: 0.01, rings: 2, segs: 18,
+      });
+      parent.add(new THREE.Mesh(slit, mats.socket));
+
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.02), hit.normal);
+      const barGeo = new THREE.CapsuleGeometry(size * 0.2, size * 1.9, 2, 6);
+      const bar = new THREE.Mesh(barGeo, mats.eye);
+      bar.rotation.z = Math.PI / 2;
+      bar.scale.z = 0.35;
+      pivot.add(bar);
+      addPupil(pivot, p, mats, size * 0.45);
     } else {
       // ball: sunk into the socket by (1 - bulge)
       orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * (p.eyeBulge - 0.62)), hit.normal);
@@ -199,18 +268,42 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     const hit = surfaceAt(headMesh, p, u, my + side * edge * 0.94);
 
     const w = ((2 * mw) / count) * (1 - p.toothGap) * 0.92;
-    const len = mh * (0.7 + 1.7 * p.toothSize) * (0.72 + rng() * 0.56);
+    let len = mh * (0.7 + 1.7 * p.toothSize) * (0.72 + rng() * 0.56);
     const tip = w * 0.5 * (1 - 0.9 * p.toothJag);
-    // a fang grows tip-first from the rim: the narrow end points into the maw
-    const geo = side > 0
-      ? new THREE.CylinderGeometry(w * 0.5, tip, len, 5)
-      : new THREE.CylinderGeometry(tip, w * 0.5, len, 5);
+
+    // A tooth grows tip-first from the rim: whatever the kind, the narrow end
+    // has to point into the maw, which flips with the row.
+    let geo;
+    let flat = 0.7;
+    let curl = 0;
+    if (p.toothType === 'needles') {
+      len *= 1.35;
+      geo = new THREE.CylinderGeometry(w * 0.16, w * 0.05, len, 4);
+      flat = 1;
+    } else if (p.toothType === 'blocks') {
+      len *= 0.55;
+      geo = new THREE.BoxGeometry(w * 0.88, len, w * 0.8);
+      flat = 1;
+    } else if (p.toothType === 'tusks') {
+      len *= 1.5;
+      geo = new THREE.CylinderGeometry(w * 0.42, w * 0.1, len, 5);
+      flat = 0.9;
+      curl = -side * 0.5; // tusks sweep back out of the mouth
+    } else {
+      geo = side > 0
+        ? new THREE.CylinderGeometry(w * 0.5, tip, len, 5)
+        : new THREE.CylinderGeometry(tip, w * 0.5, len, 5);
+    }
 
     const frame = new THREE.Group();
     orientTo(frame, hit.point, hit.normal);
     const tooth = new THREE.Mesh(geo, mats.tooth);
     tooth.position.set(0, -side * len * 0.45, 0.02 * S);
-    tooth.scale.z = 0.7;
+    if (curl) {
+      tooth.rotation.x = curl;
+      tooth.position.z += len * 0.3;
+    }
+    tooth.scale.z = flat;
     withOutline(frame, tooth, geo, p.outline * 0.45 * S, mats.outline);
     // The jaw group hangs at the hinge, so its children are stored relative
     // to it — otherwise chewing would swing them around the head's origin.
@@ -276,9 +369,53 @@ export function addNose(parent, headMesh, p, mats) {
   const frame = new THREE.Group();
   orientTo(frame, hit.point, hit.normal);
 
+  if (p.noseType === 'tusks') {
+    // not a nose so much as what grows either side of one
+    for (const dx of [-1, 1]) {
+      const h = surfaceAt(headMesh, p, dx * size * 0.9, ny);
+      const f = new THREE.Group();
+      orientTo(f, h.point, h.normal);
+      const g = new THREE.ConeGeometry(size * 0.34, size * 3.2, 5);
+      const tusk = new THREE.Mesh(g, mats.tooth);
+      tusk.rotation.x = Math.PI * 0.34;   // up and out of the face
+      tusk.rotation.z = dx * 0.3;
+      tusk.position.set(0, size * 1.1, size * 1.1);
+      withOutline(f, tusk, g, p.outline * 0.5 * S, mats.outline);
+      parent.add(f);
+    }
+    return;
+  }
+
+  if (p.noseType === 'trunk') {
+    // a heavy hanging tube, built from segments so it can droop
+    const h = surfaceAt(headMesh, p, 0, ny);
+    const frame = new THREE.Group();
+    orientTo(frame, h.point, h.normal);
+    const links = 5;
+    for (let i = 0; i < links; i++) {
+      const k = i / (links - 1);
+      const r = size * (0.85 - k * 0.45);
+      const g = new THREE.SphereGeometry(r, 8, 6);
+      const seg = new THREE.Mesh(g, mats.skin);
+      // Out along the normal first, then increasingly down — and further out
+      // than feels necessary, or it hangs flat against the face and reads as a
+      // line drawn through the teeth rather than as a trunk in front of them.
+      seg.position.set(0, -k * k * size * 2.5, size * (0.4 + k * 2.3 - k * k * 0.5));
+      withOutline(frame, seg, g, p.outline * 0.55 * S, mats.outline);
+    }
+    parent.add(frame);
+    return;
+  }
+
   let geo;
   let mesh;
-  if (p.noseType === 'beak') {
+  if (p.noseType === 'pig') {
+    // a flat disc pressed onto the face, two holes punched through it
+    geo = new THREE.CylinderGeometry(size * 1.3, size * 1.15, size * 0.55, 10);
+    mesh = new THREE.Mesh(geo, mats.skin);
+    mesh.rotation.x = Math.PI / 2;
+    mesh.position.set(0, 0, size * 0.3);
+  } else if (p.noseType === 'beak') {
     geo = new THREE.ConeGeometry(size * 0.6, size * 2.6, 6);
     mesh = new THREE.Mesh(geo, mats.skin);
     mesh.rotation.x = Math.PI / 2; // tip along the normal
@@ -297,9 +434,14 @@ export function addNose(parent, headMesh, p, mats) {
   withOutline(frame, mesh, geo, p.outline * 0.7 * S, mats.outline);
 
   if (p.noseType !== 'beak') {
+    const wide = p.noseType === 'pig';
     for (const dx of [-1, 1]) {
-      const nostril = new THREE.Mesh(new THREE.SphereGeometry(size * 0.22, 6, 5), mats.cavity);
-      nostril.position.set(dx * size * 0.42, -size * 0.3, size * (p.noseType === 'snout' ? 1.3 : 0.55));
+      const nostril = new THREE.Mesh(new THREE.SphereGeometry(size * (wide ? 0.34 : 0.22), 6, 5), mats.cavity);
+      nostril.position.set(
+        dx * size * (wide ? 0.55 : 0.42),
+        wide ? 0 : -size * 0.3,
+        size * (p.noseType === 'snout' ? 1.3 : wide ? 0.5 : 0.55),
+      );
       frame.add(nostril);
     }
   }
@@ -399,7 +541,8 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
   }
 
   // hair of whatever kind lives in hair.js
-  const tendrils = addHair(parent, p, mats, rng, S);
+  // Ears sway with the hair, so they join the same list the animator drives.
+  const tendrils = addHair(parent, p, mats, rng, S).concat(addEars(parent, p, mats, S));
 
   // spore cloud above the skull, in a group of its own so it can drift
   let spores = null;
