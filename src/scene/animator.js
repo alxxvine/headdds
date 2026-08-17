@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createBehaviour, makePersonality, blankPose, resetPose } from './behaviour.js';
 
 // The creature has no skeleton — it is a puppet of named pivot groups (see the
 // rig built in creature/build.js). This module drives those pivots and owns all
@@ -52,6 +53,9 @@ export function createAnimator() {
 
   let rig = null;
   let base = null;
+  let personality = null;
+  const behaviour = createBehaviour();
+  const pose = blankPose();
 
   const S = {
     t: 0,
@@ -78,15 +82,23 @@ export function createAnimator() {
     obj.quaternion.copy(baseNode.quat).multiply(_q);
   };
 
-  function bind(next) {
+  function bind(next, stats) {
     if (rig === next) return;
     rig = next;
     base = captureBase(next);
+    // a new creature is a new character: reroll who it is, but only when the
+    // seed actually changed — dragging a slider must not hand it a new soul
+    if (!personality || personality.seed !== next.seed) {
+      personality = makePersonality(next.seed, stats);
+      personality.seed = next.seed;
+      behaviour.reset();
+    }
   }
 
   /** Restores the built pose exactly — used when idle motion is switched off. */
   function rest(next) {
     bind(next);
+    behaviour.reset();
     const put = (o, b) => {
       if (!o || !b) return;
       o.position.copy(b.pos);
@@ -113,39 +125,56 @@ export function createAnimator() {
     S.headVel.z += (Math.random() - 0.5) * 6;
     S.jawVel += 22;
     S.blinkIn = Math.min(S.blinkIn, 0.12);
+    // a poke startles it into doing something: the bold ones roar back, the
+    // timid ones shiver, the rest shake it off
+    if (personality) {
+      const r = Math.random();
+      const id = r < personality.boldness * 0.5 ? 'roar' : r < 0.7 ? 'shake' : 'shiver';
+      behaviour.trigger(id, personality);
+    }
   }
 
   function update(nextRig, stats, dt, input = {}) {
-    bind(nextRig);
+    bind(nextRig, stats);
     const T = temperament(stats);
     const step = Math.min(0.05, dt); // a tab that was in the background must not explode the springs
     S.t += step * T.tempo * IDLE_SPEED;
     const t = S.t;
     const scale = rig.scale || 1;
 
+    // --- what is it doing right now? ---------------------------------------
+    // The behaviour layer writes offsets into `pose`; every layer below adds
+    // them to its own idle motion, so the two never fight over a transform.
+    resetPose(pose);
+    behaviour.update(pose, step, personality);
+
     // --- breathing: the body swells, the head rides on top -----------------
     const breath = Math.sin(t * 1.7);
     const b = base.body;
     rig.bodyPivot.scale.set(
-      b.scale.x * (1 + breath * 0.02),
-      b.scale.y * (1 - breath * 0.025),
-      b.scale.z * (1 + breath * 0.02),
+      b.scale.x * (1 + breath * 0.02 - pose.body.squash * 0.35),
+      b.scale.y * (1 - breath * 0.025 + pose.body.squash),
+      b.scale.z * (1 + breath * 0.02 - pose.body.squash * 0.35),
     );
+    spin(rig.bodyPivot, base.body, pose.body.lean, pose.body.twist, 0);
 
     // --- weight shift from foot to foot ------------------------------------
     const sway = Math.sin(t * 0.42);
     const swayAmp = 0.03 + T.wobble * 0.05 + T.menace * 0.02;
-    spin(rig.root, base.root, 0, 0, sway * swayAmp);
+    spin(rig.root, base.root, 0, pose.root.yaw, sway * swayAmp + pose.root.roll);
     rig.root.position.set(
-      base.root.pos.x - sway * swayAmp * 0.5 * scale,
-      base.root.pos.y,
+      base.root.pos.x - sway * swayAmp * 0.5 * scale + pose.root.x * scale,
+      base.root.pos.y + pose.root.y * scale,
       base.root.pos.z,
     );
     // Both legs lean the same way — a weight shift tilts the whole stance.
     // Swinging them in opposite directions would close the gap between them
     // and, on a thick-limbed freak, fuse them into one leg mid-sway.
     const legLean = sway * 0.07 * (0.5 + T.wobble);
-    rig.legs.forEach((leg, i) => spin(leg, base.legs[i], 0, 0, legLean));
+    rig.legs.forEach((leg, i) => {
+      const pl = pose.legs[i] || pose.legs[0];
+      spin(leg, base.legs[i], pl.lift, 0, legLean + pl.swing);
+    });
 
     // --- arms dangle a beat behind the body --------------------------------
     rig.shoulders.forEach((sh, i) => {
@@ -153,7 +182,23 @@ export function createAnimator() {
       // never looks like it is doing calisthenics in sync
       const rate = 1.7 + (i === 0 ? -0.22 : 0.22) * (1 + T.wobble);
       const lag = Math.sin(t * rate - 0.7 + i * 1.9);
-      spin(sh, base.shoulders[i], lag * 0.14 * (0.4 + T.weight), lag * 0.05, sway * 0.1);
+      const pa = pose.arms[i] || pose.arms[0];
+      // An action may swing an arm inwards (scratching, hugging), but never
+      // past vertical: the built splay is how much room it has to spend.
+      // Positive swing means *outward* for both arms; the left shoulder's base
+      // rotation is mirrored, so the delta has to be mirrored with it or the
+      // clamp guards the wrong direction and the arm sails across the chest.
+      const armSide = sh.userData.side ?? 1;
+      const splay = sh.userData.splay ?? 0.5;
+      const swing = armSide * Math.max(-(splay - 0.05), Math.min(0.9, pa.swing));
+      // Lift rotates the arm about its own X axis, which the splay has already
+      // tilted: past a quarter turn the cone carries the limb back across the
+      // chest and through the torso. Keep it inside that quarter turn.
+      const lift = Math.max(-1.4, Math.min(1.4, lag * 0.14 * (0.4 + T.weight) + pa.lift));
+      // twist rolls the limb about its own axis; unbounded it walks the hand
+      // sideways just like an unclamped swing would
+      const twist = Math.max(-0.5, Math.min(0.5, lag * 0.05 + pa.twist));
+      spin(sh, base.shoulders[i], lift, twist, sway * 0.1 + swing);
     });
 
     // --- head on a critically-ish damped spring ----------------------------
@@ -168,9 +213,9 @@ export function createAnimator() {
     const pointerY = input.active ? input.pointer.y : 0;
     const follow = T.blind ? 0.15 : 0.35 + T.curiosity * 0.4;
 
-    const targetYaw = idleYaw + pointerX * 0.42 * follow;
-    const targetPitch = idlePitch - pointerY * 0.3 * follow;
-    const targetRoll = -sway * (0.05 + T.wobble * 0.09);
+    const targetYaw = idleYaw + pointerX * 0.42 * follow + pose.head.yaw;
+    const targetPitch = idlePitch - pointerY * 0.3 * follow + pose.head.pitch;
+    const targetRoll = -sway * (0.05 + T.wobble * 0.09) + pose.head.roll;
 
     const target = [targetPitch, targetYaw, targetRoll];
     const cur = [S.head.x, S.head.y, S.head.z];
@@ -209,6 +254,7 @@ export function createAnimator() {
       S.lookTarget.set((Math.random() * 2 - 1) * 0.7, (Math.random() * 2 - 1) * 0.5);
     }
     if (input.active) S.lookTarget.set(input.pointer.x, input.pointer.y);
+    if (pose.eyes.x || pose.eyes.y) S.lookTarget.set(pose.eyes.x, pose.eyes.y);
     // eyes snap to a target far quicker than the head turns
     const lookLerp = 1 - Math.exp(-step * (12 + T.curiosity * 14));
     S.look.lerp(S.lookTarget, lookLerp);
@@ -229,8 +275,9 @@ export function createAnimator() {
       }
       // multi-eyed freaks blink in a ripple instead of all at once
       const stagger = clamp01(blink * 1.6 - i * 0.18);
-      const lid = 1 - 0.92 * stagger;
-      eye.pivot.scale.set(eb.scale.x, eb.scale.y * lid, eb.scale.z);
+      const lid = (1 - 0.92 * stagger) * (1 - pose.eyes.squint * 0.55) * (1 + pose.eyes.wide * 0.25);
+      const wide = 1 + pose.eyes.wide * 0.2;
+      eye.pivot.scale.set(eb.scale.x * wide, eb.scale.y * lid, eb.scale.z * wide);
 
       if (eye.kind === 'ball') {
         spin(eye.pivot, eb, -S.look.y * 0.45, S.look.x * 0.5, 0);
@@ -256,7 +303,7 @@ export function createAnimator() {
     }
     S.jawVel += (-70 * S.jaw - 9 * S.jawVel) * step;
     S.jaw = Math.max(0, S.jaw + S.jawVel * step);
-    spin(rig.jaw, base.jaw, S.jaw * 0.09, 0, 0);
+    spin(rig.jaw, base.jaw, (S.jaw + pose.jaw) * 0.09, 0, 0);
 
     // --- secondary motion: tendrils lag behind, spores drift ---------------
     // bristles barely twitch, antennae whip: each strand carries its own
@@ -264,7 +311,7 @@ export function createAnimator() {
     rig.tendrils.forEach((td, i) => {
       const tb = base.tendrils[i];
       const w = t * 1.1 + td.phase;
-      const amp = (0.12 + td.len * 0.1) * (td.stiffness ?? 1);
+      const amp = (0.12 + td.len * 0.1) * (td.stiffness ?? 1) * (1 + pose.hair);
       spin(td.pivot, tb, Math.sin(w) * amp, 0, Math.cos(w * 0.7) * amp);
     });
 
@@ -279,5 +326,6 @@ export function createAnimator() {
     }
   }
 
-  return { update, rest, poke };
+  // `action` is exposed for debugging and tests: which gesture is running now
+  return { update, rest, poke, get action() { return behaviour.current; } };
 }

@@ -105,6 +105,7 @@ export function buildCreature(rawParams) {
     spores: growths.spores,
     scale: S,
     neckY: headPivot.position.y,
+    seed: p.seed,
   };
 
   return {
