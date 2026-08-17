@@ -28,13 +28,6 @@ export const PUPIL_COLORS = [
 ];
 export const LIP_COLORS = ['#7a2036', '#3a1020', '#c04a5f', '#1a0d14', '#8f3f1f', '#2d5a3a'];
 export const BG_COLORS = ['#07060b', '#0b0a10', '#120b16', '#0a1014', '#161016'];
-// second skin tone: markings, not a whole new creature, so these sit close to
-// the skin palette with a few loud outliers
-export const PATTERN_COLORS = [
-  '#1a1420', '#f6f0dc', '#c0392b', '#5aa9e6', '#8ec63f', '#e8642c',
-  '#6b4f9e', '#f28fb2', '#3f5d76', '#cfc3a4',
-];
-
 const range = (key, group, label, min, max, def, extra = {}) => ({
   key, group, label, type: 'range', min, max, step: (max - min) / 100, def, ...extra,
 });
@@ -137,11 +130,16 @@ export const PARAMS = [
   range('eyeSize', 'eyes', 'size', 0.05, 0.4, 0.16),
   range('eyeSpread', 'eyes', 'spread', 0.1, 1.0, 0.42),
   range('eyeY', 'eyes', 'height', -0.4, 0.8, 0.28),
-  range('eyeBulge', 'eyes', 'bulge', 0, 1, 0.5),
+  // Most eyes are not golf balls stuck on a face: bias the roll towards flat
+  // and sunken, and leave the popping ones as the loud end.
+  range('eyeBulge', 'eyes', 'bulge', 0, 1, 0.5, {
+    random: (rng) => weighted(rng, [[0.08, 3], [0.3, 4], [0.55, 3], [0.85, 2]]) + rng() * 0.12,
+  }),
   range('pupilSize', 'eyes', 'pupil', 0.12, 0.95, 0.42),
   range('eyeTilt', 'eyes', 'tilt', -0.6, 0.6, 0),
   range('eyeLid', 'eyes', 'eyelid', 0, 1, 0, { random: (rng) => (rng() < 0.45 ? 0 : rng() * 0.85) }),
-  range('eyeJitter', 'eyes', 'size jitter', 0, 1, 0, { random: (rng) => rng() * 0.8 }),
+  // one slider for all the ways two eyes on one face refuse to match
+  range('eyeJitter', 'eyes', 'eye mismatch', 0, 1, 0, { random: (rng) => rng() * 0.9 }),
   color('eyeColor', 'eyes', 'sclera', EYE_COLORS, '#fdf6e3'),
   color('pupilColor', 'eyes', 'pupil hue', PUPIL_COLORS, '#0d0a12'),
 
@@ -159,7 +157,11 @@ export const PARAMS = [
   ], 'fangs', {
     random: (rng) => weighted(rng, [['fangs', 4], ['needles', 3], ['blocks', 3], ['tusks', 2]]),
   }),
-  range('toothSize', 'mouth', 'tooth length', 0.2, 1.4, 0.7),
+  range('toothSize', 'mouth', 'tooth length', 0.2, 1.4, 0.7, {
+    random: (rng) => weighted(rng, [[0.25, 3], [0.5, 4], [0.85, 3], [1.25, 2]]) + rng() * 0.15,
+  }),
+  // how unlike each other the teeth in one mouth are
+  range('toothVary', 'mouth', 'tooth mismatch', 0, 1, 0.25, { random: (rng) => 0.2 + rng() * 0.8 }),
   range('toothJag', 'mouth', 'fanginess', 0, 1, 0.35),
   range('toothGap', 'mouth', 'gaps', 0, 0.6, 0.1),
   range('lips', 'mouth', 'lips', 0, 0.5, 0.16),
@@ -226,6 +228,15 @@ export const PARAMS = [
 
   // --- BODY --------------------------------------------------------------
   range('headRatio', 'body', 'head share', 0.5, 0.88, 0.7),
+  select('bodyType', 'body', 'torso', [
+    { value: 'blob', label: 'blob' },
+    { value: 'pear', label: 'pear' },
+    { value: 'barrel', label: 'barrel' },
+    { value: 'segmented', label: 'segmented' },
+    { value: 'slab', label: 'slab' },
+  ], 'blob', {
+    random: (rng) => weighted(rng, [['blob', 3], ['pear', 3], ['barrel', 3], ['segmented', 2], ['slab', 2]]),
+  }),
   range('bodyWidth', 'body', 'body width', 0.3, 1.3, 0.7),
   range('limbThick', 'body', 'limb width', 0.3, 1.4, 0.7),
   select('armType', 'body', 'arms', [
@@ -249,36 +260,27 @@ export const PARAMS = [
   range('armLen', 'body', 'arm length', 0.2, 1.5, 1.0),
   range('armLift', 'body', 'arm lift', -1, 1, 0, { random: (rng) => rng() * 2 - 1 }),
   range('asymmetry', 'body', 'arm mismatch', 0, 1, 0, { random: (rng) => (rng() < 0.35 ? 0 : rng() * 0.9) }),
+  select('legType', 'body', 'legs', [
+    { value: 'stick', label: 'sticks' },
+    { value: 'thick', label: 'thick' },
+    { value: 'bent', label: 'bent' },
+    { value: 'stump', label: 'stumps' },
+  ], 'stick', {
+    random: (rng) => weighted(rng, [['stick', 3], ['thick', 3], ['bent', 3], ['stump', 2]]),
+  }),
+  select('footType', 'body', 'feet', [
+    { value: 'ball', label: 'ball' },
+    { value: 'none', label: 'none' },
+    { value: 'splay', label: 'splayed' },
+    { value: 'hoof', label: 'hoof' },
+  ], 'ball', {
+    random: (rng) => weighted(rng, [['ball', 3], ['none', 2], ['splay', 3], ['hoof', 2]]),
+  }),
   range('legLen', 'body', 'leg length', 0.2, 1.5, 0.8),
   range('stance', 'body', 'stance', 0, 1, 0.45),
 
   // --- STYLE -------------------------------------------------------------
   color('skinColor', 'style', 'skin', SKIN_COLORS, '#5aa9e6'),
-  select('skinPattern', 'style', 'markings', [
-    { value: 'none', label: 'none' },
-    { value: 'spots', label: 'spots' },
-    { value: 'stripes', label: 'stripes' },
-    { value: 'blotches', label: 'blotches' },
-    { value: 'veins', label: 'veins' },
-    { value: 'crust', label: 'crust' },
-    { value: 'belly', label: 'pale belly' },
-  ], 'none', {
-    // A random freak comes out in one colour: two-tone skin fights the flat
-    // toon shading and makes the silhouette harder to read. Markings are here
-    // for whoever wants them, not for every roll of RANDOM.
-    random: () => 'none',
-  }),
-  color('patternColor', 'style', 'marking hue', PATTERN_COLORS, '#f6f0dc', {
-    // toon shading has no gradients, so a marking close in brightness to the
-    // skin reads as a shadow rather than as a marking: pick a tone that stands
-    // apart from whatever skin was already rolled
-    random: (rng, out) => {
-      const far = PATTERN_COLORS.filter((c) => Math.abs(luma(c) - luma(out.skinColor)) > 0.22);
-      return pick(rng, far.length ? far : PATTERN_COLORS);
-    },
-  }),
-  range('patternAmount', 'style', 'coverage', 0, 1, 0.5),
-  range('patternScale', 'style', 'marking size', 0.5, 6, 2.2),
   range('sheen', 'style', 'wet sheen', 0, 1, 0, { random: (rng) => (rng() < 0.5 ? 0 : rng()) }),
   range('glow', 'style', 'glow', 0, 1, 0, { random: (rng) => (rng() < 0.55 ? 0 : rng() * 0.9) }),
   range('bodyTint', 'style', 'body shade', 0, 0.7, 0.25),

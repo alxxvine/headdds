@@ -30,15 +30,13 @@ export function shade(hex, amount) {
 export function makeMaterials(p) {
   const gradientMap = toonGradient(p.toonSteps, p.sheen ?? 0);
   const toon = (color) => new THREE.MeshToonMaterial({ color, gradientMap });
-  // skin, body and growths carry vertex colours for the markings (see skin.js)
-  const painted = (color) => new THREE.MeshToonMaterial({ color, gradientMap, vertexColors: true });
   const glow = p.glow ?? 0;
 
   return {
     gradientMap,
-    skin: painted(new THREE.Color(p.skinColor)),
-    body: painted(shade(p.skinColor, p.bodyTint)),
-    growth: Object.assign(painted(shade(p.skinColor, 0.35)), {
+    skin: toon(new THREE.Color(p.skinColor)),
+    body: toon(shade(p.skinColor, p.bodyTint)),
+    growth: Object.assign(toon(shade(p.skinColor, 0.35)), {
       // horns, hair and the spore cloud catch the glow too, at half strength
       emissive: shade(p.skinColor, 0.1),
       emissiveIntensity: glow * 0.5,
