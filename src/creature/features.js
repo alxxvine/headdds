@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { headPoint } from './head.js';
 import { surfaceAt, surfaceByDir, orientTo, decalGeometry } from './surface.js';
 import { withOutline } from './materials.js';
+import { warpGeometry, warpRoll } from './warp.js';
 import { addHair } from './hair.js';
 import { addEars } from './ears.js';
 import { addAura } from './aura.js';
@@ -25,16 +26,32 @@ export function faceLimits(p) {
   // the top rim of the maw, opening included
   const mouthTop = p.mouthY * p.headHeight * 0.8 + p.mouthOpen * p.headHeight * 0.72;
   const noseSize = p.noseSize * S;
+  // How tall the nose really is, rather than how tall a ball of `noseSize`
+  // would be. `addNose` scales its mesh by a roll of up to 1.6 on top of the
+  // per-kind proportions, so the thing that got built was two to two and a half
+  // times the size these limits were reserving for it — which is why 44% of
+  // nosed creatures had nose geometry sitting inside the lip ring and one in
+  // seven had it inside the maw itself. The worst case of the roll is what the
+  // rest of the face has to dodge, because the rest of the face is placed
+  // before the roll happens.
+  const noseHalfH = noseSize * (p.noseType === 'beak' ? 0.8
+    : p.noseType === 'pig' ? 0.9
+    : p.noseType === 'snout' ? 1.25
+    : p.noseType === 'trunk' ? 2.6
+    : p.noseType === 'tusks' ? 1.2
+    : 2.0);
   const noseY = p.noseType === 'none' ? -99
-    : Math.max(p.noseY * p.headHeight * 0.7, mouthTop + noseSize * 1.15);
+    : Math.max(p.noseY * p.headHeight * 0.7, mouthTop + noseHalfH * 1.05);
   return {
     S,
     mouthTop,
     noseSize,
     noseY,
+    noseHalfH,
     // how much room the nose takes on the face, for whatever has to dodge it
-    noseHalfW: noseSize * (p.noseType === 'pig' ? 1.5 : p.noseType === 'tusks' ? 1.6 : 1.1),
-    noseTop: noseY + noseSize * (p.noseType === 'beak' ? 0.8 : 1.0),
+    noseHalfW: noseSize * (p.noseType === 'pig' ? 2.1 : p.noseType === 'tusks' ? 1.6
+      : p.noseType === 'snout' ? 1.6 : 1.6),
+    noseTop: noseY + noseHalfH,
   };
 }
 
@@ -596,7 +613,8 @@ export function addNose(parent, headMesh, p, mats, rng) {
       const h = surfaceAt(headMesh, p, dx * size * 0.9, ny);
       const f = new THREE.Group();
       orientTo(f, h.point, h.normal);
-      const g = new THREE.ConeGeometry(size * 0.34, size * 3.2, 5);
+      const g = warpGeometry(new THREE.ConeGeometry(size * 0.34, size * 3.2, 6, 3),
+        rng(), warpRoll(p, rng, 0.8));
       const tusk = new THREE.Mesh(g, mats.tooth);
       tusk.rotation.x = Math.PI * 0.34;   // up and out of the face
       tusk.rotation.z = dx * 0.3;
@@ -616,7 +634,7 @@ export function addNose(parent, headMesh, p, mats, rng) {
     for (let i = 0; i < links; i++) {
       const k = i / (links - 1);
       const r = size * (0.85 - k * 0.45);
-      const g = new THREE.SphereGeometry(r, 8, 6);
+      const g = warpGeometry(new THREE.SphereGeometry(r, 9, 7), rng(), warpRoll(p, rng, 0.7));
       const seg = new THREE.Mesh(g, mats.trim);
       // Out along the normal first, then increasingly down — and further out
       // than feels necessary, or it hangs flat against the face and reads as a
@@ -628,30 +646,36 @@ export function addNose(parent, headMesh, p, mats, rng) {
     return;
   }
 
+  // Proportions alone were never enough: a wide bump and a narrow bump are the
+  // same perfect oval at two settings, and every freak that rolled one wore the
+  // same nose. The shape itself is knocked out of true — see warp.js.
+  const warp = warpRoll(p, rng, 0.85);
   let geo;
   let mesh;
   if (p.noseType === 'pig') {
     // a flat disc pressed onto the face, two holes punched through it
-    geo = new THREE.CylinderGeometry(size * 1.3 * wide, size * 1.15 * wide, size * 0.55 * deep, 10);
+    geo = new THREE.CylinderGeometry(size * 1.3 * wide, size * 1.15 * wide, size * 0.55 * deep, 12, 2);
     mesh = new THREE.Mesh(geo, mats.trim);
     mesh.rotation.x = Math.PI / 2;
     mesh.position.set(0, 0, size * 0.3);
   } else if (p.noseType === 'beak') {
-    geo = new THREE.ConeGeometry(size * 0.6 * wide, size * 2.6 * deep, 6);
+    geo = new THREE.ConeGeometry(size * 0.6 * wide, size * 2.6 * deep, 7, 3);
     mesh = new THREE.Mesh(geo, mats.skin);
     mesh.rotation.x = Math.PI / 2; // tip along the normal
     mesh.position.set(0, 0, size * 0.9);
   } else if (p.noseType === 'snout') {
-    geo = new THREE.SphereGeometry(size, 10, 8);
+    geo = new THREE.SphereGeometry(size, 11, 9);
     mesh = new THREE.Mesh(geo, mats.trim);
     mesh.scale.set(wide, 0.75 * tall, 1.9 * deep);
     mesh.position.set(0, 0, size * 0.45);
   } else {
-    geo = new THREE.SphereGeometry(size, 10, 8);
+    geo = new THREE.SphereGeometry(size, 11, 9);
     mesh = new THREE.Mesh(geo, mats.trim);
     mesh.scale.set(wide, 1.25 * tall, 0.85 * deep);
     mesh.position.set(0, 0, -size * 0.15);
   }
+  warpGeometry(geo, rng(), warp);
+  mesh.userData.nose = true;   // for tools/face-sweep.mjs
   withOutline(frame, mesh, geo, p.outline * 0.7 * S, mats.outline);
 
   if (p.noseType !== 'beak') {
@@ -737,9 +761,14 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
         if (!(dir.z > 0.5 && Math.abs(dir.y - p.mouthY * 0.8) < 0.35)) break;
       }
       const hit = surfaceByDir(p, dir.x, dir.y, dir.z);
+      // One geometry serves all forty of them, so the only way a wart can
+      // differ from its neighbour is in how it is placed: an uneven scale on
+      // all three axes and a roll about the normal, instead of the same
+      // pebble at forty sizes.
       const s = 0.55 + rng() * 1.1;
-      scl.set(s, s, s * 0.8);
+      scl.set(s * (0.7 + rng() * 0.7), s * (0.7 + rng() * 0.7), s * (0.5 + rng() * 0.6));
       q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), hit.normal);
+      q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), rng() * Math.PI * 2));
       m4.compose(hit.point.addScaledVector(hit.normal, p.wartSize * S * 0.25), q, scl);
       inst.setMatrixAt(i, m4);
     }
@@ -756,9 +785,13 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
     // a broken horn is a stump with a flat top
     const broken = rng() < p.wear * 0.45;
     const len = p.hornLen * S * (0.7 + rng() * 0.5) * (broken ? 0.35 : 1) * (1 + (rng() * 2 - 1) * p.lopsided * 0.4);
-    const geo = broken
-      ? new THREE.CylinderGeometry(S * 0.055, S * 0.085, len, 5)
-      : new THREE.ConeGeometry(S * 0.085, len, 5);
+    // A horn is the loudest thing on a skull, and two creatures wearing the
+    // same perfect cone read as the same creature. Bent, tapered and knobbly,
+    // each one its own.
+    const geo = warpGeometry(broken
+      ? new THREE.CylinderGeometry(S * 0.055, S * 0.085, len, 6, 3)
+      : new THREE.ConeGeometry(S * 0.085, len, 6, 4),
+    rng(), warpRoll(p, rng, 0.9));
     const frame = new THREE.Group();
     orientTo(frame, hit.point, hit.normal);
     const horn = new THREE.Mesh(geo, mats.growth);

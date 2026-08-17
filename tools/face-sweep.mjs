@@ -108,7 +108,24 @@ for (let i = 0; i < N; i++) {
     });
   }
 
-  rows.push({ seed: i * 11 + 3, p, pair, edge, tooth });
+  // --- the nose against the mouth ------------------------------------------
+  // faceLimits reserves room for the nose and the maw dodges it; the mesh that
+  // actually gets built is scaled by a roll the limits never saw.
+  let nose = 0;
+  // A trunk hangs in front of the mouth on purpose, so it is not asked about.
+  if (maw && !['none', 'holes', 'trunk'].includes(p.noseType)) {
+    c.rig.headPivot.traverse((o) => {
+      if (!o.isMesh || o.material?.side === THREE.BackSide) return;
+      if (!o.userData.nose) return;
+      const box = new THREE.Box3().setFromObject(o);
+      const low = headMesh.worldToLocal(new THREE.Vector3(0, box.min.y, 0));
+      // how far the bottom of the nose reaches past the top rim of the maw,
+      // in maw heights — positive means it is in the mouth
+      nose = Math.max(nose, ((maw.my + maw.mh) - low.y) / Math.max(maw.mh, 1e-6));
+    });
+  }
+
+  rows.push({ seed: i * 11 + 3, p, pair, edge, tooth, nose });
   c.dispose();
 }
 
@@ -126,6 +143,7 @@ console.log(`eyes past the skull's outline  ${share('edge', 0.05).padStart(3)}% 
 // at the rim: it is where the tooth stops being a fang and starts being a rod
 // lying across the face.
 console.log(`teeth lying across the face    ${share('tooth', 2.5).padStart(3)}%   reach in lip radii:           ${stat('tooth')}`);
+console.log(`noses reaching into the maw    ${share('nose', 0.1).padStart(3)}%   reach in maw heights:         ${stat('nose')}`);
 
 for (const [key, label] of [['pair', 'eyes inside one another'], ['edge', 'eyes off the silhouette'], ['tooth', 'teeth past the lips']]) {
   const worst = rows.slice().sort((a, b) => b[key] - a[key]).slice(0, 3);
