@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { makeRng } from '../lib/noise.js';
 import { makeHeadGeometry } from './head.js';
 import { makeMaterials, withOutline } from './materials.js';
-import { addEyes, addMouth, addNose, addGrowths, headUnit } from './features.js';
+import { addEyes, addMouth, addNose, addGrowths, addScars, headUnit } from './features.js';
 import { buildBody } from './body.js';
 import { sanitize } from './schema.js';
 import { computeStats } from './stats.js';
+import { paintSkin } from './skin.js';
 
 /**
  * params -> a ready THREE.Group. Fully deterministic: the same parameter set
@@ -31,6 +32,7 @@ export function buildCreature(rawParams) {
   addNose(head, headMesh, p, mats);
   const eyes = addEyes(head, headMesh, p, mats, rng);
   const { jaw } = addMouth(head, headMesh, p, mats, rng);
+  addScars(head, headMesh, p, mats, rng);
 
   // --- body derived from the head share
   const skull = headGeo.boundingBox;
@@ -47,6 +49,10 @@ export function buildCreature(rawParams) {
   const group = new THREE.Group();
   group.add(body.group);
   group.add(headPivot);
+
+  // markings go on last: only now does every part know where it sits, so one
+  // coat of pattern can run across the skull, the torso and the limbs
+  paintSkin(group, p, mats);
 
   const bbox = new THREE.Box3().setFromObject(group);
   const size = new THREE.Vector3();

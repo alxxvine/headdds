@@ -23,6 +23,12 @@ export const EYE_COLORS = ['#fdf6e3', '#f5e050', '#e94f37', '#9ef0a0', '#ffffff'
 export const PUPIL_COLORS = ['#0d0a12', '#2b0f1a', '#3a0d0d', '#0a2a1a', '#5a1020'];
 export const LIP_COLORS = ['#7a2036', '#3a1020', '#c04a5f', '#1a0d14', '#8f3f1f', '#2d5a3a'];
 export const BG_COLORS = ['#07060b', '#0b0a10', '#120b16', '#0a1014', '#161016'];
+// second skin tone: markings, not a whole new creature, so these sit close to
+// the skin palette with a few loud outliers
+export const PATTERN_COLORS = [
+  '#1a1420', '#f6f0dc', '#c0392b', '#5aa9e6', '#8ec63f', '#e8642c',
+  '#6b4f9e', '#f28fb2', '#3f5d76', '#cfc3a4',
+];
 
 const range = (key, group, label, min, max, def, extra = {}) => ({
   key, group, label, type: 'range', min, max, step: (max - min) / 100, def, ...extra,
@@ -49,6 +55,12 @@ const weighted = (rng, pairs) => {
 };
 const pick = (rng, arr) => arr[Math.floor(rng() * arr.length) % arr.length];
 
+// perceived brightness of a #rrggbb string, 0..1
+const luma = (hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  return (((n >> 16) & 255) * 0.3 + ((n >> 8) & 255) * 0.59 + (n & 255) * 0.11) / 255;
+};
+
 export const GROUPS = [
   { id: 'head', label: 'SKULL', open: true },
   { id: 'eyes', label: 'EYES', open: true },
@@ -70,6 +82,9 @@ export const PARAMS = [
   range('taper', 'head', 'taper', -0.75, 0.75, 0, { random: (rng) => (rng() * 2 - 1) * 0.7 }),
   range('jaw', 'head', 'jaw', 0, 0.8, 0.15),
   range('lumps', 'head', 'lumps', 0, 0.35, 0.08),
+  // a freak is rarely symmetric and rarely undamaged
+  range('lopsided', 'head', 'lopsidedness', 0, 1, 0, { random: (rng) => (rng() < 0.3 ? 0 : rng() * 0.9) }),
+  range('wear', 'head', 'wear and tear', 0, 1, 0, { random: (rng) => (rng() < 0.35 ? 0 : rng() * 0.9) }),
   range('lumpScale', 'head', 'lump scale', 0.7, 6, 2.2),
   range('speckle', 'head', 'skin speckle', 0, 1, 0.25),
   range('profile', 'head', 'profile lean', -0.45, 0.45, 0),
@@ -184,12 +199,36 @@ export const PARAMS = [
   }),
   range('armLen', 'body', 'arm length', 0.2, 1.5, 1.0),
   range('armLift', 'body', 'arm lift', -1, 1, 0, { random: (rng) => rng() * 2 - 1 }),
-  range('asymmetry', 'body', 'lopsidedness', 0, 1, 0, { random: (rng) => (rng() < 0.35 ? 0 : rng() * 0.9) }),
+  range('asymmetry', 'body', 'arm mismatch', 0, 1, 0, { random: (rng) => (rng() < 0.35 ? 0 : rng() * 0.9) }),
   range('legLen', 'body', 'leg length', 0.2, 1.5, 0.8),
   range('stance', 'body', 'stance', 0, 1, 0.45),
 
   // --- STYLE -------------------------------------------------------------
   color('skinColor', 'style', 'skin', SKIN_COLORS, '#5aa9e6'),
+  select('skinPattern', 'style', 'markings', [
+    { value: 'none', label: 'none' },
+    { value: 'spots', label: 'spots' },
+    { value: 'stripes', label: 'stripes' },
+    { value: 'blotches', label: 'blotches' },
+    { value: 'veins', label: 'veins' },
+    { value: 'crust', label: 'crust' },
+    { value: 'belly', label: 'pale belly' },
+  ], 'none', {
+    random: (rng) => weighted(rng, [['none', 2], ['spots', 3], ['stripes', 3], ['blotches', 3], ['veins', 2], ['crust', 2], ['belly', 2]]),
+  }),
+  color('patternColor', 'style', 'marking hue', PATTERN_COLORS, '#f6f0dc', {
+    // toon shading has no gradients, so a marking close in brightness to the
+    // skin reads as a shadow rather than as a marking: pick a tone that stands
+    // apart from whatever skin was already rolled
+    random: (rng, out) => {
+      const far = PATTERN_COLORS.filter((c) => Math.abs(luma(c) - luma(out.skinColor)) > 0.22);
+      return pick(rng, far.length ? far : PATTERN_COLORS);
+    },
+  }),
+  range('patternAmount', 'style', 'coverage', 0, 1, 0.5),
+  range('patternScale', 'style', 'marking size', 0.5, 6, 2.2),
+  range('sheen', 'style', 'wet sheen', 0, 1, 0, { random: (rng) => (rng() < 0.5 ? 0 : rng()) }),
+  range('glow', 'style', 'glow', 0, 1, 0, { random: (rng) => (rng() < 0.55 ? 0 : rng() * 0.9) }),
   range('bodyTint', 'style', 'body shade', 0, 0.7, 0.25),
   range('outline', 'style', 'outline', 0, 0.12, 0.05, { random: (rng) => 0.03 + rng() * 0.05 }),
   int('pixelSize', 'style', 'pixel size', 1, 8, 4, { random: () => 4 }),
