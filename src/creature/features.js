@@ -136,8 +136,16 @@ export function addEyes(parent, headMesh, p, mats, rng) {
   const eyes = [];
 
   for (const [x0, y0] of positions) {
-    // no two eyes are quite the same once jitter is up
+    // No two eyes on one face are quite the same once mismatch is up — not just
+    // in size, but in how far each one stands out and how wide its pupil is.
+    // `q` is this eye's own copy of the parameters, handed to the helpers.
     const size = baseSize * (1 + (rng() * 2 - 1) * p.eyeJitter * 0.55);
+    const bulge = THREE.MathUtils.clamp(p.eyeBulge + (rng() * 2 - 1) * p.eyeJitter * 0.35, 0, 1);
+    const q = {
+      ...p,
+      eyeBulge: bulge,
+      pupilSize: THREE.MathUtils.clamp(p.pupilSize * (1 + (rng() * 2 - 1) * p.eyeJitter * 0.5), 0.08, 0.98),
+    };
     // lopsidedness slides each eye off its neat layout slot
     const x = x0 + (rng() * 2 - 1) * p.lopsided * p.headWidth * 0.16;
     const y = y0 + (rng() * 2 - 1) * p.lopsided * p.headHeight * 0.13;
@@ -152,19 +160,19 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       parent.add(new THREE.Mesh(socket, mats.socket));
 
       orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.18), hit.normal);
-      pivot.add(new THREE.Mesh(new THREE.SphereGeometry(size * 0.34 * (0.5 + p.pupilSize), 8, 6), mats.eye));
+      pivot.add(new THREE.Mesh(new THREE.SphereGeometry(size * 0.34 * (0.5 + q.pupilSize), 8, 6), mats.eye));
     } else if (p.eyeStyle === 'bead') {
       const socket = decalGeometry(headMesh, p, {
         cx: x, cy: y, rx: size * 1.25, ry: size * 1.25, offset: 0.008, rings: 2, segs: 16,
       });
       parent.add(new THREE.Mesh(socket, mats.socket));
 
-      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.3 * p.eyeBulge), hit.normal);
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.3 * bulge), hit.normal);
       const beadGeo = new THREE.SphereGeometry(size * 0.55, 10, 8);
       withOutline(pivot, new THREE.Mesh(beadGeo, mats.pupil), beadGeo, p.outline * 0.6 * S, mats.outline);
     } else if (p.eyeStyle === 'stalk') {
       // the eyeball rides at the end of a stalk growing out of the skull
-      const len = size * (2.2 + p.eyeBulge * 2.6);
+      const len = size * (2.2 + bulge * 2.6);
       stalk = new THREE.Group();
       orientTo(stalk, hit.point, hit.normal);
       parent.add(stalk);
@@ -180,8 +188,8 @@ export function addEyes(parent, headMesh, p, mats, rng) {
 
       const ballGeo = new THREE.SphereGeometry(size * 0.8, 12, 10);
       withOutline(pivot, new THREE.Mesh(ballGeo, mats.eye), ballGeo, p.outline * 0.6 * S, mats.outline);
-      addPupil(pivot, p, mats, size * 0.8);
-      addLid(pivot, p, mats, size * 0.8, S);
+      addPupil(pivot, q, mats, size * 0.8);
+      addLid(pivot, q, mats, size * 0.8, S);
 
       eyes.push({ pivot, stalk, kind: 'stalk', base: pivot.position.clone(), size: size * 0.8 });
       continue;
@@ -191,7 +199,7 @@ export function addEyes(parent, headMesh, p, mats, rng) {
         cx: x, cy: y, rx: size * 1.5, ry: size * 1.5, offset: 0.02, rings: 3, segs: 14,
       });
       parent.add(new THREE.Mesh(rim, mats.socket));
-      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * (p.eyeBulge - 0.5)), hit.normal);
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * (bulge - 0.5)), hit.normal);
       const domeGeo = new THREE.SphereGeometry(size, 10, 8);
       withOutline(pivot, new THREE.Mesh(domeGeo, mats.pupil), domeGeo, p.outline * 0.7 * S, mats.outline);
 
@@ -224,7 +232,7 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       const orb = new THREE.Mesh(new THREE.SphereGeometry(size * 0.62, 10, 8), mats.eye);
       orb.position.z = -size * 0.1;
       pivot.add(orb);
-      addPupil(pivot, p, mats, size * 0.62);
+      addPupil(pivot, q, mats, size * 0.62);
     } else if (p.eyeStyle === 'gash') {
       // no eyeball: a torn slit with something wet showing through it
       const slit = decalGeometry(headMesh, p, {
@@ -238,7 +246,7 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       bar.rotation.z = Math.PI / 2;
       bar.scale.z = 0.35;
       pivot.add(bar);
-      addPupil(pivot, p, mats, size * 0.45);
+      addPupil(pivot, q, mats, size * 0.45);
     } else {
       // A ring of darker skin around the eyeball. Without it a pale eye on a
       // pale face is a lump with a dot on it: the black outline is one pixel
@@ -249,19 +257,19 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       // useless for a wide one: the flat triangles between them cut inside the
       // curve of the skull and the middle of the ring is buried. Hence five
       // rings and a bigger lift.
-      const r = size * (1.45 + p.eyeBulge * 0.2);
+      const r = size * (1.45 + bulge * 0.2);
       const socket = decalGeometry(headMesh, p, {
         cx: x, cy: y, rx: r, ry: r, offset: 0.02, rings: 3, segs: 14,
       });
       parent.add(new THREE.Mesh(socket, mats.socket));
 
       // ball: sunk into the socket by (1 - bulge)
-      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * (p.eyeBulge - 0.62)), hit.normal);
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * (bulge - 0.62)), hit.normal);
 
       const ballGeo = new THREE.SphereGeometry(size, 12, 10);
       withOutline(pivot, new THREE.Mesh(ballGeo, mats.eye), ballGeo, p.outline * 0.7 * S, mats.outline);
-      addPupil(pivot, p, mats, size);
-      addLid(pivot, p, mats, size, S);
+      addPupil(pivot, q, mats, size);
+      addLid(pivot, q, mats, size, S);
     }
 
     parent.add(pivot);
@@ -286,8 +294,14 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     const edge = mh * Math.sqrt(Math.max(0.1, 1 - Math.min(1, ((u - mx) / (mw * 0.99)) ** 2)));
     const hit = surfaceAt(headMesh, p, u, my + side * edge * 0.94);
 
-    const w = ((2 * mw) / count) * (1 - p.toothGap) * 0.92;
-    let len = mh * (0.7 + 1.7 * p.toothSize) * (0.72 + rng() * 0.56);
+    const w = ((2 * mw) / count) * (1 - p.toothGap) * 0.92
+      * (1 + (rng() * 2 - 1) * p.toothVary * 0.3);
+    // A row of identical spikes is what makes a maw look stamped out. `vary`
+    // spreads the lengths — at the top of the slider one mouth holds anything
+    // from a stub to a fang three times its neighbour.
+    const vary = 1 + (rng() * 2 - 1) * p.toothVary * 0.85;
+    let len = mh * (0.7 + 1.7 * p.toothSize) * Math.max(0.18, vary);
+    if (rng() < p.toothVary * 0.22) len *= 0.35; // and a few barely came through
     const tip = w * 0.5 * (1 - 0.9 * p.toothJag);
 
     // A tooth grows tip-first from the rim: whatever the kind, the narrow end

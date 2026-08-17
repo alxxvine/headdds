@@ -6,7 +6,6 @@ import { addEyes, addMouth, addNose, addGrowths, addScars, headUnit } from './fe
 import { buildBody } from './body.js';
 import { sanitize } from './schema.js';
 import { computeStats } from './stats.js';
-import { paintSkin } from './skin.js';
 
 /**
  * params -> a ready THREE.Group. Fully deterministic: the same parameter set
@@ -49,10 +48,6 @@ export function buildCreature(rawParams) {
   const group = new THREE.Group();
   group.add(body.group);
   group.add(headPivot);
-
-  // markings go on last: only now does every part know where it sits, so one
-  // coat of pattern can run across the skull, the torso and the limbs
-  paintSkin(group, p, mats);
 
   const bbox = new THREE.Box3().setFromObject(group);
   const size = new THREE.Vector3();

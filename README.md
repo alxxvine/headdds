@@ -43,18 +43,20 @@ Most of a freak is a menu of kinds, each with its own scatter on top:
 
 | | |
 |---|---|
-| eyes | ball, hollow, bead, on stalks, compound, lantern, gash — 7 kinds |
-| pupils | round, slit, goat, cross, ring, square, double, blind — plus eyelids and per-eye size jitter |
-| teeth | fangs, needles, blocks, tusks |
+| eyes | ball, hollow, bead, on stalks, compound, lantern, gash — 7 kinds. One mismatch slider drives size, bulge and pupil width per eye, so no two on a face agree |
+| pupils | round, slit, goat, cross, ring, square, double, blind — plus eyelids |
+| teeth | fangs, needles, blocks, tusks — with a mismatch slider, so one mouth holds anything from a stub to a fang three times its neighbour |
 | nose | none, bump, beak, snout, nostrils, trunk, tusks, disc |
 | ears | none, flaps, fins, trumpets, holes — with size and height |
 | hair | none, tendrils, bristles, antennae, dreads, crest, fur, quills, fronds — 9 kinds |
 | arms | none, stubs, sticks, noodles, mantis — plus lift and a lopsidedness slider |
 | hands | none, ball, claws, pincer, club |
 
-That is 7 × 8 × 4 × 8 × 5 × 9 × 5 × 5 ways to pick the parts alone, before any
-of the sliders, the colours or the per-seed scatter inside each kind.
-| skin | markings — spots, stripes, blotches, veins, crust, a pale belly — with their own hue, coverage and scale, plus a wet sheen and an emissive glow |
+That is 7 × 8 × 4 × 8 × 5 × 9 × 5 × 5 × 5 × 4 × 4 ways to pick the parts alone
+— over four million — before any of the sliders, the colours or the per-seed
+scatter inside each kind.
+| torso | blob, pear, barrel, segmented, slab |
+| legs | sticks, thick, bent, stumps — with feet: ball, none, splayed, hoof |
 | damage | lopsidedness pulls the face out of true; wear knocks out teeth, snaps horns to stumps and stitches scars across the skull |
 
 Defaults are the tame end of every menu, so a link shared before a kind existed
@@ -74,16 +76,6 @@ Ears are the newest of these and the only part that changes the silhouette from
 the side without touching the face, which is why they exist: two freaks with the
 same skull read as two creatures the moment one of them has flaps. They sway
 with the hair — the animator drives them from the same list.
-
-Markings are painted as vertex colours **after** the creature is assembled, in
-one shared space, so a pattern runs across the skull, the torso and the limbs as
-a single coat instead of restarting on every part (`src/creature/skin.js`).
-
-**RANDOM never adds them.** A second tone fights the flat toon shading and makes
-the silhouette harder to read — a freak in one colour is the better freak. Pick
-a pattern in STYLE if you want one; when you do, the marking hue is rolled
-against the skin it lands on, because the shading has no gradients and a tone
-close to the skin reads as a shadow rather than as a marking.
 
 ## Stats
 
@@ -131,8 +123,8 @@ src/creature/features.js eyes, toothed maw, nose, warts, horns, spores
 src/creature/hair.js     nine kinds of hair, from fur to a bony crest
 src/creature/ears.js     flaps, fins, trumpets, holes
 src/creature/arms.js     arm and hand kinds, pose, and keeping limbs off the floor
-src/creature/body.js     the body derived from the head share: bodyH = headH * (1-r)/r
-src/creature/skin.js     markings painted as vertex colours across the whole body
+src/creature/body.js     torso kinds, leg kinds and feet, all derived from the
+                         head share: bodyH = headH * (1-r)/r
 src/creature/build.js    buildCreature(params) -> { group, rig, stats, dispose, ... }
 src/scene/animator.js    idle motion: springs, blinking, saccades, secondary sway
 src/scene/behaviour.js   what it does between idles: twelve gestures, personality
