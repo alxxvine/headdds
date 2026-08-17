@@ -76,6 +76,18 @@ export function addHair(parent, p, mats, rng, S) {
     return strands;
   }
 
+  // A growth swept back or down is aimed in WORLD space, and a root on the
+  // forehead has a normal pointing at the camera — so "back" for that strand
+  // meant straight into the skull, and the far end came out somewhere across
+  // the face as a rod with no root. Whatever the aim, it keeps a component
+  // along the strand's own normal, so it stays on the outside of the head.
+  const outward = (normal, want, floor = 0.4) => {
+    const v = want.clone().normalize();
+    const d = v.dot(normal);
+    if (d < floor) v.addScaledVector(normal, floor - d).normalize();
+    return v;
+  };
+
   // fur is a coat, not a hairdo: many more tufts, spread over the whole skull
   const total = kind === 'fur' ? count * 3 + 6 : count;
 
@@ -108,7 +120,7 @@ export function addHair(parent, p, mats, rng, S) {
       const h = len * 1.45;
       const geo = new THREE.ConeGeometry(S * 0.032, h, 4);
       const quill = new THREE.Mesh(geo, mats.growth);
-      const aim = hit.normal.clone().add(new THREE.Vector3(0, 0.25, -0.85)).normalize();
+      const aim = outward(hit.normal, hit.normal.clone().add(new THREE.Vector3(0, 0.25, -0.85)));
       quill.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), aim);
       quill.position.copy(aim).multiplyScalar(h * 0.48);
       withOutline(pivot, quill, geo, p.outline * 0.4 * S, mats.outline);
@@ -153,6 +165,114 @@ export function addHair(parent, p, mats, rng, S) {
       const geo = strandTube(hit, len * 0.55, droop, S * 0.045, 7, 5);
       pivot.add(new THREE.Mesh(geo, mats.growth));
       strands.push({ pivot, len, phase: rng() * Math.PI * 2, stiffness: 0.55 });
+    // --------------------------------------------------------------- horns ---
+    } else if (kind === 'spikes') {
+      // short, thick and straight up: a crown of nails
+      const h = len * 0.8;
+      const geo = new THREE.ConeGeometry(S * 0.075, h, 5, 3);
+      const spike = new THREE.Mesh(geo, mats.growth);
+      spike.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), hit.normal);
+      spike.position.copy(hit.normal).multiplyScalar(h * 0.45);
+      withOutline(pivot, spike, geo, p.outline * 0.45 * S, mats.outline);
+      strands.push({ pivot, len: h, phase: rng() * Math.PI * 2, stiffness: 0.05 });
+    // ---------------------------------------------------------------- barbs ---
+    } else if (kind === 'barbs') {
+      // hooks that curve back on themselves
+      const back = outward(hit.normal, new THREE.Vector3(hit.normal.x * 0.4, 0.15, -1))
+        .multiplyScalar(len * 0.85);
+      const geo = strandTube(hit, len * 0.5, back, S * 0.03, 6, 5);
+      pivot.add(new THREE.Mesh(geo, mats.growth));
+      strands.push({ pivot, len, phase: rng() * Math.PI * 2, stiffness: 0.3 });
+    // ---------------------------------------------------------------- coral ---
+    } else if (kind === 'coral') {
+      // a lumpy branch: three beads on a short stalk
+      for (let k = 0; k < 3; k++) {
+        const g = new THREE.SphereGeometry(S * (0.05 - k * 0.008), 7, 5);
+        const bead = new THREE.Mesh(g, mats.growth);
+        bead.position.copy(hit.normal).multiplyScalar(len * (0.25 + k * 0.3));
+        bead.position.x += (rng() - 0.5) * len * 0.35;
+        bead.position.z += (rng() - 0.5) * len * 0.35;
+        withOutline(pivot, bead, g, p.outline * 0.35 * S, mats.outline);
+      }
+      strands.push({ pivot, len, phase: rng() * Math.PI * 2, stiffness: 0.25 });
+    // ----------------------------------------------------------------- mane ---
+    } else if (kind === 'mane') {
+      // broad flat plates lying back along the skull, overlapping
+      const h = len * 1.2;
+      const geo = new THREE.ConeGeometry(S * 0.11, h, 3);
+      const plate = new THREE.Mesh(geo, mats.growth);
+      const aim = outward(hit.normal, hit.normal.clone().add(new THREE.Vector3(0, 0.15, -1.15)));
+      plate.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), aim);
+      plate.position.copy(aim).multiplyScalar(h * 0.45);
+      plate.scale.z = 0.14;
+      withOutline(pivot, plate, geo, p.outline * 0.4 * S, mats.outline);
+      strands.push({ pivot, len: h, phase: rng() * Math.PI * 2, stiffness: 0.5 });
+    // ------------------------------------------------------------- whiskers ---
+    } else if (kind === 'whiskers') {
+      // very long, very thin, drifting sideways
+      const drift = outward(hit.normal, new THREE.Vector3(hit.normal.x * 2.2, (rng() - 0.7) * 0.5, hit.normal.z * 2.2))
+        .multiplyScalar(len * 0.7);
+      const geo = strandTube(hit, len * 1.5, drift, S * 0.011, 8, 4);
+      pivot.add(new THREE.Mesh(geo, mats.growth));
+      strands.push({ pivot, len: len * 1.8, phase: rng() * Math.PI * 2, stiffness: 1.8 });
+    // ----------------------------------------------------------------- moss ---
+    } else if (kind === 'moss') {
+      // a low mat of stubs, barely off the skin
+      const h = len * 0.28;
+      const geo = new THREE.ConeGeometry(S * 0.038, h, 4);
+      const stub = new THREE.Mesh(geo, mats.growth);
+      const lie = new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize();
+      stub.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0),
+        hit.normal.clone().addScaledVector(lie, 0.8).normalize());
+      stub.position.copy(hit.normal).multiplyScalar(h * 0.4);
+      pivot.add(stub);
+      strands.push({ pivot, len: h, phase: rng() * Math.PI * 2, stiffness: 0.05 });
+    // -------------------------------------------------------------- feelers ---
+    } else if (kind === 'feelers') {
+      // paired jointed rods, forward and up, like something tasting the air
+      const aim = outward(hit.normal, new THREE.Vector3(hit.normal.x, 0.6, 0.9)).multiplyScalar(len * 1.1);
+      const geo = strandTube(hit, len * 0.7, aim, S * 0.016, 7, 4);
+      pivot.add(new THREE.Mesh(geo, mats.growth));
+      const tipGeo = new THREE.ConeGeometry(S * 0.028, len * 0.35, 5);
+      const tipMesh = new THREE.Mesh(tipGeo, mats.growth);
+      tipMesh.position.copy(hit.normal).multiplyScalar(len * 0.7).add(aim);
+      tipMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), aim.clone().normalize());
+      withOutline(pivot, tipMesh, tipGeo, p.outline * 0.35 * S, mats.outline);
+      strands.push({ pivot, len, phase: rng() * Math.PI * 2, stiffness: 1.6 });
+    // ----------------------------------------------------------------- veil ---
+    } else if (kind === 'veil') {
+      // a thin sheet hanging off the back of the skull
+      const h = len * 1.6;
+      const geo = new THREE.ConeGeometry(S * 0.2, h, 3);
+      const sheet = new THREE.Mesh(geo, mats.growth);
+      const down = outward(hit.normal, hit.normal.clone().add(new THREE.Vector3(0, -1.6, -0.5)), 0.3);
+      sheet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), down);
+      sheet.position.copy(down).multiplyScalar(h * 0.45);
+      sheet.scale.z = 0.08;
+      withOutline(pivot, sheet, geo, p.outline * 0.35 * S, mats.outline);
+      strands.push({ pivot, len: h, phase: rng() * Math.PI * 2, stiffness: 1.1 });
+    // --------------------------------------------------------------- fans ---
+    } else if (kind === 'fans') {
+      // little pleated sails, all facing the same way
+      const h = len * 0.9;
+      const geo = new THREE.ConeGeometry(S * 0.16, h, 3);
+      const sail = new THREE.Mesh(geo, mats.growth);
+      sail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), hit.normal);
+      sail.position.copy(hit.normal).multiplyScalar(h * 0.45);
+      sail.scale.z = 0.1;
+      withOutline(pivot, sail, geo, p.outline * 0.35 * S, mats.outline);
+      strands.push({ pivot, len: h, phase: rng() * Math.PI * 2, stiffness: 0.6 });
+    // -------------------------------------------------------------- thorns ---
+    } else if (kind === 'thorns') {
+      // short and swept forward, the way a bramble grows
+      const h = len * 0.6;
+      const geo = new THREE.ConeGeometry(S * 0.055, h, 4);
+      const thorn = new THREE.Mesh(geo, mats.growth);
+      const aim = outward(hit.normal, hit.normal.clone().add(new THREE.Vector3(0, -0.2, 0.75)));
+      thorn.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), aim);
+      thorn.position.copy(aim).multiplyScalar(h * 0.45);
+      withOutline(pivot, thorn, geo, p.outline * 0.4 * S, mats.outline);
+      strands.push({ pivot, len: h, phase: rng() * Math.PI * 2, stiffness: 0.1 });
     // ------------------------------------------------------------ tendrils ---
     } else {
       const bend = new THREE.Vector3((rng() - 0.5) * len * 0.9, 0, (rng() - 0.5) * len * 0.9);

@@ -22,6 +22,15 @@ export const headUnit = (p) => (p.headWidth + p.headHeight) * 0.5;
  * The overlaps are not forbidden outright — a freak whose eye crowds its nose
  * is a good freak — only kept from landing one part fully inside another.
  */
+// How far each kind of nose reaches below its own centre, in noseSize, taking
+// the worst case of the proportion roll `addNose` makes — the rest of the face
+// is placed before that roll happens, so the worst case is what it has to dodge.
+const NOSE_REACH = {
+  none: 0, holes: 0.7, slits: 0.9, button: 0.5, beak: 0.8, pig: 0.9,
+  plate: 1.2, star: 1.1, double: 1.2, snout: 1.25, tusks: 1.2, straw: 0.5,
+  horn: 0.6, ridge: 1.4, hook: 1.9, blob: 2.4, bump: 2.0, trunk: 2.6,
+};
+
 export function faceLimits(p) {
   const S = headUnit(p);
   // the top rim of the maw, opening included
@@ -39,12 +48,7 @@ export function faceLimits(p) {
   // seven had it inside the maw itself. The worst case of the roll is what the
   // rest of the face has to dodge, because the rest of the face is placed
   // before the roll happens.
-  const noseHalfH = noseSize * (p.noseType === 'beak' ? 0.8
-    : p.noseType === 'pig' ? 0.9
-    : p.noseType === 'snout' ? 1.25
-    : p.noseType === 'trunk' ? 2.6
-    : p.noseType === 'tusks' ? 1.2
-    : 2.0);
+  const noseHalfH = noseSize * (NOSE_REACH[p.noseType] ?? 2.0);
   const noseY = p.noseType === 'none' ? -99
     : Math.max(p.noseY * p.headHeight * 0.7, mouthTop + noseHalfH * 1.05);
   return {
@@ -123,11 +127,15 @@ const _sd = new THREE.Vector3();
 const _sp = new THREE.Vector3();
 function silhouetteAt(p, y) {
   let best = 0;
-  for (let i = 0; i <= 32; i++) {
-    const dy = -0.999 + (i / 32) * 1.998;
+  // Walked finely and accepted narrowly. A coarse walk with a loose tolerance
+  // takes latitudes well away from y as if they were at y, which overstates how
+  // wide the skull is there — and an eye clamped against an overstated outline
+  // is an eye hanging off the edge of the head.
+  for (let i = 0; i <= 48; i++) {
+    const dy = -0.999 + (i / 48) * 1.998;
     const c = Math.sqrt(Math.max(0, 1 - dy * dy));
     headPoint(p, _sd.set(c, dy, 0).normalize(), _sp);
-    if (Math.abs(_sp.y - y) < 0.06 * p.headHeight) best = Math.max(best, Math.abs(_sp.x));
+    if (Math.abs(_sp.y - y) < 0.05 * p.headHeight) best = Math.max(best, Math.abs(_sp.x));
   }
   return best;
 }
@@ -152,10 +160,19 @@ function settleEyes(p, plan, L, clear) {
 
   const inside = (e) => {
     e.y = THREE.MathUtils.clamp(e.y, chin + e.size * 0.9, crown - e.size * 0.9);
-    // an eye may sit a little proud of the outline — it is a ball on a curved
-    // skull, not a sticker — but not hang off it
+    // An eye may sit a little proud of the outline — it is a ball on a curved
+    // skull, not a sticker — but not hang off it.
+    //
+    // And the reserve grows towards the sides, because the eye is not left
+    // where this puts it: it is planted on the skin and then pushed OUT along
+    // the surface normal by its own bulge, and near the shoulder of the skull
+    // that normal is mostly horizontal. Clamping x and then shoving the eye
+    // sideways afterwards is how an eye clamped inside the head ends up hanging
+    // over the edge of it.
     const half = silhouetteAt(p, e.y);
-    const room = Math.max(0, half - e.size * 0.55);
+    if (half <= 0) { e.x = 0; return; }
+    const lean = Math.min(1, Math.abs(e.x) / half);
+    const room = Math.max(0, half - e.size * (0.55 + 0.75 * lean));
     e.x = THREE.MathUtils.clamp(e.x, -room, room);
   };
 
@@ -180,7 +197,12 @@ function settleEyes(p, plan, L, clear) {
         for (let b = a + 1; b < plan.length; b++) {
           const A = plan[a];
           const B = plan[b];
-          const need = (A.size + B.size) * 1.02;
+          // A fifth more than the two radii, because this is solved in the
+          // FLAT frontal frame the layouts are written in and the eyes are
+          // then planted on a curved skull, where that frame is compressed —
+          // two eyes a clear radius apart on paper come out touching on the
+          // side of a round head.
+          const need = (A.size + B.size) * 1.22;
           let dx = B.x - A.x;
           let dy = B.y - A.y;
           let d = Math.hypot(dx, dy);
@@ -396,6 +418,110 @@ export function addEyes(parent, headMesh, p, mats, rng) {
         facets.setMatrixAt(i, m4);
       }
       pivot.add(facets);
+    } else if (p.eyeStyle === 'pit') {
+      // a shaft into the skull with a spark at the bottom of it
+      const socket = decalGeometry(headMesh, p, {
+        cx: x, cy: y, rx: size * 1.2, ry: size * 1.2, offset: 0.006, rings: 3, segs: 16,
+      });
+      parent.add(new THREE.Mesh(socket, mats.socket));
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, -size * 0.5), hit.normal);
+      const wellGeo = new THREE.SphereGeometry(size * 0.95, 10, 8);
+      pivot.add(new THREE.Mesh(wellGeo, mats.cavity));
+      const spark = new THREE.Mesh(new THREE.SphereGeometry(size * 0.24, 7, 6), mats.pupil);
+      spark.position.z = size * 0.55;
+      pivot.add(spark);
+    } else if (p.eyeStyle === 'bulb') {
+      // a fat lamp standing proud of the face on no stalk at all
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.55), hit.normal);
+      const bulbGeo = warpGeometry(new THREE.SphereGeometry(size * 1.15, 11, 9), rng(), warpRoll(p, rng, 0.5));
+      withOutline(pivot, new THREE.Mesh(bulbGeo, mats.eye), bulbGeo, p.outline * 0.6 * S, mats.outline);
+      addPupil(pivot, q, mats, size * 1.15);
+    } else if (p.eyeStyle === 'cluster') {
+      // several small eyes crowded into one socket, all looking slightly apart
+      const socket = decalGeometry(headMesh, p, {
+        cx: x, cy: y, rx: size * 1.35, ry: size * 1.25, offset: 0.008, rings: 3, segs: 16,
+      });
+      parent.add(new THREE.Mesh(socket, mats.socket));
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.1), hit.normal);
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2 + 0.5;
+        const r = size * 0.42;
+        const g = new THREE.SphereGeometry(r, 8, 6);
+        const b = new THREE.Mesh(g, mats.eye);
+        b.position.set(Math.cos(a) * size * 0.55, Math.sin(a) * size * 0.5, size * 0.1);
+        withOutline(pivot, b, g, p.outline * 0.35 * S, mats.outline);
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(r * 0.45, 6, 5), mats.pupil);
+        dot.position.copy(b.position);
+        dot.position.z += r * 0.75;
+        pivot.add(dot);
+      }
+    } else if (p.eyeStyle === 'visor') {
+      // one wide band across the face instead of an eye
+      const band = decalGeometry(headMesh, p, {
+        cx: x, cy: y, rx: size * 2.4, ry: size * 0.62, offset: 0.01, rings: 2, segs: 20,
+      });
+      parent.add(new THREE.Mesh(band, mats.socket));
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.12), hit.normal);
+      const glassGeo = new THREE.SphereGeometry(size, 11, 8);
+      const glass = new THREE.Mesh(glassGeo, mats.eye);
+      glass.scale.set(2.1, 0.5, 0.45);
+      withOutline(pivot, glass, glassGeo, p.outline * 0.4 * S, mats.outline);
+      addPupil(pivot, q, mats, size * 0.5);
+    } else if (p.eyeStyle === 'crystal') {
+      // a faceted lump of glass rather than a ball
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * (bulge - 0.35)), hit.normal);
+      const crysGeo = warpGeometry(new THREE.IcosahedronGeometry(size * 1.05, 0), rng(), warpRoll(p, rng, 0.5));
+      withOutline(pivot, new THREE.Mesh(crysGeo, mats.eye), crysGeo, p.outline * 0.5 * S, mats.outline);
+      addPupil(pivot, q, mats, size * 0.85);
+    } else if (p.eyeStyle === 'ring') {
+      // an annulus with the skull showing through the middle
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.15), hit.normal);
+      const torGeo = new THREE.TorusGeometry(size * 0.78, size * 0.34, 6, 16);
+      withOutline(pivot, new THREE.Mesh(torGeo, mats.eye), torGeo, p.outline * 0.4 * S, mats.outline);
+      const hole = new THREE.Mesh(new THREE.SphereGeometry(size * 0.46, 8, 6), mats.pupil);
+      hole.position.z = -size * 0.05;
+      pivot.add(hole);
+    } else if (p.eyeStyle === 'bloom') {
+      // petals of eyelid around a small wet centre
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.1), hit.normal);
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * Math.PI * 2;
+        const g = new THREE.ConeGeometry(size * 0.3, size * 1.15, 4);
+        const petal = new THREE.Mesh(g, mats.trim);
+        petal.position.set(Math.cos(a) * size * 0.6, Math.sin(a) * size * 0.6, size * 0.1);
+        petal.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0),
+          new THREE.Vector3(Math.cos(a), Math.sin(a), 0.55).normalize());
+        withOutline(pivot, petal, g, p.outline * 0.3 * S, mats.outline);
+      }
+      const core = new THREE.Mesh(new THREE.SphereGeometry(size * 0.5, 8, 6), mats.eye);
+      core.position.z = size * 0.2;
+      pivot.add(core);
+      addPupil(pivot, q, mats, size * 0.5);
+    } else if (p.eyeStyle === 'button') {
+      // flat and sewn on, with no depth to it at all
+      const patch = decalGeometry(headMesh, p, {
+        cx: x, cy: y, rx: size * 1.05, ry: size * 1.05, offset: 0.012, rings: 2, segs: 16,
+      });
+      parent.add(new THREE.Mesh(patch, mats.eye));
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.06), hit.normal);
+      addPupil(pivot, q, mats, size * 0.9);
+    } else if (p.eyeStyle === 'slot') {
+      // a rectangular window with something behind it
+      const cut = decalGeometry(headMesh, p, {
+        cx: x, cy: y, rx: size * 0.55, ry: size * 1.4, offset: 0.008, rings: 2, segs: 12,
+      });
+      parent.add(new THREE.Mesh(cut, mats.cavity));
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.02), hit.normal);
+      const barGeo = new THREE.BoxGeometry(size * 0.42, size * 0.9, size * 0.3);
+      withOutline(pivot, new THREE.Mesh(barGeo, mats.eye), barGeo, p.outline * 0.35 * S, mats.outline);
+    } else if (p.eyeStyle === 'dome') {
+      // a low glassy blister rather than a ball
+      orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, -size * 0.25), hit.normal);
+      const domeGeo = new THREE.SphereGeometry(size * 1.1, 12, 9);
+      const dome = new THREE.Mesh(domeGeo, mats.eye);
+      dome.scale.z = 0.45;
+      withOutline(pivot, dome, domeGeo, p.outline * 0.5 * S, mats.outline);
+      addPupil(pivot, q, mats, size * 0.7);
     } else if (p.eyeStyle === 'lantern') {
       // a glowing orb set back in a bony rim
       const socket = decalGeometry(headMesh, p, {
@@ -458,6 +584,14 @@ export function addEyes(parent, headMesh, p, mats, rng) {
 
 // ------------------------------------------------------------------ MAW ----
 
+// How long each kind runs, against the plain fang. Applied before the cap that
+// keeps a tooth inside the mouth it grows from, never after.
+const TOOTH_LEN = {
+  needles: 1.35, blocks: 0.55, tusks: 1.5, saw: 0.9, chisels: 0.6,
+  pegs: 0.5, molars: 0.4, hooks: 1.15, shards: 0.7, spines: 1.7,
+  plates: 0.55, combs: 0.95, barbs: 1.2,
+};
+
 function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, count, profile }) {
   if (count <= 0) return;
   const S = headUnit(p);
@@ -500,9 +634,7 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     // Each kind has its own proportions, applied BEFORE the cap — a needle is
     // a third longer than a fang and a tusk half again, and applying those
     // afterwards let both walk straight back out through it.
-    const kindLen = p.toothType === 'needles' ? 1.35
-      : p.toothType === 'blocks' ? 0.55
-      : p.toothType === 'tusks' ? 1.5 : 1;
+    const kindLen = TOOTH_LEN[p.toothType] ?? 1;
     len = Math.min(len * kindLen, Math.max(mh * 2.6, p.headHeight * 0.1));
 
     // A tooth grows tip-first from the rim: whatever the kind, the narrow end
@@ -520,21 +652,77 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
       ? new THREE.CylinderGeometry(thin, fat, len, 5)
       : new THREE.CylinderGeometry(fat, thin, len, 5));
 
-    if (p.toothType === 'needles') {
-      // A sixth of the slot wide is a single pixel at the resolution this
-      // renders at, and a row of them read as a barcode rather than as teeth.
-      // A third is still a needle and is still there when the dust settles.
-      geo = taperTo(w * 0.32, w * 0.12);
-      flat = 1;
-    } else if (p.toothType === 'blocks') {
-      geo = new THREE.BoxGeometry(w * 0.8, len, w * 0.8);
-      flat = 1;
-    } else if (p.toothType === 'tusks') {
-      geo = taperTo(w * 0.42, w * 0.1);
-      flat = 0.9;
-      curl = -side * 0.5; // tusks sweep back out of the mouth
-    } else {
-      geo = taperTo(w * 0.5, tip);
+    switch (p.toothType) {
+      case 'needles':
+        // A sixth of the slot wide is a single pixel at the resolution this
+        // renders at, and a row of them read as a barcode rather than as teeth.
+        // A third is still a needle and is still there when the dust settles.
+        geo = taperTo(w * 0.32, w * 0.12);
+        flat = 1;
+        break;
+      case 'blocks':
+        geo = new THREE.BoxGeometry(w * 0.8, len, w * 0.8);
+        flat = 1;
+        break;
+      case 'tusks':
+        geo = taperTo(w * 0.42, w * 0.1);
+        flat = 0.9;
+        curl = -side * 0.5; // tusks sweep back out of the mouth
+        break;
+      case 'saw':
+        // a flat triangular blade, edge-on to the face: a shark's row
+        geo = taperTo(w * 0.55, w * 0.02);
+        flat = 0.32;
+        break;
+      case 'chisels':
+        // broad flat blades, square across the top
+        geo = new THREE.BoxGeometry(w * 0.92, len, w * 0.3);
+        flat = 1;
+        break;
+      case 'pegs':
+        // blunt stubs, no point on them at all
+        geo = new THREE.CylinderGeometry(w * 0.38, w * 0.38, len, 7);
+        flat = 0.9;
+        break;
+      case 'molars':
+        // low, wide and rounded: something that grinds rather than tears
+        geo = new THREE.SphereGeometry(w * 0.5, 7, 5);
+        flat = 1;
+        break;
+      case 'hooks':
+        // curved back into the throat, so nothing that goes in comes out
+        geo = taperTo(w * 0.45, w * 0.06);
+        curl = side * 0.85;
+        flat = 0.6;
+        break;
+      case 'shards':
+        // broken glass rather than teeth — no two the same, all angular
+        geo = new THREE.IcosahedronGeometry(w * 0.5, 0);
+        flat = 0.55;
+        break;
+      case 'spines':
+        // long thin quills, further out than a needle and half as thick
+        geo = taperTo(w * 0.2, w * 0.03);
+        flat = 1;
+        break;
+      case 'plates':
+        // a solid wall with seams in it, like a beak cut into segments
+        geo = new THREE.BoxGeometry(w * 0.98, len, w * 0.55);
+        flat = 1;
+        break;
+      case 'combs':
+        // a fringe rather than a row: very thin, very many, barely tapered
+        geo = taperTo(w * 0.16, w * 0.08);
+        flat = 1;
+        break;
+      case 'barbs':
+        // a spike with the point swept back the wrong way
+        geo = taperTo(w * 0.36, w * 0.05);
+        curl = -side * 1.15;
+        flat = 0.75;
+        break;
+      default: // fangs
+        geo = taperTo(w * 0.5, tip);
     }
 
     const frame = new THREE.Group();
@@ -673,6 +861,69 @@ export function addNose(parent, headMesh, p, mats, rng) {
   // same perfect oval at two settings, and every freak that rolled one wore the
   // same nose. The shape itself is knocked out of true — see warp.js.
   const warp = warpRoll(p, rng, 0.85);
+  // Several kinds are not one shape but a few, so they finish here.
+  if (p.noseType === 'ridge') {
+    // a bony crest running down the middle of the face
+    for (let i = 0; i < 5; i++) {
+      const k = i / 4;
+      const h = surfaceAt(headMesh, p, 0, ny + (0.5 - k) * size * 2.4);
+      const f = new THREE.Group();
+      orientTo(f, h.point, h.normal);
+      const g = warpGeometry(new THREE.SphereGeometry(size * (0.5 - k * 0.22), 9, 7),
+        rng(), warpRoll(p, rng, 0.6));
+      const seg = new THREE.Mesh(g, mats.trim);
+      seg.scale.set(0.7, 1, 1.5);
+      seg.position.z = size * 0.25;
+      withOutline(f, seg, g, p.outline * 0.5 * S, mats.outline);
+      parent.add(f);
+    }
+    return;
+  }
+  if (p.noseType === 'slits') {
+    // vertical gills either side of the midline, cut into the skin
+    for (const dx of [-1, 1]) {
+      for (let i = 0; i < 2; i++) {
+        const cut = decalGeometry(headMesh, p, {
+          cx: dx * size * (0.5 + i * 0.45), cy: ny,
+          rx: size * 0.16, ry: size * 0.9, offset: 0.008, rings: 2, segs: 10,
+        });
+        parent.add(new THREE.Mesh(cut, mats.cavity));
+      }
+    }
+    return;
+  }
+  if (p.noseType === 'star') {
+    // a rosette of small lobes around a nostril, like something that digs
+    const h = surfaceAt(headMesh, p, 0, ny);
+    const f = new THREE.Group();
+    orientTo(f, h.point, h.normal);
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const g = warpGeometry(new THREE.SphereGeometry(size * 0.3, 8, 6), rng(), warpRoll(p, rng, 0.7));
+      const lobe = new THREE.Mesh(g, mats.trim);
+      lobe.scale.set(0.55, 1.25, 0.5);
+      lobe.position.set(Math.cos(a) * size * 0.6, Math.sin(a) * size * 0.6, size * 0.3);
+      lobe.rotation.z = a - Math.PI / 2;
+      withOutline(f, lobe, g, p.outline * 0.4 * S, mats.outline);
+    }
+    parent.add(f);
+    return;
+  }
+  if (p.noseType === 'double') {
+    // two bumps where one would do
+    for (const dx of [-1, 1]) {
+      const h = surfaceAt(headMesh, p, dx * size * 0.55, ny);
+      const f = new THREE.Group();
+      orientTo(f, h.point, h.normal);
+      const g = warpGeometry(new THREE.SphereGeometry(size * 0.62, 10, 8), rng(), warpRoll(p, rng));
+      const bump = new THREE.Mesh(g, mats.trim);
+      bump.scale.set(wide, tall, deep * 1.1);
+      withOutline(f, bump, g, p.outline * 0.6 * S, mats.outline);
+      parent.add(f);
+    }
+    return;
+  }
+
   let geo;
   let mesh;
   if (p.noseType === 'pig') {
@@ -691,6 +942,41 @@ export function addNose(parent, headMesh, p, mats, rng) {
     mesh = new THREE.Mesh(geo, mats.trim);
     mesh.scale.set(wide, 0.75 * tall, 1.9 * deep);
     mesh.position.set(0, 0, size * 0.45);
+  } else if (p.noseType === 'hook') {
+    // a beak that has been bent: the tip drops below where it started
+    geo = new THREE.ConeGeometry(size * 0.55 * wide, size * 2.4 * deep, 7, 4);
+    mesh = new THREE.Mesh(geo, mats.skin);
+    mesh.rotation.x = Math.PI / 2.6;
+    mesh.position.set(0, -size * 0.35, size * 0.8);
+  } else if (p.noseType === 'blob') {
+    // a heavy bulb hanging off the middle of the face
+    geo = new THREE.SphereGeometry(size * 1.15, 11, 9);
+    mesh = new THREE.Mesh(geo, mats.trim);
+    mesh.scale.set(wide * 0.95, 1.35 * tall, 1.0 * deep);
+    mesh.position.set(0, -size * 0.45, size * 0.25);
+  } else if (p.noseType === 'button') {
+    // a full stop in the middle of the face
+    geo = new THREE.SphereGeometry(size * 0.45, 9, 7);
+    mesh = new THREE.Mesh(geo, mats.trim);
+    mesh.scale.set(wide, tall, deep * 0.8);
+    mesh.position.set(0, 0, size * 0.12);
+  } else if (p.noseType === 'horn') {
+    // one spike straight off the bridge
+    geo = new THREE.ConeGeometry(size * 0.42 * wide, size * 2.2 * deep, 6, 4);
+    mesh = new THREE.Mesh(geo, mats.growth);
+    mesh.rotation.x = Math.PI / 2.3;
+    mesh.position.set(0, size * 0.4, size * 0.7);
+  } else if (p.noseType === 'plate') {
+    // a flat shield pressed over where a nose should be
+    geo = new THREE.BoxGeometry(size * 1.9 * wide, size * 1.5 * tall, size * 0.4 * deep);
+    mesh = new THREE.Mesh(geo, mats.trim);
+    mesh.position.set(0, 0, size * 0.2);
+  } else if (p.noseType === 'straw') {
+    // a thin tube reaching out of the face
+    geo = new THREE.CylinderGeometry(size * 0.2, size * 0.28, size * 2.6 * deep, 7, 3);
+    mesh = new THREE.Mesh(geo, mats.trim);
+    mesh.rotation.x = Math.PI / 2;
+    mesh.position.set(0, 0, size * 1.2);
   } else {
     geo = new THREE.SphereGeometry(size, 11, 9);
     mesh = new THREE.Mesh(geo, mats.trim);

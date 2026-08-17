@@ -19,6 +19,8 @@ import { headPoint } from '../src/creature/head.js';
 import { mawProfile } from '../src/creature/maw.js';
 
 const N = Number(process.argv[2] || 300);
+// optional second argument: look at one eye kind only
+const ONLY_STYLE = process.argv[3] || null;
 
 const _d = new THREE.Vector3();
 const _p = new THREE.Vector3();
@@ -84,6 +86,11 @@ for (let i = 0; i < N; i++) {
   for (const e of eyes) {
     const half = silhouetteAt(p, e.y);
     if (half === 0) { edge = Math.max(edge, 1); continue; }  // off the skull entirely
+    // An eye sitting on the MIDLINE of a narrow crown is on the front of the
+    // head, not hanging off its side, however narrow the outline is up there.
+    // Only an eye that has gone out towards a shoulder of the skull can be cut
+    // by it, so the test asks about those.
+    if (Math.abs(e.x) < half * 0.45) continue;
     const over = (Math.abs(e.x) + e.r * 0.55) - half;
     if (over > 0) edge = Math.max(edge, over / Math.max(e.r, 1e-6));
   }
@@ -131,7 +138,7 @@ for (let i = 0; i < N; i++) {
     });
   }
 
-  rows.push({ seed: i * 11 + 3, p, pair, edge, tooth, nose });
+  if (!ONLY_STYLE || p.eyeStyle === ONLY_STYLE) rows.push({ seed: i * 11 + 3, p, pair, edge, tooth, nose });
   c.dispose();
 }
 
