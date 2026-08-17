@@ -1,8 +1,38 @@
+import { useMemo } from 'react';
 import { GROUPS, PARAMS } from '../creature/schema.js';
+import { STATS, computeStats, describeMods } from '../creature/stats.js';
 import Control from './Control.jsx';
 
 const TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 const HINT = TOUCH ? 'drag to spin, pinch to zoom' : 'drag to spin, wheel to zoom';
+
+function Stats({ params }) {
+  const { values, traits, power } = useMemo(() => computeStats(params), [params]);
+
+  return (
+    <section className="stats">
+      <div className="stats-head">
+        <span>STATS</span>
+        <span className="power" title="average of all stats">PWR {power}</span>
+      </div>
+
+      {STATS.map((s) => (
+        <div className="stat" key={s.key} title={s.hint}>
+          <span className="stat-label">{s.label}</span>
+          <span className="stat-bar"><i style={{ width: `${values[s.key]}%` }} /></span>
+          <span className="stat-value">{values[s.key]}</span>
+        </div>
+      ))}
+
+      <div className="traits">
+        {traits.length === 0 && <span className="trait none">no traits</span>}
+        {traits.map((t) => (
+          <span className="trait" key={t.id} title={describeMods(t.mods)}>{t.label}</span>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export default function Panel({ params, onChange, onRandom, onSeed, onReset, onCopyJson, onCopyLink, note }) {
   return (
@@ -30,6 +60,8 @@ export default function Panel({ params, onChange, onRandom, onSeed, onReset, onC
         <button type="button" onClick={onReset}>RESET</button>
       </div>
       <div className="note">{note || HINT}</div>
+
+      <Stats params={params} />
 
       <div className="groups">
         {GROUPS.map((g) => (
