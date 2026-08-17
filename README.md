@@ -31,7 +31,9 @@ Deployment to GitHub Pages is set up in `.github/workflows/pages.yml`
   growths, body, style.
 - **LINK** — copies a `?c=...` URL that carries the whole creature.
 - **JSON** — copies the same creature as a parameter object.
-- Drag to spin, wheel (or pinch) to zoom.
+- **IDLE** — pauses the idle motion (handy for screenshots); off by default for
+  anyone whose system asks for reduced motion.
+- Drag to spin, wheel (or pinch) to zoom. Click the creature to poke it.
 
 ## Stats
 
@@ -77,7 +79,8 @@ src/creature/head.js     the skull: direction -> point of skin (headPoint)
 src/creature/surface.js  planting features on skin: raycasts, orientation, decals
 src/creature/features.js eyes, toothed maw, nose, warts, horns, tendrils, spores
 src/creature/body.js     the body derived from the head share: bodyH = headH * (1-r)/r
-src/creature/build.js    buildCreature(params) -> { group, dispose, ... }
+src/creature/build.js    buildCreature(params) -> { group, rig, stats, dispose, ... }
+src/scene/animator.js    idle motion: springs, blinking, saccades, secondary sway
 src/scene/Stage.jsx      canvas, lights, pixelated render, camera orbit
 src/ui/                  the panel, generated straight from the schema
 src/lib/noise.js         seeded RNG plus value/fbm noise
@@ -100,9 +103,38 @@ Three ideas hold the whole thing together:
    randomizer and link validation all come out of `PARAMS`. A new parameter is
    one line in the schema.
 
+## Idle motion
+
+The creature has no skeleton — it is a puppet of named pivot groups, and
+`buildCreature` hands them out as a `rig`: the head hangs on a pivot at the
+neck, each eye, the lower jaw and every tendril own their group (together with
+their outline shell, which is a separate mesh and would otherwise stay behind).
+
+`src/scene/animator.js` drives those pivots and owns all the motion state —
+phases, springs, blink and saccade timers. It lives outside the creature on
+purpose: `buildCreature` throws the whole mesh away on every slider move, and
+the pose must not restart with it. Every frame writes an absolute transform
+(base pose + delta), so nothing drifts and pausing leaves a clean pose.
+
+The stats decide *how* a freak carries itself:
+
+| Stat | What it changes |
+|---|---|
+| SPEED | tempo of breathing, fidgeting and saccades |
+| BALANCE | stiffness and damping of the head spring — a low score wobbles and overshoots |
+| VIGOR | heavy slow arms versus light quick ones |
+| DREAD | slow predatory sway |
+| SIGHT / `BLIND` | how eagerly the eyes track things; a blind head gropes around instead |
+
+On top of that: breathing, weight shifting from foot to foot, blinking (staggered
+across a multi-eyed face), an occasional chew, tendrils lagging behind the head,
+a drifting spore cloud, eyes that follow the cursor, and a recoil-plus-snap when
+you click.
+
 ## What comes next (gameplay)
 
 A creature is already handed out as plain data (`sanitize(params)`), and
 `buildCreature` returns a ready group with `dispose()`, so the next step is a
-scene holding several of them. Idle animation, a gallery and PNG/GLB export are
-deliberately missing from v1 — they are easier to add once the gameplay exists.
+scene holding several of them. A procedural walk cycle, a gallery and PNG/GLB
+export are the obvious next steps — the pivot rig is already in place for the
+walk.

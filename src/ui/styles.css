@@ -91,6 +91,8 @@ canvas.stage {
 
 .actions button:hover { border-color: #4a4162; }
 .actions button.primary { background: #2a2440; border-color: #4a4162; font-weight: 700; }
+.actions button.toggle { color: var(--dim); }
+.actions button.toggle.on { color: var(--accent); border-color: #3c5a45; }
 
 .seed {
   display: flex;
