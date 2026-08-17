@@ -60,14 +60,11 @@ const TOOTH_BITE = { fangs: 0, needles: 0.06, blocks: -0.04, tusks: 0.1 };
 const NOSE_DREAD = { none: 0, bump: 0, beak: 0.03, snout: 0.02, holes: 0.01, trunk: 0.04, tusks: 0.09, pig: 0 };
 // no hearing stat, so ears count towards the sense the creature does have
 const EAR_SIGHT = { none: 0, flaps: 0.07, fins: 0.05, trumpets: 0.1, holes: 0.03 };
-const BODY_VIGOR = { blob: 0, pear: 0.04, barrel: 0.1, segmented: -0.04, slab: 0.12 };
-const BODY_DREAD = { blob: 0, pear: 0, barrel: 0.02, segmented: 0.1, slab: 0.04 };
+
 const LEG_SPEED = { stick: 0.06, thick: -0.04, bent: 0.12, stump: -0.12 };
 const LEG_BALANCE = { stick: -0.04, thick: 0.08, bent: -0.02, stump: 0.12 };
 const FOOT_BALANCE = { ball: 0, none: -0.1, splay: 0.12, hoof: -0.02 };
 const FOOT_SPEED = { ball: 0, none: 0.04, splay: -0.05, hoof: 0.08 };
-const ORN_DREAD = { none: 0, ruff: 0.12, plates: 0.09, studs: 0.05, bands: 0.02 };
-const ORN_VIGOR = { none: 0, ruff: -0.02, plates: 0.08, studs: 0.06, bands: 0.04 };
 
 /**
  * Scales raw stats so they sum to exactly BUDGET while every value stays in
@@ -201,11 +198,9 @@ export const TRAITS = [
   { id: 'springy', label: 'SPRING-LEGGED', when: (p) => p.legType === 'bent', mods: { speed: 11, balance: -5 } },
   { id: 'footless', label: 'FOOTLESS', when: (p) => p.footType === 'none', mods: { balance: -12, speed: 5 } },
   { id: 'broadfoot', label: 'BROAD-FOOTED', when: (p) => p.footType === 'splay', mods: { balance: 11, speed: -4 } },
-  { id: 'chitinous', label: 'CHITINOUS', when: (p) => p.bodyType === 'segmented', mods: { dread: 9, vigor: -4 } },
-  { id: 'ruffed', label: 'RUFFED', when: (p) => p.ornament === 'ruff' && p.ornamentAmount > 0.4, mods: { dread: 12, speed: -4 } },
-  { id: 'plated', label: 'PLATED', when: (p) => p.ornament === 'plates' && p.ornamentAmount > 0.4, mods: { vigor: 9, dread: 6, speed: -5 } },
-  { id: 'studded', label: 'STUDDED', when: (p) => p.ornament === 'studs' && p.ornamentAmount > 0.5, mods: { vigor: 7, dread: 4 } },
-  { id: 'banded', label: 'BANDED', when: (p) => p.ornament === 'bands' && p.ornamentAmount > 0.4, mods: { balance: 8, vigor: 3 } },
+  { id: 'paunched', label: 'PAUNCHED', when: (p) => p.belly > 0.6, mods: { vigor: 8, speed: -6 } },
+  { id: 'broadChest', label: 'BROAD-CHESTED', when: (p) => p.chestWide > 0.4, mods: { vigor: 9, balance: -3 } },
+  { id: 'wasp', label: 'WASP-WAISTED', when: (p) => p.waistWide < -0.3, mods: { speed: 8, vigor: -5 } },
   { id: 'hooded', label: 'HOODED', when: (p) => p.eyeLid >= 0.6, mods: { dread: 6, sight: -6 } },
 ];
 
@@ -228,8 +223,8 @@ export function computeStats(p) {
       0.14 * nk(p, 'boxiness') +
       0.12 * nk(p, 'warts') +
       0.08 * nk(p, 'jaw') +
-      from(BODY_VIGOR, p.bodyType) +
-      from(ORN_VIGOR, p.ornament) * (0.4 + nk(p, 'ornamentAmount') * 0.9),
+      0.1 * nk(p, 'belly') +
+      0.08 * Math.max(0, p.chestWide),
     bite:
       (0.4 * teeth + 0.24 * nk(p, 'toothSize') + 0.22 * nk(p, 'mouthWidth') + 0.14 * nk(p, 'toothJag')) *
       (p.teethTop + p.teethBottom > 0 ? 1 : 0.3) +
@@ -259,8 +254,8 @@ export function computeStats(p) {
       0.14 * dark +
       from(HAIR_DREAD, p.hairType) +
       from(NOSE_DREAD, p.noseType) +
-      from(BODY_DREAD, p.bodyType) +
-      from(ORN_DREAD, p.ornament) * (0.4 + nk(p, 'ornamentAmount') * 0.9),
+      0.1 * nk(p, 'bodyLumps') +
+      0.06 * nk(p, 'bodyBox'),
     balance:
       0.34 * nk(p, 'stance') +
       0.3 * (1 - nk(p, 'headRatio')) +

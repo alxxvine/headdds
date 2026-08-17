@@ -232,19 +232,32 @@ export const PARAMS = [
   }),
   int('tendrils', 'growths', 'hair count', 0, 14, 0, { random: (rng) => weighted(rng, [[0, 3], [4, 3], [8, 3], [14, 2]]) }),
   range('tendrilLen', 'growths', 'hair length', 0.15, 1.2, 0.45),
-  int('spores', 'growths', 'spore cloud', 0, 220, 0, { random: (rng) => weighted(rng, [[0, 6], [60, 2], [140, 1], [220, 1]]) }),
+  // What floats around a freak rather than growing out of it. `spores` kept its
+  // key so old links still open with the cloud they were saved with.
+  select('aura', 'growths', 'aura', [
+    { value: 'spores', label: 'spore cloud' },
+    { value: 'ring', label: 'orbit ring' },
+    { value: 'bubbles', label: 'rising motes' },
+    { value: 'swarm', label: 'swarm' },
+    { value: 'halo', label: 'halo of shards' },
+  ], 'spores', {
+    random: (rng) => weighted(rng, [['spores', 3], ['ring', 3], ['bubbles', 3], ['swarm', 2], ['halo', 2]]),
+  }),
+  int('spores', 'growths', 'aura count', 0, 220, 0, {
+    random: (rng) => weighted(rng, [[0, 3], [24, 2], [60, 3], [120, 2], [220, 1]]),
+  }),
+  range('auraSize', 'growths', 'aura size', 0, 1, 0.35, { random: (rng) => rng() }),
 
   // --- BODY --------------------------------------------------------------
   range('headRatio', 'body', 'head share', 0.5, 0.88, 0.7),
-  select('bodyType', 'body', 'torso', [
-    { value: 'blob', label: 'blob' },
-    { value: 'pear', label: 'pear' },
-    { value: 'barrel', label: 'barrel' },
-    { value: 'segmented', label: 'segmented' },
-    { value: 'slab', label: 'slab' },
-  ], 'blob', {
-    random: (rng) => weighted(rng, [['blob', 3], ['pear', 3], ['barrel', 3], ['segmented', 2], ['slab', 2]]),
-  }),
+  // The torso is a surface of its own now, not a primitive — these are its
+  // silhouette, the same three-band idea the skull uses.
+  range('chestWide', 'body', 'chest width', -0.6, 0.8, 0, { random: (rng) => (rng() * 2 - 1) * 0.7 }),
+  range('waistWide', 'body', 'waist width', -0.6, 0.8, 0, { random: (rng) => (rng() * 2 - 1) * 0.7 }),
+  range('hipWide', 'body', 'hip width', -0.6, 0.8, 0, { random: (rng) => (rng() * 2 - 1) * 0.7 }),
+  range('bodyBox', 'body', 'boxiness', 0, 1, 0.1, { random: (rng) => rng() * rng() }),
+  range('bodyLumps', 'body', 'lumps', 0, 0.4, 0.05, { random: (rng) => rng() * 0.35 }),
+  range('belly', 'body', 'belly', 0, 1, 0.15, { random: (rng) => rng() * 0.9 }),
   range('bodyWidth', 'body', 'body width', 0.3, 1.3, 0.7),
   range('limbThick', 'body', 'limb width', 0.3, 1.4, 0.7),
   select('armType', 'body', 'arms', [
@@ -284,19 +297,6 @@ export const PARAMS = [
   ], 'ball', {
     random: (rng) => weighted(rng, [['ball', 3], ['none', 2], ['splay', 3], ['hoof', 2]]),
   }),
-  // The skull has had horns and warts from the start; below the neck a freak
-  // was bare, which is why two different torsos still read as one creature
-  // wearing a different lump.
-  select('ornament', 'body', 'ornament', [
-    { value: 'none', label: 'none' },
-    { value: 'ruff', label: 'spiked ruff' },
-    { value: 'plates', label: 'spine plates' },
-    { value: 'studs', label: 'studs' },
-    { value: 'bands', label: 'limb bands' },
-  ], 'none', {
-    random: (rng) => weighted(rng, [['none', 3], ['ruff', 3], ['plates', 3], ['studs', 3], ['bands', 2]]),
-  }),
-  range('ornamentAmount', 'body', 'ornament size', 0, 1, 0.4, { random: (rng) => 0.2 + rng() * 0.8 }),
   range('legLen', 'body', 'leg length', 0.2, 1.5, 0.8),
   range('stance', 'body', 'stance', 0, 1, 0.45),
 
