@@ -52,7 +52,18 @@ export function makeMaterials(p) {
     // hands, feet and ears: the same skin, further into the ink
     trim: toon(shade(p.skinColor, p.trim ?? 0.35)),
     tooth: toon(new THREE.Color('#f4ecd6')),
-    lip: toon(new THREE.Color(p.lipColor)),
+    // The lip is a decal on the skin and wins its ordering against the skin on
+    // DEPTH, not on height — so its geometric lift can stay small enough that
+    // the band does not stand off the cheek and out through the outline. The
+    // maw's bias is stronger again, so the dark interior still draws over the
+    // lip that rings it.
+    lip: new THREE.MeshToonMaterial({
+      color: new THREE.Color(p.lipColor),
+      gradientMap,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    }),
     // a glowing creature lights its own eyes: emissive needs no post-processing
     // and reads instantly against the dark background
     eye: new THREE.MeshToonMaterial({
@@ -86,13 +97,25 @@ export function makeMaterials(p) {
     maw: new THREE.MeshBasicMaterial({
       color: shade(p.lipColor, 0.78),
       polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
+      // Clear of the lip by more than one step: the two bands are eight
+      // thousandths apart geometrically and their per-vertex lifts cross, so a
+      // single unit of bias let the lip win in patches — the dark of the mouth
+      // came out mottled, which reads as a rendering fault rather than as a
+      // mouth.
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
     }),
     // The rim an eyeball sits in. Well darker than the face on purpose: a
     // bulging eye the same tone as the skin reads as a lump, and the thin
     // outline around it is not enough to separate the two.
-    socket: new THREE.MeshBasicMaterial({ color: shade(p.skinColor, 0.5) }),
+    socket: new THREE.MeshBasicMaterial({
+      color: shade(p.skinColor, 0.5),
+      // ...and it wins against the skin on depth as well as on height, so the
+      // lift it needs to cover a lumpy socket stays small
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    }),
     // The outline is an inverted hull, so only its BACK faces are drawn — and
     // for anything lying flat on the skull (a nose disc, an ear root, a wart)
     // those back faces sit within a hair of the skin they are pressed against.

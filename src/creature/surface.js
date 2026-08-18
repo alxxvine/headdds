@@ -92,20 +92,45 @@ const _radDir = new THREE.Vector3();
  * screen positions becomes a wildly uneven lattice on the skin. Asking along
  * the sample's own radial direction has no such preferred axis.
  */
-export function surfaceRadial(headMesh, point, out = { point: new THREE.Vector3(), normal: new THREE.Vector3() }) {
+export function surfaceRadial(headMesh, point, out = { point: new THREE.Vector3(), normal: new THREE.Vector3() }, p = null) {
   if (point.lengthSq() < 1e-9) point.set(0, 0, 1);
   _radDir.copy(point).normalize();
-  _radFrom.copy(_radDir).multiplyScalar(60);
-  raycaster.set(_radFrom, _radDir.clone().negate());
-  const hits = raycaster.intersectObject(headMesh, false);
-  if (!hits.length) {
-    out.point.copy(point);
-    out.normal.copy(_radDir);
+  // A ray that runs exactly along a shared edge of the mesh can pass between
+  // two triangles and hit neither — and a mouth is built on the midline, where
+  // every ray has x = 0 and the icosahedron has its seams. Six vertices of one
+  // lip band came back with no hit at all, and the fallback left each of them
+  // where it was ASKED to be, which is out in the air off the tangent plane: an
+  // eighth of a head radius clear of the face, and the widest thing hanging
+  // outside the outline on that creature. So a miss is retried off the seam
+  // before it is believed.
+  for (let k = 0; k < 4; k++) {
+    if (k) {
+      _radDir.copy(point).normalize();
+      _radDir.x += (k === 1 ? 1 : k === 2 ? -1 : 0.5) * 2e-3;
+      _radDir.y += (k === 3 ? 1 : 0) * 2e-3;
+      _radDir.normalize();
+    }
+    _radFrom.copy(_radDir).multiplyScalar(60);
+    raycaster.set(_radFrom, _radDir.clone().negate());
+    const hits = raycaster.intersectObject(headMesh, false);
+    if (!hits.length) continue;
+    out.point.copy(hits[0].point);
+    out.normal.copy(hits[0].face ? hits[0].face.normal : _radDir).normalize();
+    if (out.normal.dot(_radDir) < 0) out.normal.negate();
     return out;
   }
-  out.point.copy(hits[0].point);
-  out.normal.copy(hits[0].face ? hits[0].face.normal : _radDir).normalize();
-  if (out.normal.dot(_radDir) < 0) out.normal.negate();
+  // Nothing anywhere along the ray, which should not happen on a closed skull:
+  // the analytic surface, which is defined in every direction, rather than the
+  // query point, which is defined nowhere.
+  _radDir.copy(point).normalize();
+  if (p) {
+    const s = headSurfaceByDir(p, _radDir);
+    out.point.copy(s.point);
+    out.normal.copy(s.normal);
+  } else {
+    out.point.copy(point);
+    out.normal.copy(_radDir);
+  }
   return out;
 }
 
@@ -194,7 +219,16 @@ export function orientUpright(obj, point, normal) {
 export function patchFrame(headMesh, p, cx, cy) {
   const seat = surfaceAt(headMesh, p, cx, cy);
   const point = seat.point.clone();
-  const normal = seat.normal.clone();
+  // The frame's own normal is the seat's RADIAL direction, not the facet's.
+  // A five-hundred-face skull has facets a quarter of a radius across and the
+  // face normal under a patch is whichever way one of them happens to point:
+  // on a lumpy head that came out forty degrees round the azimuth, and the
+  // mouth built on it was laid diagonally across the cheek. The radial
+  // direction of a star-shaped skull is smooth by construction, so a patch
+  // near the front of the face gets a frame near the front of the face. The
+  // per-vertex normals the patch is LIFTED along stay the mesh's own — the
+  // lift is a local question and this is not.
+  const normal = point.lengthSq() > 1e-9 ? point.clone().normalize() : seat.normal.clone();
   const du = new THREE.Vector3(Math.abs(normal.y) > 0.9 ? 1 : 0, Math.abs(normal.y) > 0.9 ? 0 : 1, 0)
     .cross(normal).normalize();
   const dv = new THREE.Vector3().crossVectors(normal, du).normalize();
@@ -206,7 +240,7 @@ export function patchFrame(headMesh, p, cx, cy) {
     /** the skin at a tangent offset from the middle of the patch */
     at(ox, oy, out = _dhit) {
       _dp.copy(point).addScaledVector(du, ox).addScaledVector(dv, oy);
-      return surfaceRadial(headMesh, _dp, out);
+      return surfaceRadial(headMesh, _dp, out, p);
     },
   };
 }
@@ -288,6 +322,9 @@ export function decalGeometry(headMesh, p, {
   // takes the deepest sag of the quads that meet there, so a lumpy rim rises
   // and a calm middle stays down.
   const lift = new Float32Array(count).fill(offset);
+  // A disc is a socket or a nostril: small, and nowhere near the silhouette,
+  // so it can afford the lift it needs to cover its own sag. The mouth cannot —
+  // see the band below.
   const cap = offset + Math.min(rx, ry) * 0.3;
   for (let s = 0; s < segs; s++) {
     const s2 = (s + 1) % segs;
@@ -423,7 +460,13 @@ export function bandGeometry(headMesh, p, {
   // whole band lets its worst quad decide where the rest of it sits, and the
   // mouth is the biggest patch on the creature.
   const lift = new Float32Array(count).fill(offset);
-  const cap = offset + Math.min(rx, ry) * 0.3;
+  // A ceiling on the lift, because a lift is a patch standing off the face and
+  // a patch standing off the face comes out through the outline from the side.
+  // It used to be a third of the patch's own size, which on a mouth is an
+  // eighth of a head radius of dark fin hanging off the cheek. The bands win
+  // their ordering against the skin on depth now (see mats.lip and mats.maw),
+  // so height only has to cover an honest sag.
+  const cap = offset + Math.min(rx, ry) * 0.12;
   for (let ci = 0; ci < cols; ci++) {
     const u = -1 + ((ci + 0.5) / cols) * 2;
     const hi = up(u);
@@ -441,7 +484,7 @@ export function bandGeometry(headMesh, p, {
       // mouth and lifts that corner of the band bodily off the head. The maw
       // was standing an eighth of a head radius clear of the face at its
       // corners, which from three quarters on is a dark fin off the cheek.
-      surfaceRadial(headMesh, _mid, _bandHit);
+      surfaceRadial(headMesh, _mid, _bandHit, p);
       const one = quadSag(_bandHit, _mid, Math.min(rx, ry) * 0.35, pts[i].distanceTo(pts[j + 1]));
       if (one === null) continue;
       const want = Math.min(offset + one * 2.6, cap);

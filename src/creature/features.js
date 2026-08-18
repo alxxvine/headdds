@@ -120,9 +120,24 @@ export function faceLimits(p) {
   // seven had it inside the maw itself. The worst case of the roll is what the
   // rest of the face has to dodge, because the rest of the face is placed
   // before the roll happens.
-  const noseHalfH = noseSize * (NOSE_REACH[p.noseType] ?? 2.0);
+  let noseHalfH = noseSize * (NOSE_REACH[p.noseType] ?? 2.0);
+  // A nose is lifted clear of the maw, and on a small head with a high mouth
+  // that lift carried it clean off the top of the skull: a ninth of all
+  // creatures reserved a band for the nose that ended above their own crown.
+  // The nose then sat on the crown — and every eye with it, since the eyes are
+  // placed above the nose, which is why a seven-eyed face came out blank with a
+  // lump on top of its head. There is only so much face between the mouth and
+  // the crown; a nose that does not fit in it is made to fit.
+  const crownY = headPoint(p, _sd.set(0, 1, 0), _sp).y;
+  const band = crownY - mouthTop;
+  if (p.noseType !== 'none' && noseHalfH * 2.1 > band && band > 0) {
+    const f = Math.max(0.25, band / (noseHalfH * 2.1));
+    noseSize *= f;
+    noseHalfH *= f;
+  }
   const noseY = p.noseType === 'none' ? -99
-    : Math.max(p.noseY * p.headHeight * 0.7, mouthTop + noseHalfH * 1.05);
+    : Math.min(Math.max(p.noseY * p.headHeight * 0.7, mouthTop + noseHalfH * 1.05),
+      crownY - noseHalfH * 1.05);
   return {
     S,
     mouthTop,
@@ -505,19 +520,52 @@ function settleEyes(p, plan, L, clear, headMesh) {
     }
   };
 
+  // How small an eye is allowed to get. Three shrinking loops run below and
+  // they compose: at the end of all of them a seven-visor face had eyes at two
+  // hundredths of the size it asked for, which is a creature with no eyes at
+  // all — measured, and confirmed on the picture, which shows a blank face.
+  // An eye that cannot be fitted is REMOVED instead. Six visors that read as
+  // eyes beat seven that read as nothing.
+  for (const e of plan) e.min = e.size * 0.42;
+
+  /** shrink everything that still has room to shrink; false if none had */
+  const shrink = (f) => {
+    let any = false;
+    for (const e of plan) {
+      if (e.size <= e.min * 1.001) continue;
+      const g = Math.max(f, e.min / e.size);
+      e.size *= g;
+      e.rx *= g;
+      e.ry *= g;
+      e.stand *= g;
+      e.floor = Math.min(e.floor, e.bare + e.size * 1.5);
+      any = true;
+    }
+    return any;
+  };
+
+  /** drop the eye that is deepest inside another one; false if only one left */
+  const dropWorst = () => {
+    if (plan.length <= 1) return false;
+    let worst = -1;
+    let victim = plan.length - 1;
+    for (let a = 0; a < plan.length; a++) {
+      for (let b = a + 1; b < plan.length; b++) {
+        const v = bite(plan[a], plan[b]);
+        if (v > worst) { worst = v; victim = b; }
+      }
+    }
+    plan.splice(victim, 1);
+    return true;
+  };
+
   relax();
   // A ring of eight on a narrow skull has nowhere to go: the pushing runs into
   // the silhouette clamp and comes straight back. When there is genuinely no
   // room, the eyes give up size instead of staying merged — a face full of
   // small eyes is a design, two eyeballs inside one another is a defect.
-  for (let attempt = 0; attempt < 14 && worstPair() > 0.02; attempt++) {
-    for (const e of plan) {
-      e.size *= 0.86;
-      e.rx *= 0.86;
-      e.ry *= 0.86;
-      e.stand *= 0.86;
-      e.floor = Math.min(e.floor, e.bare + e.size * 1.5);
-    }
+  for (let attempt = 0; attempt < 20 && worstPair() > 0.02; attempt++) {
+    if (!shrink(0.86) && !dropWorst()) break;
     relax();
   }
 
@@ -545,11 +593,12 @@ function settleEyes(p, plan, L, clear, headMesh) {
       e.x *= 0.82;
       e.y = midY + (e.y - midY) * 0.88;
       e.y = Math.max(e.y, Math.min(e.bare, e.top));
-      if (k >= 2) {
-        e.size *= 0.88;
-        e.rx *= 0.88;
-        e.ry *= 0.88;
-        e.stand *= 0.88;
+      if (k >= 2 && e.size > e.min * 1.001) {
+        const g = Math.max(0.88, e.min / e.size);
+        e.size *= g;
+        e.rx *= g;
+        e.ry *= g;
+        e.stand *= g;
       }
       inside(e);
     }
@@ -571,8 +620,10 @@ function settleEyes(p, plan, L, clear, headMesh) {
       if (probe.room > bestRoom) { bestRoom = probe.room; bestY = probe.y; }
     }
     const span = () => plan.reduce((t, e) => t + e.rx * 2.44, 0);
+    // ...and a row that still does not fit loses eyes rather than keeping all
+    // of them at a size that draws no pixels.
     for (let k = 0; k < 24 && span() > bestRoom * 2; k++) {
-      for (const e of plan) { e.size *= 0.86; e.rx *= 0.86; e.ry *= 0.86; e.stand *= 0.86; }
+      if (!shrink(0.86) && !dropWorst()) break;
     }
     let cursor = -span() / 2;
     for (const e of plan) {
@@ -1044,7 +1095,20 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     // Seated in the maw's own frame on the skin — the same one the cavity band
     // is built in, so the row grows out of the rim it is drawn against rather
     // than off a frontal projection of it that walks inward at the corners.
-    const hit = seatFrame.at(t * mw * 0.94, side * Math.max(edge, mh * 0.12) * 0.94, _tseat);
+    //
+    // A step across the skin lands where the skin IS, and on a skull that
+    // bulges under the corner of a mouth that is further out than the step
+    // asked for: the last tooth of the row came out past the rim it grows
+    // from, on bare cheek. So the step is pulled in until the tooth it seats
+    // is inside the mouth.
+    let across = t * mw * 0.94;
+    let hit = seatFrame.at(across, side * Math.max(edge, mh * 0.12) * 0.94, _tseat);
+    for (let k = 0; k < 3 && Math.abs(across) > 1e-4; k++) {
+      const got = Math.abs(hit.point.x - mx) / Math.max(mw, 1e-6);
+      if (got <= 0.9) break;
+      across *= 0.9 / got;
+      hit = seatFrame.at(across, side * Math.max(edge, mh * 0.12) * 0.94, _tseat);
+    }
 
     // A tooth never fills its own slot. At the bottom of the gap slider the
     // blocks met edge to edge and the whole row rendered as one white bar with
@@ -1287,7 +1351,7 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
         _tip.fromBufferAttribute(tp, k)
           .applyMatrix4(tooth.matrix).applyMatrix4(stem.matrix).applyMatrix4(frame.matrix);
         if (_tip.lengthSq() < 1e-9) continue;
-        surfaceRadial(headMesh, _tip, _thit);
+        surfaceRadial(headMesh, _tip, _thit, p);
         worst = Math.max(worst, _tip.length() - _thit.point.length());
       }
       return worst;
@@ -1321,11 +1385,62 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
   }
 }
 
+/**
+ * The mouth, pulled in until the mouth that gets BUILT is on the face.
+ *
+ * mawBox solves the same question analytically, against the frontal outline of
+ * the skull — and the band is no longer laid out frontally: it is laid out in
+ * its own frame on the skin (see patchFrame), where a step down from a mouth
+ * on a heavy jaw follows the jaw round, and a step sideways lands wherever the
+ * skin is along that ray, which on a lumpy skull can be most of a radius
+ * further out than the step asked for. Neither is visible to a solve that only
+ * knows the parameters.
+ *
+ * So the rim is walked where it will actually be, and the mouth gives up
+ * opening and then width until none of it is under the chin or past the cheek.
+ * Six probes a step, a dozen steps at worst: the cost of a mouth on the face.
+ */
+function fitMaw(headMesh, p, box) {
+  const grow = 1 + Math.max(0, p.lips);
+  const chinY = headPoint(p, _fd.set(0, -1, 0), _fs).y;
+  const edge = (p.headHeight + p.headWidth) * 0.03;
+  let { mx, my, mw, mh } = box;
+  for (let k = 0; k < 10; k++) {
+    const frame = patchFrame(headMesh, p, mx, my);
+    const rx = mw * grow;
+    const ry = mh * grow * 1.25;
+    let under = 0;
+    let past = 0;
+    // at the same thirty columns the band is built on, so nothing between two
+    // probes can be the thing that hangs off the chin
+    for (let i = 0; i <= 30; i++) {
+      const u = -1 + i / 15;
+      for (const y of [box.profile.up(u) * ry, box.profile.down(u) * ry]) {
+        const v = frame.at(u * rx, y).point;
+        if (v.y < chinY + edge) under = Math.max(under, chinY + edge - v.y);
+        const half = headHalfWidth(p, v.y);
+        if (half > 0 && Math.abs(v.x) > half * 0.93) past = Math.max(past, Math.abs(v.x) - half * 0.93);
+      }
+    }
+    if (under <= 1e-3 && past <= 1e-3) break;
+    // A mouth that hangs under the chin is first LIFTED — moving it costs the
+    // creature nothing, shrinking it costs the creature its mouth — and only
+    // what lifting cannot reach comes out of the opening.
+    if (under > 1e-3) {
+      const lift = Math.min(under, mh * 0.35);
+      my += lift;
+      if (under - lift > 1e-3) mh *= 0.85;
+    }
+    if (past > 1e-3) mw *= 0.88;
+  }
+  return { ...box, mx, my, mw, mh };
+}
+
 export function addMouth(parent, headMesh, p, mats, rng) {
   // a crooked maw sits off centre and off level — and, whatever it rolls, on
   // the face rather than round the side or under the chin. See mawBox.
   const skew = (rng() * 2 - 1) * p.lopsided;
-  const { mx, my, mw, mh } = mawBox(p, skew);
+  const { mx, my, mw, mh } = fitMaw(headMesh, p, mawBox(p, skew));
 
   // The shape the mouth is cut in — see maw.js. Every part of the mouth reads
   // the same two curves, so the lips, the hole and both rows of teeth agree
@@ -1346,7 +1461,7 @@ export function addMouth(parent, headMesh, p, mats, rng) {
     const grow = 1 + p.lips;
     const lips = bandGeometry(headMesh, p, {
       cx: mx, cy: my, rx: mw * grow, ry: mh * grow * 1.25,
-      up: profile.up, down: profile.down, offset: 0.018, cols: 30, rows: 11,
+      up: profile.up, down: profile.down, offset: 0.018, cols: 22, rows: 9,
     });
     const lipMesh = new THREE.Mesh(lips, mats.lip);
     lipMesh.userData.maw = true;
@@ -1370,7 +1485,7 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   // against is honest since the band stopped sampling itself frontally.
   const cavity = bandGeometry(headMesh, p, {
     cx: mx, cy: my, rx: mw, ry: mh,
-    up: profile.up, down: profile.down, offset: 0.026, cols: 30, rows: 13,
+    up: profile.up, down: profile.down, offset: 0.026, cols: 22, rows: 10,
   });
   const cavityMesh = new THREE.Mesh(cavity, mats.maw);
   cavityMesh.userData.maw = true;

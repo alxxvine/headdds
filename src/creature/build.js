@@ -124,6 +124,22 @@ export function buildCreature(rawParams) {
       fitBox.min.y = Math.max(fitBox.min.y, 0);
     }
   }
+  // The aura is in the frame too, under the same cap. It was left out of it
+  // entirely so a two-hundred-mote cloud could not shrink the creature to a
+  // dot — but out of the frame means out of the VIEWPORT, and a cloud sitting
+  // on the crown was cut off square by the top of the picture: not a cloud any
+  // more, a slab of ice glued to the head.
+  if (growths.spores) {
+    group.updateMatrixWorld(true);
+    const auraBox = new THREE.Box3().setFromObject(growths.spores);
+    if (!auraBox.isEmpty()) {
+      const cap = fitBox.max.y + (fitBox.max.y - fitBox.min.y) * 0.25;
+      fitBox.union(auraBox);
+      fitBox.max.y = Math.min(fitBox.max.y, cap);
+      fitBox.min.y = Math.max(fitBox.min.y, 0);
+    }
+  }
+
   const fitSize = new THREE.Vector3();
   const fitCenter = new THREE.Vector3();
   fitBox.getSize(fitSize);
