@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { headPoint } from './head.js';
-import { surfaceAt, surfaceByDir, orientTo, decalGeometry } from './surface.js';
+import { surfaceAt, surfaceByDir, orientTo, decalGeometry, bandGeometry } from './surface.js';
 import { withOutline } from './materials.js';
 import { warpGeometry, warpRoll } from './warp.js';
 import { addHair } from './hair.js';
 import { addEars } from './ears.js';
 import { addAura } from './aura.js';
-import { mawProfile, mawRim, mawExtent } from './maw.js';
+import { mawProfile, mawExtent } from './maw.js';
 
 // Feature sizes are expressed in "head units" so that an eye stays an eye
 // both on a squashed pancake and on a long cucumber.
@@ -635,7 +635,13 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     // a third longer than a fang and a tusk half again, and applying those
     // afterwards let both walk straight back out through it.
     const kindLen = TOOTH_LEN[p.toothType] ?? 1;
-    len = Math.min(len * kindLen, Math.max(mh * 2.6, p.headHeight * 0.1));
+    // The cap is against the opening AT THIS TOOTH, read off the profile —
+    // not against the `mh` parameter. A slit's profile squeezes the visible
+    // opening to a quarter of `mh`, and teeth capped by the parameter came out
+    // ten times the height of the mouth they grew from: a beard of white
+    // needles hanging under a shut mouth.
+    const span = (profile.up(t * 0.94) - profile.down(t * 0.94)) * mh;
+    len = Math.min(len * kindLen, Math.max(span * 1.35, mh * 0.4));
 
     // A tooth grows tip-first from the rim: whatever the kind, the narrow end
     // has to point into the maw, which flips with the row.
@@ -756,20 +762,30 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   // The shape the mouth is cut in — see maw.js. Every part of the mouth reads
   // the same two curves, so the lips, the hole and both rows of teeth agree
   // about where the rim is even when it is a zigzag.
+  //
+  // Both patches are BANDS between the two curves, never fans about a centre:
+  // five of the shapes do not contain their own centre — a grin's corners are
+  // hauled above its middle, a crescent lies below it entirely — and a fan on
+  // those collapses through a point outside the mouth, painting a dark wedge
+  // from the corner towards the middle of the face.
+  //
+  // The lips are not a ring: they are the same shape a size larger, laid UNDER
+  // the cavity — the cavity's offset stands it off the skin further, so the lip
+  // colour shows only as the border around it.
   const profile = mawProfile(p.mawShape);
-  const rim = mawRim(profile);
 
   if (p.lips > 0.01) {
     const grow = 1 + p.lips;
-    const lips = decalGeometry(headMesh, p, {
+    const lips = bandGeometry(headMesh, p, {
       cx: mx, cy: my, rx: mw * grow, ry: mh * grow * 1.25,
-      inner: 1 / grow, offset: 0.006, rings: 2, segs: 34, rim,
+      up: profile.up, down: profile.down, offset: 0.006, cols: 30, rows: 2,
     });
     parent.add(new THREE.Mesh(lips, mats.lip));
   }
 
-  const cavity = decalGeometry(headMesh, p, {
-    cx: mx, cy: my, rx: mw, ry: mh, offset: 0.014, rings: 3, segs: 34, rim,
+  const cavity = bandGeometry(headMesh, p, {
+    cx: mx, cy: my, rx: mw, ry: mh,
+    up: profile.up, down: profile.down, offset: 0.014, cols: 30, rows: 3,
   });
   parent.add(new THREE.Mesh(cavity, mats.cavity));
 

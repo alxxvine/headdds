@@ -77,18 +77,6 @@ export function mawProfile(kind) {
   }
 }
 
-/**
- * The profile as a closed rim in unit coordinates, for `decalGeometry`.
- * The upper curve is walked right to left over the first half of the turn and
- * the lower one back again, so the loop closes at the two corners.
- */
-export function mawRim(profile) {
-  return (a) => {
-    const u = Math.cos(a);
-    return [u, Math.sin(a) >= 0 ? profile.up(u) : profile.down(u)];
-  };
-}
-
 /** How far the profile reaches above and below the centre line, over all u. */
 export function mawExtent(profile) {
   let hi = 0;
