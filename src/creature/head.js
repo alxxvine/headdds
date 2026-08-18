@@ -201,23 +201,49 @@ const _sq = new THREE.Vector3();
  * is no skull at its height was slammed onto the midline: five eyes in a column
  * came out as one eye, drawn five times.
  */
-export function headHalfWidth(p, y) {
+const OUTLINE = new WeakMap();
+
+/**
+ * The skull's frontal outline as a polyline, worked out once per creature.
+ *
+ * Walking the great circle from scratch is 194 headPoint calls, and the eye
+ * settler asks for the outline several hundred times while it relaxes a face —
+ * which was a fifth of a second per creature, on the path that reruns every
+ * time a slider moves. The walk does not depend on the height being asked
+ * about, so it is done once and remembered. `p` is a fresh object per build, so
+ * a weak key needs no invalidating.
+ */
+function outlineOf(p) {
+  let rings = OUTLINE.get(p);
+  if (rings) return rings;
   const N = 96;
-  let best = 0;
+  rings = [];
   for (const sx of [1, -1]) {
-    let prev = null;
+    const ring = [];
     for (let i = 0; i <= N; i++) {
       const dy = -1 + (i / N) * 2;
       const c = Math.sqrt(Math.max(0, 1 - dy * dy));
       headPoint(p, _si.set(sx * c, dy, 0).normalize(), _sq);
-      const cur = { y: _sq.y, x: Math.abs(_sq.x) };
-      if (prev) {
-        if ((prev.y - y) * (cur.y - y) <= 0 && prev.y !== cur.y) {
-          const k = (y - prev.y) / (cur.y - prev.y);
-          best = Math.max(best, prev.x + (cur.x - prev.x) * k);
-        }
+      ring.push(_sq.y, Math.abs(_sq.x));
+    }
+    rings.push(ring);
+  }
+  OUTLINE.set(p, rings);
+  return rings;
+}
+
+export function headHalfWidth(p, y) {
+  let best = 0;
+  for (const ring of outlineOf(p)) {
+    for (let i = 2; i < ring.length; i += 2) {
+      const py = ring[i - 2];
+      const px = ring[i - 1];
+      const cy = ring[i];
+      const cx = ring[i + 1];
+      if ((py - y) * (cy - y) <= 0 && py !== cy) {
+        const k = (y - py) / (cy - py);
+        best = Math.max(best, px + (cx - px) * k);
       }
-      prev = cur;
     }
   }
   return best;

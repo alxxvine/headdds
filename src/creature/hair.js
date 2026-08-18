@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { surfaceByDir, orientTo } from './surface.js';
 import { withOutline } from './materials.js';
+import { headPoint } from './head.js';
+
+const _hv = new THREE.Vector3();
+const _hd = new THREE.Vector3();
+const _hs = new THREE.Vector3();
 
 // Whatever grows out of the crown. Every kind roots itself on the real skin
 // (surfaceByDir) and lives in its own pivot group, so the animator can sway it
@@ -185,13 +190,24 @@ export function addHair(parent, p, mats, rng, S) {
       strands.push({ pivot, len, phase: rng() * Math.PI * 2, stiffness: 0.3 });
     // ---------------------------------------------------------------- coral ---
     } else if (kind === 'coral') {
-      // a lumpy branch: three beads on a short stalk
+      // A lumpy branch: three beads, each one touching the last and the first
+      // one touching the head. It used to space them by a share of `len` while
+      // sizing them by a share of `S`, so at any decent hair length the beads
+      // came apart and the whole branch — the stalk this comment claims it has
+      // and does not draw — floated clear of the scalp. Spacing is the beads'
+      // own radii now, so the chain is a chain whatever length it is asked for,
+      // and the length grows the beads instead of the gaps between them.
+      let along = 0;
+      let last = 0;
       for (let k = 0; k < 3; k++) {
-        const g = new THREE.SphereGeometry(S * (0.05 - k * 0.008), 7, 5);
+        const r = Math.min(S * 0.05, len * 0.3) * (1 - k * 0.17);
+        along += k === 0 ? r * 0.5 : (last + r) * 0.85;
+        last = r;
+        const g = new THREE.SphereGeometry(r, 7, 5);
         const bead = new THREE.Mesh(g, mats.growth);
-        bead.position.copy(hit.normal).multiplyScalar(len * (0.25 + k * 0.3));
-        bead.position.x += (rng() - 0.5) * len * 0.35;
-        bead.position.z += (rng() - 0.5) * len * 0.35;
+        bead.position.copy(hit.normal).multiplyScalar(along);
+        bead.position.x += (rng() - 0.5) * r * 0.7;
+        bead.position.z += (rng() - 0.5) * r * 0.7;
         withOutline(pivot, bead, g, p.outline * 0.35 * S, mats.outline);
       }
       strands.push({ pivot, len, phase: rng() * Math.PI * 2, stiffness: 0.25 });
@@ -282,6 +298,38 @@ export function addHair(parent, p, mats, rng, S) {
     }
 
     parent.add(pivot);
+  }
+
+  // Every strand is rooted on the real skin — and then its geometry is placed
+  // relative to that root along whatever direction the kind sweeps in, which
+  // for the ones that lie back or hang down is not the normal at all. Over the
+  // length of a base that leans sideways, the skull curves away underneath it,
+  // and the strand's own bottom edge comes off the scalp. It reads as a plate
+  // floating beside the head.
+  //
+  // Rather than a different sinking rule in each of fifteen branches, measure
+  // the thing that was built and push it in until its lowest point is under the
+  // skin. The head is star-shaped, so "in" is towards the origin.
+  parent.updateMatrixWorld(true);
+  for (const st of strands) {
+    let gap = Infinity;
+    st.pivot.traverse((o) => {
+      if (!o.isMesh || o.material?.side === THREE.BackSide) return;
+      const pos = o.geometry.attributes.position;
+      if (!pos) return;
+      const step = Math.max(1, Math.floor(pos.count / 24));
+      for (let k = 0; k < pos.count; k += step) {
+        _hv.fromBufferAttribute(pos, k).applyMatrix4(o.matrixWorld);
+        if (_hv.lengthSq() < 1e-9) { gap = 0; continue; }
+        _hd.copy(_hv).normalize();
+        headPoint(p, _hd, _hs);
+        gap = Math.min(gap, _hv.length() - _hs.length());
+      }
+    });
+    if (gap > 0 && gap < Infinity) {
+      _hd.copy(st.pivot.position).normalize();
+      st.pivot.position.addScaledVector(_hd, -gap * 1.05);
+    }
   }
 
   return strands;
