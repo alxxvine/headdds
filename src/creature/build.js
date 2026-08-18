@@ -31,7 +31,7 @@ export function buildCreature(rawParams) {
   addNose(head, headMesh, p, mats, rng);
   const eyes = addEyes(head, headMesh, p, mats, rng);
   const { jaw, maw } = addMouth(head, headMesh, p, mats, rng);
-  addScars(head, headMesh, p, mats, rng);
+  addScars(head, headMesh, p, mats, rng, maw);
 
   // --- body derived from the head share
   const skull = headGeo.boundingBox;

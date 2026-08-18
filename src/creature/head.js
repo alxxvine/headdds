@@ -184,6 +184,45 @@ export function headSurfaceByDir(p, dir, out = { point: new THREE.Vector3(), nor
   return out;
 }
 
+const _si = new THREE.Vector3();
+const _sq = new THREE.Vector3();
+
+/**
+ * Half-width of the skull's frontal outline at height y, in the head's own
+ * frame. The surface is star-shaped, so the widest point of skin that reaches
+ * that height IS the outline there. Zero means y is above the crown or below
+ * the chin — there is no skull at that height at all.
+ *
+ * Solved by interpolation rather than by a tolerance band. A band answers "how
+ * wide is the skull SOMEWHERE NEAR y", and near the crown of a tall head the
+ * nearest sampled latitude can fall outside any sane band — so the honest
+ * answer "no skull here" came back for heights that are solidly on the
+ * forehead. Everything that plants a feature reads this, and an eye told there
+ * is no skull at its height was slammed onto the midline: five eyes in a column
+ * came out as one eye, drawn five times.
+ */
+export function headHalfWidth(p, y) {
+  const N = 96;
+  let best = 0;
+  for (const sx of [1, -1]) {
+    let prev = null;
+    for (let i = 0; i <= N; i++) {
+      const dy = -1 + (i / N) * 2;
+      const c = Math.sqrt(Math.max(0, 1 - dy * dy));
+      headPoint(p, _si.set(sx * c, dy, 0).normalize(), _sq);
+      const cur = { y: _sq.y, x: Math.abs(_sq.x) };
+      if (prev) {
+        if ((prev.y - y) * (cur.y - y) <= 0 && prev.y !== cur.y) {
+          const k = (y - prev.y) / (cur.y - prev.y);
+          best = Math.max(best, prev.x + (cur.x - prev.x) * k);
+        }
+      }
+      prev = cur;
+    }
+  }
+  return best;
+}
+
 export function makeHeadGeometry(p) {
   const geo = new THREE.IcosahedronGeometry(1, HEAD_DETAIL);
   const pos = geo.attributes.position;

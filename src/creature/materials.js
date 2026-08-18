@@ -53,6 +53,18 @@ export function makeMaterials(p) {
       emissive: new THREE.Color(p.eyeColor),
       emissiveIntensity: glow * 0.85,
     }),
+    // What floats around the creature rather than growing on it. It used to
+    // share the growth tone, which is the skin two shades down — so a cloud of
+    // spores read as bits of the creature coming off it, and a ring in orbit
+    // read as a bar of skin through the head. The eye colour instead: it is
+    // already chosen to stand away from the skin, and it glows, so the motes
+    // read as something the creature gives off.
+    mote: new THREE.MeshToonMaterial({
+      color: new THREE.Color(p.eyeColor),
+      gradientMap,
+      emissive: new THREE.Color(p.eyeColor),
+      emissiveIntensity: 0.35 + glow * 0.5,
+    }),
     pupil: new THREE.MeshBasicMaterial({ color: new THREE.Color(p.pupilColor) }),
     cavity: new THREE.MeshBasicMaterial({ color: shade(p.lipColor, 0.78) }),
     // The rim an eyeball sits in. Well darker than the face on purpose: a

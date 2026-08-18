@@ -15,49 +15,36 @@
 import * as THREE from 'three';
 import { buildCreature } from '../src/creature/build.js';
 import { randomize } from '../src/creature/schema.js';
-import { headPoint } from '../src/creature/head.js';
+import { headHalfWidth as silhouetteAt, headPoint } from '../src/creature/head.js';
 import { mawProfile } from '../src/creature/maw.js';
 
 const N = Number(process.argv[2] || 300);
 // optional second argument: look at one eye kind only
 const ONLY_STYLE = process.argv[3] || null;
 
-const _d = new THREE.Vector3();
-const _p = new THREE.Vector3();
-
 /**
- * Half-width of the skull's frontal silhouette at height y, in the head's own
- * frame. Walked latitude by latitude, taking the widest point that reaches
- * that height — the surface is star-shaped, so that is its outline there.
+ * The biggest sphere in a subtree, as {x, y, rx, ry} in the head's frame.
+ * Across and down separately: a visor is a sphere scaled four to one, and
+ * calling that a ball of its long radius invents an overlap that is not on the
+ * screen — while calling it a ball of its short one misses the one that is.
  */
-function silhouetteAt(p, y) {
-  let best = 0;
-  for (let i = 0; i <= 48; i++) {
-    const dy = -0.999 + (i / 48) * 1.998;
-    const c = Math.sqrt(Math.max(0, 1 - dy * dy));
-    headPoint(p, _d.set(c, dy, 0).normalize(), _p);
-    if (Math.abs(_p.y - y) < 0.05 * p.headHeight) best = Math.max(best, Math.abs(_p.x));
-  }
-  // Nothing landed near that height — it is above the crown or below the chin,
-  // so there is no skull there at all.
-  return best;
-}
-
-/** The biggest sphere in a subtree, as {x, y, r} in the head's frame. */
 function ballOf(node, headMesh) {
-  let r = 0;
+  let big = 0;
+  let rx = 0;
+  let ry = 0;
   const c = new THREE.Vector3();
   node.updateMatrixWorld(true);
   node.traverse((o) => {
     if (!o.isMesh || o.material?.side === THREE.BackSide) return;
     if (o.geometry.type !== 'SphereGeometry') return;
     const s = new THREE.Vector3(); o.getWorldScale(s);
-    const rad = (o.geometry.parameters.radius ?? 0) * Math.max(s.x, s.y);
-    if (rad > r) { r = rad; o.getWorldPosition(c); }
+    const rad = o.geometry.parameters.radius ?? 0;
+    const area = rad * rad * s.x * s.y;
+    if (area > big) { big = area; rx = rad * s.x; ry = rad * s.y; o.getWorldPosition(c); }
   });
-  if (r === 0) return null;
+  if (big === 0) return null;
   headMesh.worldToLocal(c);
-  return { x: c.x, y: c.y, r };
+  return { x: c.x, y: c.y, rx, ry, r: Math.max(rx, ry) };
 }
 
 const rows = [];
@@ -73,9 +60,10 @@ for (let i = 0; i < N; i++) {
   let pair = 0;
   for (let a = 0; a < eyes.length; a++) {
     for (let b = a + 1; b < eyes.length; b++) {
-      const need = eyes[a].r + eyes[b].r;
-      const got = Math.hypot(eyes[a].x - eyes[b].x, eyes[a].y - eyes[b].y);
-      if (got < need) pair = Math.max(pair, (need - got) / need);
+      const A = eyes[a];
+      const B = eyes[b];
+      const d = Math.hypot((A.x - B.x) / (A.rx + B.rx), (A.y - B.y) / (A.ry + B.ry));
+      if (d < 1) pair = Math.max(pair, 1 - d);
     }
   }
 
@@ -91,8 +79,8 @@ for (let i = 0; i < N; i++) {
     // Only an eye that has gone out towards a shoulder of the skull can be cut
     // by it, so the test asks about those.
     if (Math.abs(e.x) < half * 0.45) continue;
-    const over = (Math.abs(e.x) + e.r * 0.55) - half;
-    if (over > 0) edge = Math.max(edge, over / Math.max(e.r, 1e-6));
+    const over = (Math.abs(e.x) + e.rx * 0.55) - half;
+    if (over > 0) edge = Math.max(edge, over / Math.max(e.rx, 1e-6));
   }
 
   // --- teeth against the mouth they grow from ------------------------------
@@ -138,7 +126,30 @@ for (let i = 0; i < N; i++) {
     });
   }
 
-  if (!ONLY_STYLE || p.eyeStyle === ONLY_STYLE) rows.push({ seed: i * 11 + 3, p, pair, edge, tooth, nose });
+  // --- the mouth against the head it is cut in ----------------------------
+  // The maw is a decal projected onto the skull, so a mouth wider or lower
+  // than the skull is not clipped by it: it wraps round the chin and the
+  // cheeks, and its dark interior turns up outside the silhouette.
+  let mouth = 0;
+  {
+    const chin = new THREE.Vector3();
+    headPoint(p, new THREE.Vector3(0, -1, 0), chin);
+    const v = new THREE.Vector3();
+    c.rig.headPivot.traverse((o) => {
+      if (!o.isMesh || !o.userData.maw) return;
+      const pos = o.geometry.attributes.position;
+      for (let k = 0; k < pos.count; k++) {
+        v.fromBufferAttribute(pos, k).applyMatrix4(o.matrixWorld);
+        headMesh.worldToLocal(v);
+        const half = silhouetteAt(p, v.y);
+        const unit = Math.max(maw ? maw.mh : 1, 1e-6);
+        if (v.y < chin.y) mouth = Math.max(mouth, (chin.y - v.y) / unit);
+        if (half > 0 && Math.abs(v.x) > half) mouth = Math.max(mouth, (Math.abs(v.x) - half) / unit);
+      }
+    });
+  }
+
+  if (!ONLY_STYLE || p.eyeStyle === ONLY_STYLE) rows.push({ seed: i * 11 + 3, p, pair, edge, tooth, nose, mouth });
   c.dispose();
 }
 
@@ -157,8 +168,9 @@ console.log(`eyes past the skull's outline  ${share('edge', 0.05).padStart(3)}% 
 // lying across the face.
 console.log(`teeth lying across the face    ${share('tooth', 1.6).padStart(3)}%   past the far rim, in mouth-heights: ${stat('tooth')}`);
 console.log(`noses reaching into the maw    ${share('nose', 0.1).padStart(3)}%   reach in maw heights:         ${stat('nose')}`);
+console.log(`mouths off the face            ${share('mouth', 0.08).padStart(3)}%   past the chin or the cheek:   ${stat('mouth')}`);
 
-for (const [key, label] of [['pair', 'eyes inside one another'], ['edge', 'eyes off the silhouette'], ['tooth', 'teeth past the lips']]) {
+for (const [key, label] of [['pair', 'eyes inside one another'], ['edge', 'eyes off the silhouette'], ['tooth', 'teeth past the lips'], ['mouth', 'mouths off the face']]) {
   const worst = rows.slice().sort((a, b) => b[key] - a[key]).slice(0, 3);
   console.log(`\nworst ${label}:`);
   for (const r of worst) {
