@@ -51,6 +51,15 @@ for (let i = 0; i < 4000; i++) {
 }
 for (const p of PARAMS) {
   if (p.type !== 'select') continue;
+  // A draw that always returns the same thing is pinned on purpose — the same
+  // reasoning as a lopsided range. RANDOM generates creatures, not the settings
+  // the creature is drawn with, so `pixelate`, `pixelSize` and the background
+  // are meant to hold still across a whole population.
+  if (p.random) {
+    const probe = new Set();
+    for (let i = 0; i < 40; i++) probe.add(p.random(rng, {}));
+    if (probe.size === 1) continue;
+  }
   const m = seen.get(p.key);
   const missing = p.options.filter((o) => !m.has(o.value)).map((o) => o.value);
   const hog = [...m].find(([, n]) => n / 4000 > 0.55);

@@ -34,13 +34,19 @@ body {
   min-width: 0;
 }
 
-/* all of the pixel art lives here: tiny buffer, nearest-neighbour upscale */
 .stage canvas,
 canvas.stage {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
   display: block;
   touch-action: none;
+}
+
+/* all of the pixel art lives here: tiny buffer, nearest-neighbour upscale.
+   Without this class the same canvas is drawn above the display's resolution
+   and scaled back down, which is the smooth mode. */
+.stage.pixelated canvas,
+canvas.stage.pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 /* ------------------------------------------------------------------- panel */
