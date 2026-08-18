@@ -444,6 +444,18 @@ export const PARAMS = [
   // silhouette without turning it into a paint job.
   range('trim', 'style', 'tip shade', 0, 0.75, 0.35, { random: (rng) => rng() * 0.7 }),
   range('outline', 'style', 'outline', 0, 0.12, 0.05, { random: (rng) => 0.03 + rng() * 0.05 }),
+  // The pixel effect is the whole look, but it is also the one thing that
+  // hides what the generator is doing — you cannot judge a new ear at a
+  // hundred and ninety pixels across. Off, the scene renders above the display
+  // and is scaled back down, which antialiases it for free: the WebGL context's
+  // own `antialias` flag is fixed when the canvas is created and cannot be
+  // turned on later without throwing the context away.
+  //
+  // Never rolled off: RANDOM is for creatures, not for how they are drawn.
+  select('pixelate', 'style', 'pixel effect', [
+    { value: 'on', label: 'on' },
+    { value: 'off', label: 'off (smooth)' },
+  ], 'on', { random: () => 'on' }),
   int('pixelSize', 'style', 'pixel size', 1, 8, 4, { random: () => 4 }),
   int('toonSteps', 'style', 'tone steps', 2, 5, 3, { random: () => 3 }),
   color('bgColor', 'style', 'background', BG_COLORS, '#0b0a10', { random: () => '#0b0a10' }),

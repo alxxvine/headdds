@@ -136,14 +136,23 @@ function Creature({ params, onBuilt, idle, poke, onMood, sound }) {
 // divided by 4 would render the creature into just 103 pixels.
 const MIN_BUFFER_WIDTH = 190;
 
-function PixelScale({ pixelSize }) {
+function PixelScale({ pixelSize, pixelate }) {
   const width = useThree((s) => s.size.width);
   const setDpr = useThree((s) => s.setDpr);
 
   useEffect(() => {
-    const dpr = Math.min(1, Math.max(1 / pixelSize, MIN_BUFFER_WIDTH / Math.max(1, width)));
-    setDpr(dpr);
-  }, [pixelSize, width, setDpr]);
+    if (!pixelate) {
+      // Smooth mode. The context was created with `antialias: false` and that
+      // cannot be changed without throwing the context away, so the edges are
+      // smoothed the other way: render ABOVE the display's own resolution and
+      // let the compositor scale it back down. Supersampling, and free here —
+      // the whole creature is a few thousand triangles.
+      const device = typeof window === 'undefined' ? 1 : (window.devicePixelRatio || 1);
+      setDpr(Math.min(2.5, Math.max(1.5, device * 1.5)));
+      return;
+    }
+    setDpr(Math.min(1, Math.max(1 / pixelSize, MIN_BUFFER_WIDTH / Math.max(1, width))));
+  }, [pixelSize, pixelate, width, setDpr]);
 
   return null;
 }
@@ -173,6 +182,7 @@ function Controls() {
 }
 
 export default function Stage({ params, onBuilt, idle = true, onMood, sound }) {
+  const pixelate = params.pixelate !== 'off';
   const poke = useRef(() => {});
   const down = useRef({ x: 0, y: 0 });
 
@@ -185,8 +195,8 @@ export default function Stage({ params, onBuilt, idle = true, onMood, sound }) {
 
   return (
     <Canvas
-      className="stage"
-      dpr={1 / params.pixelSize}
+      className={pixelate ? 'stage pixelated' : 'stage'}
+      dpr={pixelate ? 1 / params.pixelSize : 1.5}
       gl={{ antialias: false, alpha: false, preserveDrawingBuffer: true }}
       camera={{ fov: 34, position: [0, 1.5, 6] }}
       onPointerDown={onDown}
@@ -197,7 +207,7 @@ export default function Stage({ params, onBuilt, idle = true, onMood, sound }) {
       <hemisphereLight args={['#8fa6c4', '#241a2b', 1.1]} />
       <directionalLight position={[3, 5, 6]} intensity={2.6} />
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
-      <PixelScale pixelSize={params.pixelSize} />
+      <PixelScale pixelSize={params.pixelSize} pixelate={pixelate} />
       <Controls />
       <Creature params={params} onBuilt={onBuilt} idle={idle} poke={poke} onMood={onMood} sound={sound} />
     </Canvas>
