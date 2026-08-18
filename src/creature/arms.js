@@ -296,20 +296,47 @@ export function buildArm(p, mats, rng, opts) {
   // ever have.
   const baseX = shoulder.rotation.x;
   shoulder.rotation.z = side * (splay - tuck);
-  // A little is always allowed: an arm pinned at its rest angle reads as a
-  // mannequin, and a fifth of a radian is inside the slack the fitting above
-  // already left around it.
-  let lift = 0.2;
-  for (let a = 0.4; a <= 1.4001; a += 0.2) {
-    let ok = true;
-    for (const s of [1, -1]) {
-      shoulder.rotation.x = baseX + s * a;
-      if (innerReach(shoulder, side) < midline || lowestPoint(shoulder) < 0) { ok = false; break; }
+  // Every value this returns is one that was actually tried. It used to start
+  // at a fifth of a radian on the grounds that so little must be inside the
+  // slack the fitting above left — and on a long-armed freak it is not: the
+  // budget said 0.20, the animator spent exactly 0.20, and the hand went a
+  // seventh of a head-height below the feet. An unverified floor is not a
+  // floor, it is a guess with a number on it.
+  const baseY = shoulder.rotation.y;
+  const scanLift = () => {
+    let best = 0;
+    for (let a = 0.1; a <= 1.4001; a += (a < 0.4 ? 0.1 : 0.2)) {
+      let ok = true;
+      // Both directions of lift, and at each of them both extremes of the twist
+      // the animator is allowed. Measuring one axis at a time is measuring a
+      // pose the gesture never strikes: a scratch spends its lift, its tuck and
+      // its twist at the same instant, and the hand then reaches somewhere none
+      // of the three budgets was ever asked about.
+      for (const dir of [1, -1]) {
+        for (const w of [0, 0.5, -0.5]) {
+          shoulder.rotation.x = baseX + dir * a;
+          shoulder.rotation.y = baseY + w;
+          if (innerReach(shoulder, side) < midline || lowestPoint(shoulder) < 0) { ok = false; break; }
+        }
+        if (!ok) break;
+      }
+      if (!ok) break;
+      best = a;
     }
-    if (!ok) break;
-    lift = a;
+    shoulder.rotation.x = baseX;
+    shoulder.rotation.y = baseY;
+    return best;
+  };
+
+  let lift = scanLift();
+  // An arm with no budget at all is an arm that cannot move, and a creature
+  // with two of those reads as a statue with a face. Rather than let it sit
+  // rigid, take length off it until it has room: a slightly shorter arm is a
+  // proportion, an arm nailed to the body is a missing animation.
+  for (let i = 0; i < 4 && lift < 0.2; i++) {
+    shoulder.scale.multiplyScalar(0.9);
+    lift = scanLift();
   }
-  shoulder.rotation.x = baseX;
   shoulder.rotation.z = side * splay;
 
   // the animator lifts and swings this arm; it needs to know how much splay it
