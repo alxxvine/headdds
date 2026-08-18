@@ -638,6 +638,16 @@ function addLid(pivot, p, mats, size, S) {
 export function addEyes(parent, headMesh, p, mats, rng) {
   const L = faceLimits(p);
   const S = L.S;
+  // The skull's own radius, averaged over the sphere. `S` is the average of two
+  // sliders and says nothing about the skull that was actually built from them.
+  let headR = 0;
+  for (let k = 0; k < 32; k++) {
+    const a = Math.acos(1 - (2 * (k + 0.5)) / 32);
+    const b = k * 2.39996;
+    headPoint(p, _fd.set(Math.sin(a) * Math.cos(b), Math.cos(a), Math.sin(a) * Math.sin(b)), _fs);
+    headR += _fs.length();
+  }
+  headR /= 32;
   const baseSize = p.eyeSize * S;
   // Keep eyes off the two things already on the face. "cluster" and "scatter"
   // otherwise plant an eyeball straight into the teeth on a regular basis, and
@@ -944,6 +954,35 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       addPupil(pivot, q, mats, size);
       addLid(pivot, q, mats, size, S);
     }
+
+    // However the style seated itself, an eye may not stand off the head like a
+    // headlamp. Every style pushes its ball out by some multiple of its own
+    // size, several of them scale that by `bulge`, and at the top of both
+    // sliders the result was a lump two thirds of a head deep hanging off the
+    // temple — which is the "eyes climbing out of the head" the audit was
+    // about. Measured on what was actually built rather than predicted from
+    // the numbers that built it, because a warp roll and an outline shell are
+    // in the answer and not in the prediction.
+    //
+    // Sinking it back along its own normal is the whole correction: the eye
+    // keeps its size and its socket and simply sits deeper, which is what a
+    // less bulging eye looks like anyway.
+    pivot.updateMatrixWorld(true);
+    let far = 0;
+    pivot.traverse((o) => {
+      if (!o.isMesh || o.material?.side === THREE.BackSide) return;
+      const pos = o.geometry.attributes.position;
+      const step = Math.max(1, Math.floor(pos.count / 32));
+      for (let k = 0; k < pos.count; k += step) {
+        _fx.fromBufferAttribute(pos, k).applyMatrix4(o.matrixWorld);
+        if (_fx.lengthSq() < 1e-9) continue;
+        _fd.copy(_fx).normalize();
+        headPoint(p, _fd, _fs);
+        far = Math.max(far, _fx.length() - _fs.length());
+      }
+    });
+    const cap = headR * 0.32;
+    if (far > cap) pivot.position.addScaledVector(hit.normal, -Math.min(far - cap, size * 1.2));
 
     parent.add(pivot);
     eyes.push({ pivot, stalk, kind: p.eyeStyle, base: pivot.position.clone(), size });
