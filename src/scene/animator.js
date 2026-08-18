@@ -72,6 +72,9 @@ export function createAnimator() {
     blinkIn: 2.5,
     blinkT: -1,
     blinkDur: 0.16,
+    // waves whose rate the mood moves keep their own phase; see update()
+    breathPh: 0,
+    swayPh: 0,
     // maw
     jaw: 0,
     jawVel: 0,
@@ -217,6 +220,13 @@ export function createAnimator() {
     // deep, and being wound up drives it faster without deepening it. The
     // ragged term is a second harmonic that only exhaustion switches on: a
     // breath that catches rather than one that runs smoothly.
+    // A RATE THAT MOVES HAS TO BE INTEGRATED, not multiplied into the clock.
+    // `sin(t * rate)` has a phase of t*rate, so changing the rate by dr moves
+    // the phase by t*dr — nothing at all one second in, and a whole turn after
+    // a few minutes. Measured on the shipped version: four minutes of calm and
+    // then a poke gave a single frame nearly three times the size of any other,
+    // and the longer the tab had been open the worse it got. Every wave whose
+    // rate depends on a drive keeps its own phase.
     const breathRate = 1.7 * (1 + D.anger * 0.85 + D.arousal * 0.45 - D.fatigue * 0.5);
     const breathDeep = 1 + D.fatigue * 0.9 - D.anger * 0.45 - D.arousal * 0.2;
     // The catch is a WARP OF THE PHASE, not a second wave added on top. Adding
@@ -225,7 +235,8 @@ export function createAnimator() {
     // one thing exhaustion had to be told apart from. Warping the phase makes
     // the breath draw in fast and let go slowly, which is a sigh, and leaves
     // the rate alone.
-    const phase = t * breathRate + D.fatigue * 0.7 * Math.sin(t * breathRate);
+    S.breathPh += step * T.tempo * IDLE_SPEED * (1 + (mood.pace - 1) * 0.45) * breathRate;
+    const phase = S.breathPh + D.fatigue * 0.7 * Math.sin(S.breathPh);
     const breath = Math.sin(phase) * Math.max(0.3, breathDeep) * (1 - Math.min(0.8, pose.still));
     const b = base.body;
     rig.bodyPivot.scale.set(
@@ -253,7 +264,8 @@ export function createAnimator() {
       * (1 - Math.min(0.95, pose.still));
 
     const swayRate = 0.42 * (1 + D.arousal * 0.8 - D.fatigue * 0.4);
-    const raw = Math.sin(t * swayRate);
+    S.swayPh += step * T.tempo * IDLE_SPEED * (1 + (mood.pace - 1) * 0.45) * swayRate;
+    const raw = Math.sin(S.swayPh);
     const dwell = D.anger;
     const sway = raw * (1 - dwell) + Math.tanh(raw * 2.6) * dwell;
     const swayAmp = (0.03 + T.wobble * 0.05 + T.menace * 0.02)
