@@ -254,6 +254,29 @@ const _fv = new THREE.Vector3();
 const _fq = new THREE.Vector3();
 const _fx = new THREE.Vector3();
 
+const HEAD_R = new WeakMap();
+
+/**
+ * The skull's own radius, averaged over the sphere, worked out once per
+ * creature. `headUnit` is the average of two SLIDERS and says nothing about the
+ * shape they produced; this is the thing a part should be measured against when
+ * the question is "is that too big for this head".
+ */
+export function headRadius(p) {
+  let r = HEAD_R.get(p);
+  if (r !== undefined) return r;
+  r = 0;
+  for (let k = 0; k < 32; k++) {
+    const a = Math.acos(1 - (2 * (k + 0.5)) / 32);
+    const b = k * 2.39996;
+    headPoint(p, _fd.set(Math.sin(a) * Math.cos(b), Math.cos(a), Math.sin(a) * Math.sin(b)), _fs);
+    r += _fs.length();
+  }
+  r /= 32;
+  HEAD_R.set(p, r);
+  return r;
+}
+
 /**
  * The depth of the skin at a frontal point, or null if the head is not there.
  * Solved on the star-shaped surface by bisection rather than by a raycast, so
@@ -646,16 +669,7 @@ function addLid(pivot, p, mats, size, S) {
 export function addEyes(parent, headMesh, p, mats, rng) {
   const L = faceLimits(p);
   const S = L.S;
-  // The skull's own radius, averaged over the sphere. `S` is the average of two
-  // sliders and says nothing about the skull that was actually built from them.
-  let headR = 0;
-  for (let k = 0; k < 32; k++) {
-    const a = Math.acos(1 - (2 * (k + 0.5)) / 32);
-    const b = k * 2.39996;
-    headPoint(p, _fd.set(Math.sin(a) * Math.cos(b), Math.cos(a), Math.sin(a) * Math.sin(b)), _fs);
-    headR += _fs.length();
-  }
-  headR /= 32;
+  const headR = headRadius(p);
   const baseSize = p.eyeSize * S;
   // Keep eyes off the two things already on the face. "cluster" and "scatter"
   // otherwise plant an eyeball straight into the teeth on a regular basis, and
@@ -1012,6 +1026,7 @@ const TOOTH_LEN = {
 function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, count, profile }) {
   if (count <= 0) return;
   const S = headUnit(p);
+  const headR = headRadius(p);
 
   for (let i = 0; i < count; i++) {
     // wear knocks teeth out of the row
@@ -1059,6 +1074,11 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     // needles hanging under a shut mouth.
     const span = (profile.up(t * 0.94) - profile.down(t * 0.94)) * mh;
     len = Math.min(len * kindLen, Math.max(span * 1.35, mh * 0.4));
+    // ...and against the HEAD, which the mouth's own opening says nothing about.
+    // A `gape` is two and a half mouth-heights tall, so a cap of a third more
+    // than the opening let one tooth come out longer than the skull's radius —
+    // a bone rod out of the face, which is what it looked like.
+    len = Math.min(len, headR * 0.45);
     // A tooth is a tooth, not a wall. One tooth in a row makes the slot the
     // whole mouth, and a saw blade cut to that slot filled the maw with a
     // single bone triangle — which read as a wedge of bare skin hanging into
@@ -1195,12 +1215,22 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     // cheek. Nothing had ever checked where a tooth's point actually ENDS UP —
     // only how long it was — so this walks the sweep back until the point is
     // inside the mouth it grows from. Straight teeth never enter the loop.
+    // ...and the walk-back asks the SKULL as well as the mouth. Checking the
+    // tip's x alone catches a barb swept onto a cheek and misses a barb swept
+    // straight out of the face, because a curl moves the point in y and z and
+    // the mouth has no opinion about either. `barbs` and `hooks` carry the two
+    // biggest curls in the set and were the two kinds standing out of the head
+    // on average rather than in the tail.
     if (curl) {
-      for (let k = 0; k < 6; k++) {
+      for (let k = 0; k < 8; k++) {
         tooth.updateMatrix();
         _tip.set(0, -side * len * 0.5, 0).applyMatrix4(tooth.matrix).applyMatrix4(frame.matrix);
-        if (Math.abs((_tip.x - mx) / Math.max(mw, 1e-6)) <= 1) break;
-        tooth.rotation.x *= 0.66;
+        const wide = Math.abs((_tip.x - mx) / Math.max(mw, 1e-6)) > 1;
+        _fd.copy(_tip).normalize();
+        headPoint(p, _fd, _fs);
+        const out = _tip.length() - _fs.length();
+        if (!wide && out <= headR * 0.28) break;
+        tooth.rotation.x *= 0.7;
         tooth.position.z = 0.02 * S + len * 0.3 * (tooth.rotation.x / curl);
       }
     }
@@ -1240,7 +1270,7 @@ export function addMouth(parent, headMesh, p, mats, rng) {
     const grow = 1 + p.lips;
     const lips = bandGeometry(headMesh, p, {
       cx: mx, cy: my, rx: mw * grow, ry: mh * grow * 1.25,
-      up: profile.up, down: profile.down, offset: 0.008, cols: 36, rows: 5,
+      up: profile.up, down: profile.down, offset: 0.018, cols: 30, rows: 11,
     });
     const lipMesh = new THREE.Mesh(lips, mats.lip);
     lipMesh.userData.maw = true;
@@ -1254,7 +1284,7 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   // the mouth. Rows cost almost nothing; a hole in the face costs the creature.
   const cavity = bandGeometry(headMesh, p, {
     cx: mx, cy: my, rx: mw, ry: mh,
-    up: profile.up, down: profile.down, offset: 0.022, cols: 36, rows: 7,
+    up: profile.up, down: profile.down, offset: 0.04, cols: 30, rows: 13,
   });
   const cavityMesh = new THREE.Mesh(cavity, mats.cavity);
   cavityMesh.userData.maw = true;
