@@ -216,7 +216,7 @@ export function orientUpright(obj, point, normal) {
  * look like a third of a mouth. The maw stood an eighth of a head radius clear
  * of the cheek for it.
  */
-export function patchFrame(headMesh, p, cx, cy) {
+export function patchFrame(headMesh, p, cx, cy, span = 0) {
   const seat = surfaceAt(headMesh, p, cx, cy);
   const point = seat.point.clone();
   // The frame's own normal is the seat's RADIAL direction, not the facet's.
@@ -228,7 +228,31 @@ export function patchFrame(headMesh, p, cx, cy) {
   // near the front of the face gets a frame near the front of the face. The
   // per-vertex normals the patch is LIFTED along stay the mesh's own — the
   // lift is a local question and this is not.
-  const normal = point.lengthSq() > 1e-9 ? point.clone().normalize() : seat.normal.clone();
+  // ...averaged over the patch's own span rather than taken from the one facet
+  // the seat happens to land on. A five-hundred-face skull has facets a quarter
+  // of a radius across, and one of them pointing forty degrees round the
+  // azimuth laid a whole mouth diagonally across a cheek. Averaging keeps the
+  // frame lying along the skin — which a purely radial normal does not, and a
+  // patch built on a plane that cuts into the head smears as it is projected
+  // back out onto it. The per-vertex normals the patch is LIFTED along stay the
+  // mesh's own: the lift is a local question and this is not.
+  const normal = seat.normal.clone();
+  // Only when the facet actually disagrees with the skull under it: on a calm
+  // seat the average is the facet, and the probes are six raycasts each patch
+  // pays for nothing.
+  const radial = point.lengthSq() > 1e-9 ? _dp.copy(point).normalize().dot(normal) : 1;
+  if (span > 0 && radial < 0.985) {
+    const a0 = new THREE.Vector3(Math.abs(normal.y) > 0.9 ? 1 : 0, Math.abs(normal.y) > 0.9 ? 0 : 1, 0)
+      .cross(normal).normalize();
+    const a1 = new THREE.Vector3().crossVectors(normal, a0).normalize();
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * Math.PI * 2;
+      _dp.copy(point).addScaledVector(a0, Math.cos(a) * span).addScaledVector(a1, Math.sin(a) * span);
+      normal.add(surfaceRadial(headMesh, _dp, _dhit, p).normal);
+    }
+    normal.normalize();
+  }
+  if (point.lengthSq() > 1e-9 && normal.dot(point) < 0) normal.negate();
   const du = new THREE.Vector3(Math.abs(normal.y) > 0.9 ? 1 : 0, Math.abs(normal.y) > 0.9 ? 0 : 1, 0)
     .cross(normal).normalize();
   const dv = new THREE.Vector3().crossVectors(normal, du).normalize();
@@ -281,7 +305,7 @@ export function decalGeometry(headMesh, p, {
   // edge-on to the camera's ray: a socket asked to be a tenth of a head across
   // came out as a black streak nearly three times the width of the face, and
   // half of all creatures had a decal past half again its own size.
-  const { at } = patchFrame(headMesh, p, cx, cy);
+  const { at } = patchFrame(headMesh, p, cx, cy, Math.min(rx, ry) * 0.7);
 
   const pts = new Array(count);
   const nrm = new Array(count);
@@ -430,7 +454,7 @@ export function bandGeometry(headMesh, p, {
   // — see patchFrame. The mouth is the widest patch on the creature and its
   // corners are the furthest round the skull, which is exactly where a frontal
   // query stops telling the truth.
-  const frame = patchFrame(headMesh, p, cx, cy);
+  const frame = patchFrame(headMesh, p, cx, cy, Math.min(rx, ry) * 0.7);
   for (let ci = 0; ci <= cols; ci++) {
     const u = -1 + (ci / cols) * 2;
     const hi = up(u);
