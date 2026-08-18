@@ -646,7 +646,14 @@ function addPupil(pivot, p, mats, size, deep = 0.82) {
   if (p.pupilShape === 'blind') return;
 
   const r = size * 0.52 * p.pupilSize + size * 0.08;
-  const z = size * deep;
+  // Far enough out to BREAK the ball it is set in. At four fifths of the way
+  // out a small pupil clears the surface by a thousandth of a head — which is
+  // less than a pixel at the size this renders at, so the eye came out as a
+  // plain dark ball and a face with seven of them as a face with seven holes
+  // punched in it. Nine creatures in a hundred had the pupil buried outright.
+  // The deeper the pupil, the more of it shows: a cap of about nine tenths of
+  // its own radius, whatever the sliders say.
+  const z = deep > 0.5 ? Math.max(size * deep, size - r * 0.45) : size * deep;
   const put = (geo, rot) => {
     const m = new THREE.Mesh(geo, mats.pupil);
     m.position.set(0, 0, z);
@@ -1081,7 +1088,7 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
   const S = headUnit(p);
   const headR = headRadius(p);
 
-  const seatFrame = patchFrame(headMesh, p, mx, my);
+  const seatFrame = patchFrame(headMesh, p, mx, my, Math.min(mw, mh) * 0.7);
   for (let i = 0; i < count; i++) {
     // wear knocks teeth out of the row
     if (rng() < p.wear * 0.35) continue;
@@ -1406,7 +1413,7 @@ function fitMaw(headMesh, p, box) {
   const edge = (p.headHeight + p.headWidth) * 0.03;
   let { mx, my, mw, mh } = box;
   for (let k = 0; k < 10; k++) {
-    const frame = patchFrame(headMesh, p, mx, my);
+    const frame = patchFrame(headMesh, p, mx, my, Math.min(mw, mh) * 0.7);
     const rx = mw * grow;
     const ry = mh * grow * 1.25;
     let under = 0;
