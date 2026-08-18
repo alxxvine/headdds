@@ -191,6 +191,8 @@ let rollState = 1;
 const rngRoll = () => { rollState = (rollState * 48271) % 2147483647; return rollState / 2147483647; };
 
 const FORWARD = new THREE.Vector3(0, 0, 1);
+const _fd = new THREE.Vector3();
+const _fs = new THREE.Vector3();
 const _tip = new THREE.Vector3();
 const _sd = new THREE.Vector3();
 const _sp = new THREE.Vector3();
@@ -230,13 +232,111 @@ function seatOut(p, hit, dist, radius) {
 // standing an eye off the skin walks it towards the edge — an eye settled
 // safely inside the outline and then pushed half its own radius outwards ends
 // up hanging over it. The room the settler leaves carries this too.
+// Third number: how far the style REACHES OUT from the skin — the front of the
+// eye, not the middle of it. It used to be the stand-off alone, and the
+// stand-off is the smaller half of the story: a ball style is pushed out 0.15
+// and then draws a radius of its own on top, so it reaches 1.4 while the
+// settler was reserving 0.15. Near the shoulder of the skull the normal is
+// mostly sideways, so that whole reach is horizontal, and an eye settled inside
+// the outline was standing a size and a half past it. All three numbers are
+// measured off built creatures (tools/eye-extent.mjs), not declared.
 const EYE_FOOTPRINT = {
-  hole: [1.05, 1.2, 0.18], bead: [1.25, 1.25, 0.3], stalk: [1.35, 1.35, 0.6],
-  compound: [1.5, 1.5, 0.5], pit: [1.2, 1.2, 0], bulb: [1.2, 1.2, 0.55],
-  cluster: [1.35, 1.25, 0.1], visor: [2.4, 0.85, 0.12], crystal: [1.1, 1.1, 0.65],
-  ring: [1.15, 1.15, 0.15], bloom: [1.25, 1.25, 0.1], button: [1.05, 1.05, 0.06],
-  slot: [0.7, 1.45, 0.02], dome: [1.15, 1.15, 0], lantern: [1.2, 1.2, 0.1],
+  ball: [1.05, 1.1, 1.4], gash: [1.2, 0.45, 0.65],
+  hole: [1.05, 1.2, 0.5], bead: [1.25, 1.25, 0.55], stalk: [1.35, 1.35, 1.4],
+  compound: [1.5, 1.5, 0.95], pit: [1.2, 1.2, 0.9], bulb: [1.2, 1.2, 1.6],
+  cluster: [1.35, 1.25, 0.6], visor: [2.4, 0.85, 0.7], crystal: [1.1, 1.1, 1.2],
+  ring: [1.15, 1.15, 0.45], bloom: [1.25, 1.25, 0.7], button: [1.05, 1.05, 1.25],
+  slot: [0.7, 1.45, 0.2], dome: [1.15, 1.15, 1.0], lantern: [1.2, 1.2, 0.9],
 };
+
+const _fu = new THREE.Vector3();
+const _fv = new THREE.Vector3();
+const _fq = new THREE.Vector3();
+const _fx = new THREE.Vector3();
+
+/**
+ * The depth of the skin at a frontal point, or null if the head is not there.
+ * Solved on the star-shaped surface by bisection rather than by a raycast, so
+ * it can be asked thousands of times without a BVH.
+ */
+function skinDepth(p, x, y) {
+  const outside = (t) => {
+    _fx.set(x, y, t);
+    if (_fx.lengthSq() < 1e-9) return false;
+    _fd.copy(_fx).normalize();
+    headPoint(p, _fd, _fs);
+    return _fx.lengthSq() > _fs.lengthSq();
+  };
+  if (outside(0)) return null;
+  let lo = 0;
+  let hi = 8;
+  if (!outside(hi)) return hi;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (outside(mid)) hi = mid; else lo = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/**
+ * Is there head UNDER this eye?
+ *
+ * Not "is it inside the head" — a bulging eye is outside the skin all the way
+ * round on purpose, that is what bulging is. What it may not be is over the
+ * EDGE. So from each point of the circle where the eye meets the skin we march
+ * inward along the eye's own axis and ask whether we ever enter the skull. Over
+ * the middle of a face you enter it at once; over the temple of a narrow skull
+ * you march past the side of the head and never do, and that is the eye
+ * standing in the air that the settler's flat arithmetic cannot see. The
+ * settler solves the frontal plane, and the frontal plane has no answer to
+ * "does the skin fall away behind this".
+ *
+ * Returns the share of that circle with nothing beneath it, 0 to 1.
+ */
+function unsupported(p, e, headMesh) {
+  if (skinDepth(p, e.x, e.y) === null) return 1;
+  // The very frame the eye will be built in — the same raycast, so the disc
+  // this tests is the disc that gets drawn. Asking the analytic surface instead
+  // sounds tidier and measures a different object: the analytic normal is a
+  // finite difference across a noise field and comes out ROUGHER than the mesh
+  // it stands for, which made this worse rather than better when tried.
+  const s = surfaceAt(headMesh, p, e.x, e.y);
+  const n = s.normal;
+  _fu.set(Math.abs(n.y) > 0.9 ? 1 : 0, Math.abs(n.y) > 0.9 ? 0 : 1, 0).cross(n).normalize();
+  _fv.crossVectors(n, _fu).normalize();
+  // The ring is taken at the ROOT, on the skin, not at the eyeball's centre.
+  // Where the centre ends up is the style's business — some styles sink their
+  // ball into the skull and some stand it a radius proud — and none of that
+  // changes the question, which is whether the patch of skull the eye is
+  // planted on is big enough to hold it.
+  // ...with the ink around it. An outline shell is drawn a little proud of the
+  // part it rings, and a rim of black standing beside the head is exactly as
+  // wrong as an eyeball would be.
+  const rx = e.rx * 1.12;
+  const ry = e.ry * 1.12;
+  const reach = Math.max(rx, ry) * 2.2;
+  let out = 0;
+  const RING = 8;
+  const STEP = 6;
+  for (let i = 0; i < RING; i++) {
+    const t = (i / RING) * Math.PI * 2;
+    const ax = Math.cos(t) * rx;
+    const ay = Math.sin(t) * ry;
+    _fq.set(s.point.x + _fu.x * ax + _fv.x * ay,
+      s.point.y + _fu.y * ax + _fv.y * ay,
+      s.point.z + _fu.z * ax + _fv.z * ay);
+    let held = false;
+    for (let k = 0; k <= STEP; k++) {
+      _fx.copy(_fq).addScaledVector(n, -reach * (k / STEP));
+      if (_fx.lengthSq() < 1e-9) { held = true; break; }
+      _fd.copy(_fx).normalize();
+      headPoint(p, _fd, _fs);
+      if (_fx.lengthSq() <= _fs.lengthSq()) { held = true; break; }
+    }
+    if (!held) out++;
+  }
+  return out / RING;
+}
 
 /**
  * Nudges the planned eyes until no two are inside one another and none hangs
@@ -249,7 +349,7 @@ const EYE_FOOTPRINT = {
  * wide. Relaxation rather than a redesign of the layouts, because the layout
  * is what the player asked for and this only has to make it possible.
  */
-function settleEyes(p, plan, L, clear) {
+function settleEyes(p, plan, L, clear, headMesh) {
   if (plan.length === 0) return;
 
   // the crown and the chin, so nothing is planted in the air above the head
@@ -268,27 +368,33 @@ function settleEyes(p, plan, L, clear) {
     // amount of pushing or shrinking could separate two points being reset to
     // the same place. When there is not enough room the floor is the one that
     // gives, all the way back to the bare top of the mouth.
-    e.top = crown - e.ry * 0.9;
+    // Nine tenths of the eye's own height is not the eye's own height, and the
+    // tenth that was left over is the top of the eyeball standing above the
+    // crown — which is exactly what "the eyes climb out of the head" looks like
+    // from the front.
+    e.top = crown - e.ry * 1.05;
     let low = e.floor;
     if (low > e.top - e.ry * 2) low = e.bare;
-    e.low = Math.min(Math.max(low, chin + e.ry * 0.9), e.top);
+    e.low = Math.min(Math.max(low, chin + e.ry * 1.05), e.top);
 
     // The outline over the eye's whole height, not just at its middle: a skull
     // with a shoulder in it can be twice as wide at an eye's centre as it is at
     // the eye's top, and an eye measured only at its centre sits half on the
     // head and half beside it.
+    // ...and asked at the eye's actual top and bottom, not three quarters of the
+    // way there, because the corner that ends up over nothing is the corner.
     const y = THREE.MathUtils.clamp(e.y, e.low, e.top);
     let half = silhouetteAt(p, y);
-    for (const k of [-0.75, 0.75]) {
+    for (const k of [-1, -0.6, 0.6, 1]) {
       const q = silhouetteAt(p, y + e.ry * k);
-      if (q > 0) half = Math.min(half, q + e.ry * 0.35);
+      if (q > 0) half = Math.min(half, q + e.ry * 0.2);
     }
     // The reserve grows towards the sides, because the eye is not left where
     // this puts it: it is planted on the skin and then pushed OUT along the
     // surface normal by its own bulge, and near the shoulder of the skull that
     // normal is mostly horizontal.
     const lean = half > 0 ? Math.min(1, Math.abs(e.x) / half) : 0;
-    e.room = half <= 0 ? 0 : Math.max(0, half - e.rx * (0.55 + 0.75 * lean) - e.stand * lean);
+    e.room = half <= 0 ? 0 : Math.max(0, half - e.rx * 0.55 - e.stand * lean * 0.6);
   };
 
   const inside = (e) => {
@@ -390,6 +496,40 @@ function settleEyes(p, plan, L, clear) {
     relax();
   }
 
+  // Everything above solves the frontal plane. The last thing to check is the
+  // one thing the frontal plane cannot answer: whether the skull is actually
+  // UNDER each eye. An eye out on the temple of a narrow head can be well
+  // inside the outline and still have its outer half over nothing, and that is
+  // what "the eyes climb out of the head" is when you turn the creature.
+  //
+  // The cure is the obvious one — walk the eye back towards the middle of the
+  // face until there is head beneath it. It runs once, after the layout has
+  // settled, because it is the expensive test and because moving an eye here
+  // can only reduce how far out it is, which no earlier rule minds.
+  const midY = (crown + chin) * 0.5;
+  for (const e of plan) {
+    // An eye near the middle of a face cannot be over an edge, and the test is
+    // the expensive one — so it is only asked of the eyes that could fail it.
+    bounds(e);
+    if (Math.abs(e.x) < e.room * 0.45 && Math.abs(e.y - midY) < (e.top - e.low) * 0.35) continue;
+    for (let k = 0; k < 10 && unsupported(p, e, headMesh) > 0.02; k++) {
+      // Move it in first. If moving it in is not enough — an eye can be wider
+      // than the whole side of the head it is on, and then no place on that
+      // head holds it — it gives up size as well. Alternating the two converges
+      // where either alone circles.
+      e.x *= 0.82;
+      e.y = midY + (e.y - midY) * 0.88;
+      e.y = Math.max(e.y, Math.min(e.bare, e.top));
+      if (k >= 2) {
+        e.size *= 0.88;
+        e.rx *= 0.88;
+        e.ry *= 0.88;
+        e.stand *= 0.88;
+      }
+      inside(e);
+    }
+  }
+
   // ...and if the layout STILL cannot be made to work, it is abandoned. Four
   // visor bands on a narrow crown do not fit in any arrangement, and shrinking
   // them does not help while they are all pinned to the same line of skull.
@@ -467,10 +607,23 @@ function addPupil(pivot, p, mats, size) {
 /** A heavy lid dropping over the top of the eye. */
 function addLid(pivot, p, mats, size, S) {
   if (p.eyeLid <= 0.02) return;
+  // A cap around the eyeball's own +Y pole, reaching 0.42pi (75.6 degrees) down
+  // from it, then tipped forward over the front of the ball.
   const lidGeo = new THREE.SphereGeometry(size * 1.06, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.42);
   const lid = new THREE.Mesh(lidGeo, mats.skin);
-  // rotate the cap down over the eyeball; a full lid covers just past halfway
-  lid.rotation.x = Math.PI * (0.5 - 0.42 * p.eyeLid);
+  // How far the cap is tipped is the whole of what the slider means, and it was
+  // running backwards — and off the end. At `eyeLid` barely above zero the cap
+  // was tipped 88 degrees, which points its pole STRAIGHT AT THE CAMERA: the
+  // rim came round to 163 degrees from the top of the ball and the lid covered
+  // the entire eye, in skin colour, so the creature read as having two blank
+  // lumps where its eyes are. A full lid, meanwhile, tipped only 14 degrees and
+  // came out as the light hood that no lid at all should have been.
+  //
+  // Now the tip runs the right way and stops where a lid stops. At the bottom
+  // of the slider the cap is tucked back behind the crown of the eye and shows
+  // as a thin hood; at the top it reaches a little past the eye's middle, which
+  // is heavy-lidded and still an eye.
+  lid.rotation.x = Math.PI * (-0.1 + 0.26 * p.eyeLid);
   withOutline(pivot, lid, lidGeo, p.outline * 0.35 * S, mats.outline);
 }
 
@@ -536,7 +689,7 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       bare,
     };
   });
-  settleEyes(p, plan, L, clear);
+  settleEyes(p, plan, L, clear, headMesh);
 
   const eyes = [];
 
