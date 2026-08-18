@@ -118,7 +118,11 @@ export function decalGeometry(headMesh, p, {
   // head rather than by how big it looked when it was written. Sag falls with
   // the square of the spacing, so this is the cheap half of the fix and the
   // measured lift below is the rest.
-  const near = (p.headWidth + p.headHeight) * 0.03;
+  // With the lift measured honestly the lattice no longer has to be fine enough
+  // to make the sag small — it only has to be fine enough that a lift big enough
+  // to clear the sag does not stand the patch visibly off the face. That is a
+  // much cheaper bar.
+  const near = (p.headWidth + p.headHeight) * 0.036;
   rings = Math.min(9, Math.max(rings, Math.ceil(Math.max(rx, ry) * (1 - inner) / near)));
   segs = Math.min(44, Math.max(segs, Math.ceil((Math.max(rx, ry) * 6.28) / near)));
   const count = (rings + 1) * segs;
@@ -146,8 +150,12 @@ export function decalGeometry(headMesh, p, {
   // face punched through a socket, a nostril or a scar. Measured on the ring
   // spacing, which is the coarse direction — the segments around a decal are
   // close together, the rings across it are not.
+  // Every quad, not a sample of them. Sampling the sag at a tenth of the quads
+  // gets the median right and the MAXIMUM wrong, and it is the maximum that
+  // decides whether a hole opens — the sockets that still leaked were the ones
+  // whose worst quad the sampling had stepped over.
   let sag = 0;
-  const step = Math.max(1, Math.round(segs / 10));
+  const step = 1;
   for (let s = 0; s < segs; s += step) {
     const s2 = (s + step) % segs;
     for (let r = 0; r < rings; r++) {
@@ -161,7 +169,7 @@ export function decalGeometry(headMesh, p, {
       sag = Math.max(sag, mid.point.sub(_mid).dot(mid.normal));
     }
   }
-  const lift = offset + Math.max(0, sag) * 1.15;
+  const lift = offset + Math.max(0, sag) * 1.55;
 
   for (let i = 0; i < count; i++) {
     positions[i * 3] = pts[i].x + nrm[i].x * lift;
@@ -239,7 +247,7 @@ export function bandGeometry(headMesh, p, {
   // by that. Sampled every fourth column, because the answer varies slowly and
   // each sample is a raycast.
   let sag = 0;
-  const step = Math.max(1, Math.round(cols / 10));
+  const step = 1;   // every quad — see decalGeometry
   for (let ci = 0; ci + step <= cols; ci += step) {
     const u = -1 + ((ci + step * 0.5) / cols) * 2;
     const hi = up(u);
@@ -255,7 +263,7 @@ export function bandGeometry(headMesh, p, {
       sag = Math.max(sag, mid.point.sub(_mid).dot(mid.normal));
     }
   }
-  const lift = offset + Math.max(0, sag) * 1.15;
+  const lift = offset + Math.max(0, sag) * 1.55;
 
   for (let i = 0; i < count; i++) {
     positions[i * 3] = pts[i].x + nrm[i].x * lift;

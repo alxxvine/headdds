@@ -19,35 +19,52 @@
 // 1. BARE SKIN THROUGH A DECAL. Every patch made by decalGeometry or
 //    bandGeometry — the lip band, the cavity band, eye sockets, nostrils,
 //    slits, scars — is flat triangles strung between points sampled ON the
-//    skin and then lifted off it. Between the samples the skull rises, and
-//    wherever it rises past the lift the skin is in FRONT of the patch and the
-//    face shows through the mouth. For every triangle of every patch this takes
-//    twelve points inside it, finds the skin along each point's own ray out of
-//    the head's centre (the skull is star-shaped, so there is exactly one) and
-//    asks how far that skin stands above the triangle's plane.
+//    skin and then lifted off it along the skin's own normal. Between the
+//    samples the skull rises, and wherever it rises further than the lift the
+//    skin is in FRONT of the decal: bare face through the lip ring.
+//
+//    So for every triangle of every patch this takes twelve points inside it,
+//    finds the skin along each point's own ray out of the head's centre (the
+//    skull is star-shaped, so there is exactly one) and measures the SAG: how
+//    far the skull stands above the chord plane through the bare-skin samples,
+//    along that plane's own normal, which is the unit every offset in
+//    features.js is written in. sag over lift greater than one is a hole.
+//
+//    Both halves of that ratio are measured off the built mesh and neither is
+//    read out of the source. The lattice is un-lifted first — every vertex
+//    pushed back down its own normal — so the sag is a property of the
+//    sampling and does not move when somebody changes an offset; and the lift
+//    is recovered from the mesh, since a vertex sits at skin + normal*lift, so
+//    the radial gap between the vertex and the skull times the cosine between
+//    the normal and the ray is that lift. The tool therefore keeps telling the
+//    truth while surface.js is being edited under it, which it was, twice,
+//    during the writing of this file.
 //
 //    Measured against the TESSELLATED skull, which is the one that is drawn:
 //    HEAD_DETAIL 4 is 500 triangles, not the 5120 the comment claims, and the
 //    analytic surface bulges above every facet of it. Reporting the analytic
-//    rise would invent holes that no player can see.
+//    rise would invent holes no player can see.
 //
-//    Reported in units of each patch's OWN lift, which is measured off the
-//    built mesh too — a patch vertex sits at skin + normal*lift, so the radial
-//    gap between the vertex and the skull, times the cosine between the normal
-//    and the ray, is that lift. Nothing is read out of the source, so the
-//    numbers stay honest while surface.js is being edited. 1.0 is the skin
-//    exactly level with the patch; over 1.0 is bare face showing through.
+//    The same rays are then asked of a flat 0.010 lift — the offset most of
+//    features.js carried before surface.js started measuring its own — and
+//    that CONTROL is what makes a clean report evidence rather than an absence
+//    of evidence. A detector that never fires has not been shown to work.
 //
-//    It also un-lifts the lattice — every vertex pushed back down its own
-//    normal by that measured lift — and asks the same question of the chord
-//    plane through the bare skin samples. That number, the SAG, belongs to the
-//    lattice alone: it is how much lift this patch needs, and it does not move
-//    when somebody changes an offset. It is what makes the "no holes" line
-//    below evidence rather than an absence of evidence: the same twelve rays,
-//    on the same triangles, against a flat 0.010 lift — which is what the
-//    offsets in features.js were before the self-measured lift went in — fire
-//    on plenty of patches. A detector that never fires has not been shown to
-//    work.
+//    Three more things fall out of the same pass, all consequences of a lift
+//    large enough to clear a sag. STANDOFF: the lift is a maximum over the
+//    whole patch, so one bad chord — a fold, a crease, a vertex surfaceAt had
+//    to walk — raises the ENTIRE patch, and the tool caught eye sockets
+//    floating a whole head radius in front of the face. The lift is reported
+//    against the patch's own footprint as well as in head units, because a
+//    plate hanging off the head is not a decal however well it covers the skin. SHEARED QUADS: a quad whose ends lie on
+//    different facets of the skull is lifted along two normals up to forty
+//    degrees apart, so the lift does not translate it, it twists it. SLID OFF:
+//    the lift goes along the normal, not along the ray, so where the skin
+//    slants away from the ray a big lift carries the whole decal off its own
+//    footprint, and rays through the skin under the patch hit no patch at all.
+//    That one is asked only within sixty degrees of the skin's normal, because
+//    past that the ray out of the head's centre is a bad stand-in for a view
+//    ray and the question stops being about the creature.
 //
 // 2. A TOOTH OUT THROUGH THE FACE. Every cap in addTeeth is solved in the
 //    mouth's own x and y; a curl sweeps the tooth in y and Z and nothing
@@ -65,12 +82,14 @@
 //    the same ray) and measured in 3D against the painted mouth itself — the
 //    nearest vertex of the lip band, or of the cavity band when there are no
 //    lips. Zero anywhere over the mouth, and it grows as the tooth's exit
-//    wanders onto bare cheek. Each tooth reports two of them: the point that
-//    stands furthest out, and the point furthest from the mouth that is still
-//    outside the skin, which is the one that reads as a rod. And it
-//    names the culprit — the toothType, the row, and which END of the tooth is
-//    out, since a hook leaves the face by its ROOT while a barb leaves by its
-//    point, and a guard that watches one of those cannot see the other.
+//    wanders onto bare cheek. Each tooth reports two such points: the one that
+//    stands furthest out, and the one furthest from the mouth that is still
+//    outside the skin, which is the one that reads as a rod.
+//
+//    And it names the culprit — the toothType, the row, how much of the tooth
+//    is outside the skull, and which END of it is out, since a hook leaves the
+//    face by its ROOT while a barb leaves by its point, and a guard that
+//    watches one of those cannot see the other.
 //
 // What it caught on the tree it was written against is at the bottom of this
 // file's output, not in this comment: features.js and surface.js are being
@@ -91,7 +110,8 @@ const N = Number(process.argv[2] || 400);
 const ONLY = process.argv[3] || null;      // substring match on the patch name
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'creature');
 
-// A hole under this is float noise, not a hole. Head units; a head is ~1 across.
+// A gap under this is float noise rather than a part standing out of the skin.
+// Head units; a head is about one across, its mean radius about 1.1.
 const EPS = 5e-4;
 // How far from the painted mouth, in head radii, an excursion has to happen
 // before the skin under it is bare face rather than lip. Printed as a
@@ -323,6 +343,7 @@ function measure(seed) {
 
   let worstPatch = null;
   let worstSag = null;
+  let worstStand = null;
   let samples = 0;
   let offPatch = 0;
   for (const o of patches) {
@@ -330,24 +351,6 @@ function measure(seed) {
     const pos = g.attributes.position;
     const nor = g.attributes.normal;
     const idx = g.index;
-
-    // name it
-    let name = 'scar';
-    if (o.userData.maw) name = o === lipMesh ? 'maw lip' : 'maw cavity';
-    else if (o.userData.nose) name = `nose ${p.noseType}`;
-    else {
-      // socket centres are the eye's own (x, y), so the nearest plan names it
-      let cx = 0, cy = 0;
-      for (let i = 0; i < pos.count; i++) { cx += pos.getX(i); cy += pos.getY(i); }
-      cx /= pos.count; cy /= pos.count;
-      let bestD = Infinity, bestE = null;
-      for (const e of plans) {
-        const d = Math.hypot(cx - e.x, cy - e.y) / Math.max(e.size, 1e-6);
-        if (d < bestD) { bestD = d; bestE = e; }
-      }
-      if (bestE && bestD < 0.8) name = `eye ${p.eyeStyle}`;
-    }
-    if (ONLY && !name.includes(ONLY)) continue;
 
     // the lift this patch was actually built with: a vertex sits at
     // skin + normal*lift, so the radial gap from the skull to the vertex is
@@ -380,6 +383,47 @@ function measure(seed) {
       flat[i * 3 + 1] = v.y - nv.y * lift;
       flat[i * 3 + 2] = v.z - nv.z * lift;
     }
+    // How big the patch's FOOTPRINT is, measured on the un-lifted lattice, so
+    // that a lift can be judged against the thing being lifted: a disc of
+    // radius 0.05 standing 0.2 off the face is not a decal any more, it is a
+    // plate floating in front of the head. Taken on the un-lifted lattice
+    // because the lift is what is being judged — on the built one, a decal
+    // floating a head's radius off the face reports a footprint a head across
+    // and its own centroid lands nowhere near the eye it belongs to, which is
+    // how the worst offenders in this run first turned up filed as scars.
+    let ccx = 0, ccy = 0, ccz = 0;
+    for (let i = 0; i < pos.count; i++) { ccx += flat[i * 3]; ccy += flat[i * 3 + 1]; ccz += flat[i * 3 + 2]; }
+    ccx /= pos.count; ccy /= pos.count; ccz /= pos.count;
+    let rad = 0;
+    for (let i = 0; i < pos.count; i++) {
+      rad = Math.max(rad, Math.hypot(flat[i * 3] - ccx, flat[i * 3 + 1] - ccy, flat[i * 3 + 2] - ccz));
+    }
+
+    // name it
+    let name = 'scar';
+    if (o.userData.maw) name = o === lipMesh ? 'maw lip' : 'maw cavity';
+    else if (o.userData.nose) name = `nose ${p.noseType}`;
+    else {
+      // socket centres are the eye's own (x, y), so the nearest plan names it
+      const cx = ccx;
+      const cy = ccy;
+      // A socket is drawn concentric with its eye, so its centroid IS the
+      // eye's own (x, y) up to the walk surfaceAt does at a miss. A scar that
+      // happens to land on a cheek near an eye is not, and a loose threshold
+      // here filed hundreds of them under eye styles that build no socket at
+      // all — the giveaway being rows for `ring` and `dome`, which have no
+      // decalGeometry call anywhere in features.js.
+      let bestD = Infinity, bestE = null;
+      for (const e of plans) {
+        const d = Math.hypot(cx - e.x, cy - e.y) / Math.max(e.size, 1e-6);
+        if (d < bestD) { bestD = d; bestE = e; }
+      }
+      // ...and of the eye's own scale: the narrowest socket in features.js is
+      // 0.55 of the eye's size across, a scar is a few hundredths of a head
+      if (bestE && bestD < 0.25 && rad > bestE.size * 0.35) name = `eye ${p.eyeStyle}`;
+    }
+    if (ONLY && !name.includes(ONLY)) continue;
+
     const a0 = new THREE.Vector3(), b0 = new THREE.Vector3(), c0 = new THREE.Vector3(), n0 = new THREE.Vector3();
     const get = (arr, i, out) => out.set(arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2]);
 
@@ -396,13 +440,13 @@ function measure(seed) {
     // quad's neighbours right: the skin is only bare if NOTHING covers it.
     const patchProbe = skinProbe(o, toHead(o));
 
-    let worst = -Infinity;         // skin outside the built patch, normal units
     let sag = -Infinity;           // skin above the bare-skin chord plane
-    let worstAt = null;
-    let holed = 0;                 // faces with bare skin through them as built
+    let sagAt = null;
+    let holed = 0;                 // faces the patch's own lift does not cover
     let sagged = 0;                // faces a flat control lift would not cover
     let folded = 0;                // faces the lift has sheared off their own plane
-    let bare = 0;                  // samples with no patch along the ray at all
+    let bare = 0;                  // rays that hit no part of the built patch
+    let rays = 0;
     const nT = idx.count / 3;
     for (let t = 0; t < nT; t++) {
       const ia = idx.getX(t * 3), ib = idx.getX(t * 3 + 1), ic = idx.getX(t * 3 + 2);
@@ -417,10 +461,13 @@ function measure(seed) {
       n0.normalize();
       if (n.dot(a) < 0) n.negate();      // outward, away from the head's centre
       if (n0.dot(a0) < 0) n0.negate();
+      // A quad whose two ends sit on different facets of the skull is lifted
+      // along two normals that can be forty degrees apart, so the lift does not
+      // translate it, it SHEARS it. Counted, because the bigger the lift the
+      // worse this gets, and it is the thing that limits how far a lift can be
+      // raised to cure a sag.
       if (n.dot(n0) < Math.cos(Math.PI / 6)) folded++;
-      let tw = -Infinity;
       let ts = -Infinity;
-      let tb = false;
       for (const [w0, w1, w2] of BARY) {
         // the ray goes through the SKIN-level sample: the patch's footprint on
         // the skull is where the samples were asked for, not where the lift
@@ -447,32 +494,43 @@ function measure(seed) {
         const bb2 = (d00 * e2.dot(e1) - d01 * e2.dot(e0)) / den;
         samples++;
         if (bb1 < -0.05 || bb2 < -0.05 || bb1 + bb2 > 1.05) { offPatch++; continue; }
+        // how far the skull rises above the bare-skin chord, along the chord's
+        // own normal — the units every offset in features.js is written in
         const h0 = e2.dot(n0);
-        if (h0 > ts) ts = h0;
-        // and now the coverage: how far outside the built patch this piece of
-        // skin is, along the ray, turned into the units the offsets are
-        // written in by the cosine between the ray and the skin's own normal
-        const tp = patchProbe.query(skin.x, skin.y, skin.z);
-        const cos = Math.abs(n0.dot(skin) / r);
-        if (tp < 0) { tb = true; bare++; continue; }
-        const h = (r - tp) * cos;
-        if (h > tw) { tw = h; if (h > worst) { worst = h; worstAt = skin.clone(); } }
+        if (h0 > ts) { ts = h0; if (h0 > sag) { sag = h0; sagAt = skin.clone(); } }
+        // and, separately, whether the patch as built is still in front of
+        // this piece of skin AT ALL: the lift goes along the NORMAL, so on a
+        // patch lying at a slant to the ray a big lift slides the whole decal
+        // off its own footprint, and no amount of lift covers the skin.
+        //
+        // Only asked where the ray out of the head's centre is within sixty
+        // degrees of the skin's own normal. Past that the ray is a bad stand-in
+        // for a view ray — the player is looking at that skin edge on too — and
+        // a question asked there answers about the model, not the creature.
+        if (n0.dot(skin) / r > 0.5) {
+          rays++;
+          if (patchProbe.query(skin.x, skin.y, skin.z) < 0) bare++;
+        }
       }
-      if (tw > EPS || tb) holed++;
+      if (ts > lift) holed++;
       if (ts > CONTROL) sagged++;
-      if (ts > sag) sag = ts;
     }
-    if (worst === -Infinity) continue;
+    if (sag === -Infinity) continue;
     const row = {
-      seed, name, lift, worst, ratio: 1 + worst / lift,
-      sag, bare,
+      seed, name, lift, sag, ratio: sag / lift, bare, rays,
+      rad, stand: lift / Math.max(rad, 1e-6),
       holed: holed / Math.max(nT, 1), sagged: sagged / Math.max(nT, 1),
       folded: folded / Math.max(nT, 1),
-      tris: nT, at: worstAt, p, S, maw,
+      tris: nT, at: sagAt, p, S, maw,
     };
     patchRows.push(row);
     if (!worstPatch || row.ratio > worstPatch.ratio) worstPatch = row;
     if (!worstSag || row.sag > worstSag.sag) worstSag = row;
+    // judged on the absolute lift, not on the ratio: a scar a hundredth of a
+    // head across lifted twice its own radius is still a hundredth of a head
+    // off the skin and nobody sees it, while a socket lifted a tenth of a head
+    // is a plate hanging in front of the face
+    if (!worstStand || row.lift > worstStand.lift) worstStand = row;
   }
 
   // ---- 2. a tooth out through the face -----------------------------------
@@ -564,9 +622,11 @@ function measure(seed) {
     seed, p, S, R,
     patch: worstPatch ? worstPatch.ratio : 0,
     patchName: worstPatch ? worstPatch.name : '-',
-    patchAbs: worstPatch ? worstPatch.worst : 0,
+    patchAbs: worstPatch ? worstPatch.sag - worstPatch.lift : 0,
     sag: worstSag ? worstSag.sag : 0,
     sagName: worstSag ? worstSag.name : '-',
+    stand: worstStand ? worstStand.stand : 0,
+    liftMax: worstStand ? worstStand.lift : 0,
     tooth: worstTooth ? worstTooth.reach : 0,
     toothClear: Math.max(0, ...toothRows.filter((r) => r.seed === seed && r.far > BARE).map((r) => r.farReach), 0),
     toothRoot: Math.max(0, ...toothRows.filter((r) => r.seed === seed && r.end === 'root').map((r) => r.reach), 0),
@@ -680,24 +740,29 @@ console.log(`\nbuilt ${creatureRows.length} creatures, ${patchRows.length} proje
 
 // ---- 1 ---------------------------------------------------------------------
 console.log('1. BARE SKIN THROUGH A DECAL');
-console.log('   the skull above a patch triangle, in units of the lift that patch was built with:');
-console.log('   1.00 = skin level with the patch, over 1.00 = bare face showing through it.');
-console.log(`   SAG is the same rise above the bare-skin chord plane — the lift the lattice needs,`);
-console.log(`   which is what the patch would show at the flat ${CONTROL} offsets the source used to carry.\n`);
+console.log('   SAG is how far the skull rises above a patch triangle inside that triangle, along');
+console.log('   the triangle\'s own normal — the units every offset in features.js is written in.');
+console.log('   The patch stands off the skin by its LIFT, so sag/lift over 1.00 is bare face');
+console.log(`   showing through the decal. The control column asks the same of a flat ${CONTROL} lift,`);
+console.log('   which is the offset most of the source carried before it started measuring its own.\n');
 
-const holedCreatures = creatureRows.filter((r) => r.patch > 1 && r.patchAbs > EPS);
+const holedCreatures = creatureRows.filter((r) => r.patch > 1);
 const saggedCreatures = creatureRows.filter((r) => r.sag > CONTROL);
-console.log(`creatures with bare skin through some patch, as built   ${share(holedCreatures.length, creatureRows.length).padStart(4)}`);
-console.log(`worst patch on a creature, in its own lifts:            ${stat3(creatureRows.map((r) => r.patch))}   (median p90 max)`);
-console.log(`                          in head units:                ${stat3(creatureRows.map((r) => r.patchAbs), 4)}`);
-console.log(`same creatures at a flat ${CONTROL} lift (the control)      ${share(saggedCreatures.length, creatureRows.length).padStart(4)}`);
-console.log(`worst sag on a creature, in head units:                 ${stat3(creatureRows.map((r) => r.sag), 4)}`);
+console.log(`creatures with bare skin through a patch, as built     ${share(holedCreatures.length, creatureRows.length).padStart(4)}`);
+console.log(`  worst patch on a creature, sag over its own lift:    ${stat3(creatureRows.map((r) => r.patch))}   (median p90 max)`);
+console.log(`  how much skin that is, in head units:                ${stat3(creatureRows.map((r) => r.patchAbs), 4)}`);
+console.log(`the same creatures at a flat ${CONTROL} lift (the control)  ${share(saggedCreatures.length, creatureRows.length).padStart(4)}`);
+console.log(`  worst sag on a creature, in head units:              ${stat3(creatureRows.map((r) => r.sag), 4)}`);
+console.log(`creatures with a decal lifted over 0.05 off the skin   ${share(creatureRows.filter((r) => r.liftMax > 0.05).length, creatureRows.length).padStart(4)}`);
+console.log(`  worst lift on a creature, in head units:             ${stat3(creatureRows.map((r) => r.liftMax), 4)}`);
+console.log(`  that lift over the patch's own radius:               ${stat3(creatureRows.map((r) => r.stand))}`);
 {
   const smp = creatureRows.reduce((t, r) => t + r.samples, 0);
   const off = creatureRows.reduce((t, r) => t + r.offPatch, 0);
   const bare = creatureRows.reduce((t, r) => t + r.bare, 0);
-  console.log(`${smp} rays into ${patchRows.length} patches: ${share(off, smp)} landed past the triangle's own edge and were dropped,`);
-  console.log(`${share(bare, smp)} hit no part of the patch at all (which IS bare skin, and is counted as holed)\n`);
+  const rays = patchRows.reduce((t, r) => t + r.rays, 0);
+  console.log(`${smp} rays into ${patchRows.length} patches; ${share(off, smp)} landed past the triangle's own edge and were dropped`);
+  console.log(`${share(bare, rays)} of the rest hit no part of the built patch at all — see the "slid off" column\n`);
 }
 
 const byName = new Map();
@@ -706,31 +771,38 @@ for (const r of patchRows) {
   if (!g) byName.set(r.name, (g = []));
   g.push(r);
 }
-console.log('patch                built    holed   through, in its own lifts   lift built    sag, head units      would hole');
-console.log('                   patches      as    median    p90     max        median     median    p90    max   at ' + CONTROL.toFixed(3));
+console.log('patch                built     sag, head units        lift it was given      sag over its lift    holed  would hole  sheared  slid');
+console.log('                   patches   median    p90    max   median    p90    max    median    p90    max     as    at ' + CONTROL.toFixed(3) + '    quads   off');
 const named = [...byName.entries()].sort((x, y) => {
-  const h = (g) => g.filter((r) => r.sag > CONTROL).length / g.length;
+  const h = (g) => pct(g.map((r) => r.ratio).sort((i, j) => i - j), 0.9);
   return h(y[1]) - h(x[1]);
 });
 for (const [name, g] of named) {
-  const bad = g.filter((r) => r.ratio > 1 && r.worst > EPS);
+  const bad = g.filter((r) => r.ratio > 1);
   const ctl = g.filter((r) => r.sag > CONTROL);
   const lifts = g.map((r) => r.lift).sort((x, y) => x - y);
+  const rays = g.reduce((t, r) => t + r.rays, 0);
   console.log(
-    `${name.padEnd(18)} ${String(g.length).padStart(6)}   ${share(bad.length, g.length).padStart(5)}   ` +
-    `${stat3(g.map((r) => r.ratio))}     ${pct(lifts, 0.5).toFixed(4)}   ` +
-    `${stat3(g.map((r) => r.sag), 4)}   ${share(ctl.length, g.length).padStart(5)}`,
+    `${name.padEnd(18)} ${String(g.length).padStart(6)}   ${stat3(g.map((r) => r.sag), 4)}   ${stat3(g.map((r) => r.lift), 4)}   ` +
+    `${stat3(g.map((r) => r.ratio))}   ${share(bad.length, g.length).padStart(5)}   ${share(ctl.length, g.length).padStart(6)}   ` +
+    `${(100 * g.reduce((t, r) => t + r.folded, 0) / g.length).toFixed(0).padStart(4)}%  ${share(g.reduce((t, r) => t + r.bare, 0), rays).padStart(5)}`,
   );
 }
 
-console.log('\nworst patches as built — where the hole is, and what the head was doing:');
-const worstBuilt = patchRows.filter((r) => r.worst > EPS).sort((x, y) => y.ratio - x.ratio).slice(0, 6);
-if (!worstBuilt.length) console.log('  none: no patch on any creature was under the skin anywhere inside a face of it');
-for (const r of worstBuilt) console.log(...patchLines(r, `${r.ratio.toFixed(2)} lifts (${r.worst.toFixed(4)} over a lift of ${r.lift.toFixed(4)}), ${(100 * r.holed).toFixed(0)}% of ${r.tris} faces`));
+console.log('\nworst patches as built — sag past the lift the patch was given:');
+const worstBuilt = patchRows.filter((r) => r.ratio > 1).sort((x, y) => y.ratio - x.ratio).slice(0, 6);
+if (!worstBuilt.length) console.log(`  none: on every patch built here, the lift surface.js measured for itself was larger than the worst sag this tool could find in it`);
+for (const r of worstBuilt) console.log(...patchLines(r, `sag ${r.sag.toFixed(4)} over a lift of ${r.lift.toFixed(4)} = ${r.ratio.toFixed(2)}, ${(100 * r.holed).toFixed(0)}% of ${r.tris} faces holed`));
 
 console.log(`\nworst patches by SAG — the lattices that only the self-measured lift is holding up:`);
 for (const r of patchRows.slice().sort((x, y) => y.sag - x.sag).slice(0, 8)) {
-  console.log(...patchLines(r, `sag ${r.sag.toFixed(4)} = ${(r.sag / CONTROL).toFixed(1)}x the ${CONTROL} control, built with ${r.lift.toFixed(4)}, ${(100 * r.sagged).toFixed(0)}% of ${r.tris} faces would hole`));
+  console.log(...patchLines(r, `sag ${r.sag.toFixed(4)} = ${(r.sag / CONTROL).toFixed(1)}x the ${CONTROL} control, lifted ${r.lift.toFixed(4)}, ${(100 * r.sagged).toFixed(0)}% of ${r.tris} faces would hole at the control`));
+}
+
+console.log('\nworst patches by STANDOFF — the lift is the defect: a decal floating off the face');
+console.log('  (in head units, with the lift as a multiple of the patch\'s own radius beside it)');
+for (const r of patchRows.slice().sort((x, y) => y.lift - x.lift).slice(0, 6)) {
+  console.log(...patchLines(r, `lifted ${r.lift.toFixed(4)} off a patch of radius ${r.rad.toFixed(4)} = ${r.stand.toFixed(2)}x its own size, to clear a sag of ${r.sag.toFixed(4)}`));
 }
 
 function patchLines(r, what) {
@@ -824,7 +896,7 @@ for (const seed of [7013243, 2690228]) {
   const lip = patchRows.filter((r) => r.name === 'maw lip')[0];
   for (const r of [lip, wp].filter(Boolean).filter((r, i, arr) => arr.indexOf(r) === i)) {
     const u = r.maw ? ` at u ${((r.at.x - r.maw.mx) / Math.max(r.maw.mw, 1e-6)).toFixed(2)} v ${((r.at.y - r.maw.my) / Math.max(r.maw.mh, 1e-6)).toFixed(2)}` : '';
-    console.log(`    ${r.name.padEnd(12)} built with ${r.lift.toFixed(4)}, sag ${r.sag.toFixed(4)} (${(r.sag / CONTROL).toFixed(1)}x control), as built ${r.ratio.toFixed(2)} lifts${r.name.startsWith('maw') ? u : ''}, ${(100 * r.sagged).toFixed(0)}% of faces would hole at ${CONTROL}`);
+    console.log(`    ${r.name.padEnd(12)} lift ${r.lift.toFixed(4)}, sag ${r.sag.toFixed(4)} = ${r.ratio.toFixed(2)} of its lift${r.name.startsWith('maw') ? u : ''}; at the ${CONTROL} control ${(100 * r.sagged).toFixed(0)}% of its ${r.tris} faces would hole`);
   }
   if (wt) console.log(`    worst tooth: ${wt.type} ${wt.reach.toFixed(2)}R out by its ${wt.end} on the ${wt.reg.label}; furthest from the mouth while outside: ${wt.far.toFixed(2)}R at ${wt.farReach.toFixed(2)}R out by its ${wt.farEnd}`);
   creatureRows.length = before;
