@@ -1270,12 +1270,14 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   // colour shows only as the border around it.
   const profile = mawProfile(p.mawShape);
 
+  let lipLift = 0;
   if (p.lips > 0.01) {
     const grow = 1 + p.lips;
     const lips = bandGeometry(headMesh, p, {
       cx: mx, cy: my, rx: mw * grow, ry: mh * grow * 1.25,
       up: profile.up, down: profile.down, offset: 0.018, cols: 30, rows: 11,
     });
+    lipLift = lips.userData.lift;
     const lipMesh = new THREE.Mesh(lips, mats.lip);
     lipMesh.userData.maw = true;
     parent.add(lipMesh);
@@ -1286,9 +1288,13 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   // lumpy skull a straight line between two points of skin passes UNDER the
   // bump between them — which put a wedge of bare skin through the middle of
   // the mouth. Rows cost almost nothing; a hole in the face costs the creature.
+  // ...and it has to stand in front of the lips, because that standing-in-front
+  // is the whole reason the lip reads as a border round a hole rather than as a
+  // patch over one.
   const cavity = bandGeometry(headMesh, p, {
     cx: mx, cy: my, rx: mw, ry: mh,
     up: profile.up, down: profile.down, offset: 0.04, cols: 30, rows: 13,
+    minLift: lipLift + 0.022,
   });
   const cavityMesh = new THREE.Mesh(cavity, mats.cavity);
   cavityMesh.userData.maw = true;
@@ -1688,7 +1694,7 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
 
   // hair of whatever kind lives in hair.js
   // Ears sway with the hair, so they join the same list the animator drives.
-  const tendrils = addHair(parent, p, mats, rng, S).concat(addEars(parent, p, mats, S, rng));
+  const tendrils = addHair(parent, p, mats, rng, S).concat(addEars(parent, headMesh, p, mats, S, rng));
 
   // spore cloud above the skull, in a group of its own so it can drift
   // whatever floats around this one, hung on the head so it travels with it

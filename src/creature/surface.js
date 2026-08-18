@@ -54,6 +54,26 @@ export function surfaceAt(headMesh, p, x, y) {
   return { point: s.point.clone(), normal: s.normal.clone() };
 }
 
+const _rayFrom = new THREE.Vector3();
+const _rayDir = new THREE.Vector3();
+
+/**
+ * How far the DRAWN skull reaches along a direction from the head's centre.
+ *
+ * headPoint answers the same question about the analytic surface the skull is
+ * generated from, and on a lumpy head the mesh and that surface disagree by a
+ * tenth of a head radius — which is the same size as the distances anything
+ * burying itself in the skull cares about. Whatever has to end up hidden BEHIND
+ * the skin has to be measured against the skin that is drawn.
+ */
+export function skinAlong(headMesh, dir) {
+  _rayDir.copy(dir).normalize();
+  _rayFrom.copy(_rayDir).multiplyScalar(60);
+  raycaster.set(_rayFrom, _rayDir.clone().negate());
+  const hits = raycaster.intersectObject(headMesh, false);
+  return hits.length ? hits[0].point.length() : 0;
+}
+
 /** Skin point along a direction (for horns, warts, tendrils). */
 export function surfaceByDir(p, x, y, z) {
   _dir.set(x, y, z);
@@ -249,7 +269,7 @@ function quadSag(mid, corner, cap, span) {
  */
 export function bandGeometry(headMesh, p, {
   cx = 0, cy = 0, rx = 0.3, ry = 0.2,
-  up, down, offset = 0.012, cols = 24, rows = 3,
+  up, down, offset = 0.012, cols = 24, rows = 3, minLift = 0,
 }) {
   const count = (cols + 1) * (rows + 1);
   const positions = new Float32Array(count * 3);
@@ -298,7 +318,12 @@ export function bandGeometry(headMesh, p, {
       if (one !== null) sag = Math.max(sag, one);
     }
   }
-  const lift = Math.min(offset + sag * 1.55, offset + Math.min(rx, ry) * 0.3);
+  // `minLift` is how a patch that has to sit IN FRONT of another one says so.
+  // Two patches that each measure their own sag do not stay in the order they
+  // were written in: the lips are bigger and coarser than the cavity, so they
+  // measured a bigger sag, lifted further, and on one creature in ten stood in
+  // front of the very hole they are the border of.
+  const lift = Math.max(minLift, Math.min(offset + sag * 1.55, offset + Math.min(rx, ry) * 0.3));
 
   for (let i = 0; i < count; i++) {
     positions[i * 3] = pts[i].x + nrm[i].x * lift;
@@ -324,5 +349,6 @@ export function bandGeometry(headMesh, p, {
   geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
   geo.setIndex(index);
   geo.computeBoundingSphere();
+  geo.userData.lift = lift;   // so whatever must sit over this can clear it
   return geo;
 }

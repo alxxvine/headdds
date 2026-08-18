@@ -21,7 +21,12 @@ import { headPoint, headHalfWidth as silhouetteAt } from '../src/creature/head.j
 import { headUnit, headRadius } from '../src/creature/features.js';
 import { skinProbe } from './lib-skin.mjs';
 
-const N = Number(process.argv[2] || 400);
+// `node tools/teeth-sweep.mjs 500` sweeps 500 creatures; `seeds:168,2690228`
+// measures the named ones, which is how a seed the art director reported gets
+// checked against the same numbers as the population.
+const ARG = process.argv[2] || '400';
+const SEEDS = ARG.startsWith('seeds:') ? ARG.slice(6).split(',').map(Number) : null;
+const N = SEEDS ? SEEDS.length : Number(ARG);
 const ONLY = process.argv[3] || null;
 
 const _v = new THREE.Vector3();
@@ -84,10 +89,38 @@ function reach(geo, mat, probe, split) {
   return { far, farRoot, farTip, at, buried: buried / pos.count };
 }
 
+// ------------------------------------------------------------------ CHECK --
+// The probe first, on the one question whose answer is known: every vertex of
+// the skull is a point of skin, so every one must come back at zero. The
+// one-liner this file could have used instead — headPoint(p, v.normalized())
+// — calls a third of them proud of the surface, because headPoint scales x, y
+// and z by different amounts and so answers about a different direction. That
+// is the same estimator addTeeth's walk-back uses, which is why its error is
+// reported below rather than assumed away.
+{
+  const p0 = randomize(7013243);
+  const c0 = buildCreature(p0);
+  c0.group.updateMatrixWorld(true);
+  const hm = c0.rig.headPivot.children[0].children[0];
+  const pr = skinProbe(hm);
+  const pos = hm.geometry.attributes.position;
+  let worst = 0; let worstNaive = 0;
+  const v = new THREE.Vector3();
+  for (let k = 0; k < pos.count; k += 7) {
+    v.fromBufferAttribute(pos, k);
+    worst = Math.max(worst, Math.abs(pr.proud(v)));
+    _d.copy(v).normalize(); headPoint(p0, _d, _s);
+    worstNaive = Math.max(worstNaive, Math.abs(v.length() - _s.length()));
+  }
+  console.log(`probe on the skull's own ${pos.count} vertices: worst |gap| ${worst.toExponential(1)} ` +
+    `(the headPoint one-liner addTeeth uses: ${worstNaive.toFixed(3)})\n`);
+  c0.dispose();
+}
+
 const rows = [];
 const teeth = [];
 for (let i = 0; i < N; i++) {
-  const seed = i * 11 + 3;
+  const seed = SEEDS ? SEEDS[i] : i * 11 + 3;
   const p = randomize(seed);
   if (ONLY && p.toothType !== ONLY) continue;
   const c = buildCreature(p);
@@ -374,8 +407,13 @@ for (const k of ['hooks', 'barbs', 'tusks']) {
   if (!sub.length) continue;
   console.log(`    ${k.padEnd(6)} step 0 for ${pct(sub, (t) => t.steps === 0)}  tip end ${stat(sub, 'tipOut')}  root end ${stat(sub, 'rootOut')}`);
 }
-const err = curled.map((t) => ({ e: t.guess - t.tipOut }));
-console.log(`  its own estimator vs the truth at the tip, head radii: ${stat(err, 'e')}`);
+const err = curled.map((t) => ({ e: t.guess - t.tipOut, a: Math.abs(t.guess - t.tipOut) }));
+const qq = (f) => q(err.map((x) => x.e), f).toFixed(3);
+console.log(`  its own estimator minus the truth at the tip, head radii: min ${qq(0)} p10 ${qq(0.1)} median ${qq(0.5)} p90 ${qq(0.9)} max ${qq(1)}`);
+console.log(`  it is wrong by more than 0.10R on ${pct(err, (x) => x.a > 0.1)} of curled teeth, more than 0.30R on ${pct(err, (x) => x.a > 0.3)}`);
+const over = curled.filter((t) => t.tipOut > 0.28);
+console.log(`  curled teeth whose tip truly breaks the loop's OWN 0.28R tolerance: ${over.length} (${pct(curled, (t) => t.tipOut > 0.28)})`);
+console.log(`    ...of those, the loop walked back 0 times because its estimate said they were inside: ${pct(over, (t) => t.steps === 0)}`);
 console.log(`  teeth the loop passed whose ROOT is out by more than 0.15R: ${pct(curled, (t) => t.rootOut > 0.15)}`);
 console.log(`  ...by more than 0.28R, the loop's own tolerance:           ${pct(curled, (t) => t.rootOut > 0.28)}`);
 
@@ -459,6 +497,34 @@ console.log(`  teethTop or teethBottom === 1: ${one.length} creatures, worst too
 console.log(`  otherwise:                     ${many.length} creatures, worst tooth ${stat(many, 'out')}`);
 const oneT = teeth.filter((t) => rows.find((r) => r.seed === t.seed)?.single);
 console.log(`  a tooth on such a creature: ${stat(oneT, 'out')}   ${pct(oneT, (t) => t.out > 0.15)} over 0.15R`);
+
+console.log('\n=== per creature, by kind ===');
+for (const k of kinds) {
+  const sub = rows.filter((r) => r.p.toothType === k);
+  if (!sub.length) continue;
+  console.log(`  ${k.padEnd(8)} n=${String(sub.length).padStart(3)} (${(100 * sub.length / rows.length).toFixed(1)}% of all creatures)  worst tooth ${stat(sub, 'out')}  ${pct(sub, (r) => r.out > 0.15)} over 0.15R  ${pct(sub, (r) => r.out > 0.25)} over 0.25R`);
+}
+
+if (SEEDS) {
+  console.log('\n=== each tooth of each named seed ===');
+  for (const t of teeth) {
+    console.log(`  seed ${String(t.seed).padStart(7)} ${t.kind.padEnd(7)} row of ${String(t.count).padStart(2)} ${t.side > 0 ? 'top' : 'bot'} ` +
+      `len ${t.lenR.toFixed(3)}R curl ${t.rot.toFixed(2)} (asked ${t.curl0.toFixed(2)}, walked back ${t.steps} times) ` +
+      `out ${t.out.toFixed(3)}R  root end ${t.rootOut.toFixed(3)}R  tip end ${t.tipOut.toFixed(3)}R  ` +
+      `the loop's own estimate of the tip ${t.guess.toFixed(3)}R`);
+  }
+}
+
+console.log('\n=== worst by the hinge (jaw shut -> open 4) ===');
+for (const r of rows.filter((x) => Number.isFinite(x.jaw4)).sort((a, b) => (b.jaw4 - b.jaw0) - (a.jaw4 - a.jaw0)).slice(0, 6)) {
+  console.log(`  seed ${String(r.seed).padStart(6)} ${r.jaw0.toFixed(3)}R -> ${r.jaw4.toFixed(3)}R  slid ${r.slide4.toFixed(3)}R | ${r.p.toothType} bot ${r.p.teethBottom} maw ${r.p.mawShape}`);
+}
+for (const k of ['hooks', 'barbs', 'tusks']) {
+  console.log(`\nworst ${k}:`);
+  for (const r of rows.filter((x) => x.p.toothType === k).sort((a, b) => b.out - a.out).slice(0, 4)) {
+    console.log(`  seed ${String(r.seed).padStart(6)} out ${r.out.toFixed(3)}R | size ${r.p.toothSize.toFixed(2)} maw ${r.p.mawShape} top ${r.p.teethTop} bot ${r.p.teethBottom}`);
+  }
+}
 
 console.log('\n=== worst creatures ===');
 for (const r of rows.slice().sort((a, b) => b.out - a.out).slice(0, 12)) {

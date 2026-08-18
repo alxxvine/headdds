@@ -1,7 +1,10 @@
 import * as THREE from 'three';
-import { surfaceByDir, orientTo } from './surface.js';
+import { surfaceByDir, orientTo, skinAlong } from './surface.js';
 import { withOutline } from './materials.js';
 import { warpGeometry, warpRoll } from './warp.js';
+
+const _ev = new THREE.Vector3();
+const _ed = new THREE.Vector3();
 
 // Ears are the one part that changes the silhouette from the side without
 // touching the face, which is why they are here at all: two freaks with the
@@ -11,7 +14,7 @@ import { warpGeometry, warpRoll } from './warp.js';
 // one gets its own pivot, so a flap can swing with the head — the animator
 // takes them alongside the hair strands.
 
-export function addEars(parent, p, mats, S, rng) {
+export function addEars(parent, headMesh, p, mats, S, rng) {
   const kind = p.earType;
   if (kind === 'none') return [];
 
@@ -81,15 +84,20 @@ export function addEars(parent, p, mats, S, rng) {
       // barely an ear: a knob on the side of the skull
       ell(0.6, 0.6, 0.6, 0, 0, 0.15, 0.4);
     } else if (kind === 'tube') {
-      // a pipe stuck out sideways, open at the far end
-      geo = warpGeometry(new THREE.CylinderGeometry(size * 0.4, size * 0.55, size * 1.6, 9, 3, true),
+      // A pipe stuck out sideways, open at the far end — and buried at the near
+      // one. Both cylinders used to START at the skin: the outer is open at
+      // both ends and the dark bore inside it is not, so from three quarters
+      // you saw the bore's flank as a dark collar around the root and the ear
+      // read as a separate object butted against the head rather than a hole
+      // through it. A pipe has to begin inside the skull it is a pipe into.
+      geo = warpGeometry(new THREE.CylinderGeometry(size * 0.4, size * 0.55, size * 1.95, 9, 3, true),
         rng(), warpRoll(p, rng, 0.7));
       mesh = new THREE.Mesh(geo, mats.trim);
       mesh.rotation.x = Math.PI / 2;
-      mesh.position.set(0, 0, size * 0.75);
-      const bore = new THREE.Mesh(new THREE.CylinderGeometry(size * 0.3, size * 0.42, size * 1.4, 8), mats.cavity);
+      mesh.position.set(0, 0, size * 0.62);
+      const bore = new THREE.Mesh(new THREE.CylinderGeometry(size * 0.3, size * 0.44, size * 1.85, 8), mats.cavity);
       bore.rotation.x = Math.PI / 2;
-      bore.position.set(0, 0, size * 0.7);
+      bore.position.set(0, 0, size * 0.55);
       pivot.add(bore);
     } else if (kind === 'frills') {
       // not one ear but a row of small ones down the jaw line
@@ -171,6 +179,18 @@ export function addEars(parent, p, mats, S, rng) {
       pivot.add(inner);
     }
 
+    // A collar of skin where the ear meets the head. Without it the ear's own
+    // surface stops dead at the skull and the two read as two objects touching
+    // — the report was "the ear falls off", and it is the join that says so,
+    // not the ear. A low swelling in the SKIN colour, half of it inside the
+    // head, gives the eye the flare it expects where a thing grows out of a
+    // thing. It is deliberately smaller than the ear so the silhouette is still
+    // the ear's.
+    const collar = new THREE.Mesh(new THREE.SphereGeometry(size * 0.62, 10, 7), mats.skin);
+    collar.scale.set(1, 1, 0.5);
+    collar.position.z = -size * 0.12;
+    pivot.add(collar);
+
     withOutline(pivot, mesh, geo, p.outline * 0.5 * S, mats.outline);
     // flaps are heavy and swing; a fin is bone and barely moves
     pivots.push({
@@ -179,6 +199,41 @@ export function addEars(parent, p, mats, S, rng) {
       phase: side > 0 ? 0 : 1.6,
       stiffness: kind === 'flaps' ? 0.7 : kind === 'trumpets' ? 0.25 : 0.1,
     });
+  }
+
+  // Every ear is rooted ON the skin, and half the kinds never get any further
+  // in than that: a fin, a flap, a stub or a hole reaches a thousandth of a head
+  // radius past the surface, which is touching rather than entering. An ear
+  // that only touches shows its own back end — the near rim of a pipe, the flat
+  // side of a plate, the dark inside of anything hollow — and its outline draws
+  // a hard black line all the way round the join. What a player sees is an ear
+  // butted against the head rather than growing out of it: "the ear falls off".
+  //
+  // So each one is pushed in along its own normal until enough of it is inside
+  // the skull to hide the join. Measured on what was built, because how deep a
+  // kind already reaches is a property of its shape and not worth a table.
+  parent.updateMatrixWorld(true);
+  for (const st of pivots) {
+    const want = Math.min(st.len * 0.4, S * 0.16);
+    let deepest = -Infinity;
+    st.pivot.traverse((o) => {
+      if (!o.isMesh || o.material?.side === THREE.BackSide) return;
+      const pos = o.geometry.attributes.position;
+      if (!pos) return;
+      const step = Math.max(1, Math.floor(pos.count / 40));
+      for (let k = 0; k < pos.count; k += step) {
+        _ev.fromBufferAttribute(pos, k).applyMatrix4(o.matrixWorld);
+        if (_ev.lengthSq() < 1e-9) { deepest = Math.max(deepest, 9); continue; }
+        _ed.copy(_ev).normalize();
+        // against the skull that is DRAWN, not the surface it is sampled from:
+        // the two differ by as much as the burial itself
+        deepest = Math.max(deepest, skinAlong(headMesh, _ed) - _ev.length());
+      }
+    });
+    if (deepest > -Infinity && deepest < want) {
+      _ed.copy(st.pivot.position).normalize();
+      st.pivot.position.addScaledVector(_ed, -(want - deepest));
+    }
   }
 
   return pivots;
