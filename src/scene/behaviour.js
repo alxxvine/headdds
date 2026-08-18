@@ -32,6 +32,10 @@ export function blankPose() {
     ],
     eyes: { x: 0, y: 0, squint: 0, wide: 0 },
     hair: 0,
+    // how hard the creature is holding itself still; the animator damps its
+    // own idle layers by it, which is the only way a gesture can express
+    // stopping rather than moving
+    still: 0,
   };
 }
 
@@ -44,6 +48,7 @@ export function resetPose(pose) {
   for (const l of pose.legs) { l.lift = 0; l.swing = 0; }
   pose.eyes.x = pose.eyes.y = pose.eyes.squint = pose.eyes.wide = 0;
   pose.hair = 0;
+  pose.still = 0;
   return pose;
 }
 
@@ -252,6 +257,247 @@ export const ACTIONS = [
       pose.eyes.squint += bell(k) * 0.6;
     },
   },
+
+  // ---------------------------------------------------------------- HOSTILE ---
+  // These five are gated on the mood rather than weighted towards it: a
+  // creature that snarls while calm has no states at all.
+  {
+    id: 'snarl',
+    only: 'hostile',
+    weight: (P) => 1 + P.boldness,
+    dur: [1.4, 2.4],
+    apply: (pose, k) => {
+      // held, not thrown: a threat is a thing you keep doing
+      const on = hold(k);
+      pose.jaw += on * 0.75;
+      pose.head.pitch -= on * 0.16;
+      pose.body.lean += on * 0.3;
+      pose.eyes.squint += on * 0.9;
+      pose.hair += on * 2.2;
+      pose.root.y += on * 0.012;
+    },
+  },
+  {
+    id: 'lunge',
+    only: 'hostile',
+    weight: (P) => 0.7 + P.boldness * 1.4,
+    dur: [0.7, 1.0],
+    apply: (pose, k) => {
+      // the whole body drives at you and pulls back
+      const drive = beats(k, 1) * 1.4;
+      pose.body.lean += drive * 0.42;
+      pose.head.pitch -= drive * 0.28;
+      pose.root.y -= Math.abs(drive) * 0.02;
+      pose.jaw += Math.max(0, drive) * 0.6;
+      pose.arms[0].swing += Math.max(0, drive) * 0.5;
+      pose.arms[1].swing += Math.max(0, drive) * 0.5;
+      pose.eyes.squint += bell(k) * 0.7;
+      pose.hair += Math.abs(drive) * 1.2;
+    },
+  },
+  {
+    id: 'stomp',
+    only: 'hostile',
+    weight: (P) => 0.6 + P.boldness,
+    dur: [0.9, 1.4],
+    apply: (pose, k, c) => {
+      const beat = beats(k, 2);
+      pose.legs[c.side].lift += Math.max(0, beat) * 0.5;
+      pose.root.y += Math.max(0, beat) * 0.02 - Math.max(0, -beat) * 0.025;
+      pose.body.squash += Math.max(0, -beat) * 0.05;
+      pose.head.pitch += Math.max(0, -beat) * 0.12;
+      pose.hair += Math.abs(beat) * 0.9;
+    },
+  },
+
+  // ------------------------------------------------------------------ WIRED ---
+  {
+    id: 'twitch',
+    only: 'wired',
+    weight: (P) => 1.2 + P.jitter * 1.5,
+    dur: [0.28, 0.5],
+    apply: (pose, k, c) => {
+      // one hard jerk, gone before you are sure you saw it
+      const jerk = beats(k, 2);
+      pose.head.yaw += jerk * 0.4 * (c.side ? 1 : -1);
+      pose.head.roll += jerk * 0.16;
+      pose.arms[c.side].lift += jerk * 0.55;
+      pose.eyes.wide += bell(k) * 0.6;
+    },
+  },
+  {
+    id: 'bounce',
+    only: 'wired',
+    weight: (P) => 1 + P.jitter,
+    dur: [1.0, 1.8],
+    apply: (pose, k) => {
+      // cannot stand still: small fast bobs that never quite leave the ground
+      const bob = beats(k, 6);
+      pose.root.y += Math.max(0, bob) * 0.025;
+      pose.body.squash += Math.max(0, -bob) * 0.05;
+      pose.head.pitch -= bob * 0.05;
+      pose.arms[0].lift += bob * 0.12;
+      pose.arms[1].lift -= bob * 0.12;
+      pose.hair += Math.abs(bob) * 0.8;
+    },
+  },
+  {
+    id: 'scan',
+    only: 'wired',
+    weight: (P) => 0.9 + P.curiosity,
+    dur: [1.1, 1.7],
+    apply: (pose, k) => {
+      // snapping between three places rather than sweeping across them
+      const step = Math.round(Math.sin(Math.PI * clamp01(k) * 3) * 1.4) / 1.4;
+      pose.head.yaw += step * 0.42 * bell(k);
+      pose.eyes.x += step * 0.9;
+      pose.eyes.wide += bell(k) * 0.5;
+    },
+  },
+
+  // ------------------------------------------------------------------ SPENT ---
+  {
+    id: 'pant',
+    only: 'spent',
+    weight: () => 2.2,
+    dur: [1.8, 3.0],
+    apply: (pose, k) => {
+      // the jaw and the whole body working together, head hanging
+      const on = hold(k);
+      const puff = beats(k, 7);
+      pose.jaw += on * 0.2 + Math.max(0, puff) * 0.3;
+      pose.body.squash += puff * 0.045;
+      pose.head.pitch += on * 0.3 + puff * 0.05;
+      pose.eyes.squint += on * 0.7;
+      pose.root.y -= on * 0.012;
+    },
+  },
+  {
+    id: 'nodOff',
+    only: 'spent',
+    weight: (P) => 1.4 + P.laziness,
+    dur: [2.2, 3.6],
+    apply: (pose, k) => {
+      // the head sinks, catches itself, sinks again
+      const sink = hold(k);
+      const catchUp = Math.max(0, Math.sin(Math.PI * clamp01(k) * 2.5));
+      pose.head.pitch += sink * 0.5 - catchUp * 0.28;
+      pose.eyes.squint += sink * 1.0 - catchUp * 0.5;
+      pose.body.lean += sink * 0.12;
+      pose.root.y -= sink * 0.018;
+    },
+  },
+  {
+    id: 'sag',
+    only: 'spent',
+    weight: (P) => 1.2 + P.laziness,
+    dur: [2.4, 3.8],
+    apply: (pose, k) => {
+      // a slow collapse with one half-hearted attempt at standing up again
+      const down = hold(k);
+      const rally = Math.max(0, Math.sin(Math.PI * clamp01(k) * 1.6 - 0.4));
+      pose.body.squash += down * 0.09 - rally * 0.04;
+      pose.root.y -= down * 0.03 - rally * 0.012;
+      pose.head.pitch += down * 0.36 - rally * 0.2;
+      pose.arms[0].lift += down * 0.1;
+      pose.arms[1].lift += down * 0.1;
+      pose.eyes.squint += down * 0.8;
+    },
+  },
+
+  // ------------------------------------------------------------------ ALERT ---
+  {
+    id: 'perk',
+    only: 'alert',
+    weight: (P) => 1.5 + P.curiosity,
+    dur: [1.0, 1.7],
+    apply: (pose, k) => {
+      // everything comes up at once and then holds: it has noticed something
+      const up = hold(k);
+      pose.head.pitch -= up * 0.26;
+      pose.body.lean -= up * 0.14;
+      pose.root.y += up * 0.02;
+      pose.eyes.wide += up * 1.3;
+      pose.hair += up * 1.8;
+      pose.arms[0].lift -= up * 0.12;
+      pose.arms[1].lift -= up * 0.12;
+    },
+  },
+  {
+    id: 'track',
+    only: 'alert',
+    weight: (P) => 1.2 + P.curiosity * 1.3,
+    dur: [1.8, 3.0],
+    apply: (pose, k, c) => {
+      // the eyes lead and the head follows them across, slowly
+      const dir = c.side ? 1 : -1;
+      const across = Math.sin(Math.PI * clamp01(k)) * dir;
+      pose.eyes.x += across * 1.1;
+      pose.head.yaw += across * 0.34 * Math.min(1, clamp01(k) * 2.2);
+      pose.eyes.wide += hold(k) * 0.6;
+    },
+  },
+  {
+    id: 'freeze',
+    only: 'alert',
+    weight: () => 1.1,
+    dur: [1.2, 2.0],
+    apply: (pose, k) => {
+      // the loudest thing a body can do is nothing. `still` is read by the
+      // animator, which damps its own idle layers towards zero while it lasts.
+      const on = hold(k);
+      pose.still += on * 0.92;
+      pose.eyes.wide += on * 0.9;
+      pose.head.pitch -= on * 0.08;
+    },
+  },
+
+  // ------------------------------------------------------------------- CALM ---
+  {
+    id: 'yawn',
+    only: 'calm',
+    weight: (P) => 1.3 + P.laziness * 1.2,
+    dur: [1.8, 2.8],
+    apply: (pose, k) => {
+      const open = Math.sin(Math.PI * clamp01(k) ** 0.7);
+      pose.jaw += open * 0.9;
+      pose.head.pitch -= open * 0.22;
+      pose.eyes.squint += open * 1.2;
+      pose.body.squash -= open * 0.04;
+      pose.arms[0].lift -= open * 0.25;
+      pose.arms[1].lift -= open * 0.25;
+    },
+  },
+  {
+    id: 'groom',
+    only: 'calm',
+    weight: (P) => 1.1 + P.laziness * 0.6,
+    dur: [2.0, 3.2],
+    apply: (pose, k, c) => {
+      // a hand working slowly at the side of the head
+      const reach = hold(k);
+      const rub = beats(k, 4) * reach;
+      pose.arms[c.side].lift += reach * -0.85 + rub * 0.18;
+      pose.arms[c.side].swing -= reach * 0.35;
+      pose.head.roll += (c.side ? -1 : 1) * (reach * 0.1 + rub * 0.05);
+      pose.eyes.squint += reach * 0.35;
+    },
+  },
+  {
+    id: 'settle',
+    only: 'calm',
+    weight: () => 1.2,
+    dur: [1.6, 2.6],
+    apply: (pose, k, c) => {
+      // a shuffle of the feet and a long breath out
+      const shift = Math.sin(Math.PI * clamp01(k) * 2) * bell(k);
+      pose.legs[c.side].swing += shift * 0.1;
+      pose.legs[1 - c.side].swing -= shift * 0.06;
+      pose.root.x += shift * 0.01;
+      pose.body.squash += hold(k) * 0.03;
+      pose.head.pitch += hold(k) * 0.06;
+    },
+  },
 ];
 
 const BY_ID = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));
@@ -264,10 +510,14 @@ export function createBehaviour() {
   let side = 0;
   let nextIn = 1.5;
 
-  function choose(P, bias) {
+  function choose(P, bias, moodId) {
     let total = 0;
     const w = ACTIONS.map((a) => {
-      // the mood does not pick the gesture, it only tilts the odds
+      // Most gestures belong to no state in particular and the mood only tilts
+      // their odds. A few belong to ONE state and are wrong everywhere else —
+      // a creature that snarls when it is calm has no states at all — and those
+      // carry `only`, which is a gate rather than a weight.
+      if (a.only && a.only !== moodId) { total += 0; return 0; }
       const x = Math.max(0.01, a.weight(P) * (bias?.[a.id] ?? 1));
       total += x;
       return x;
@@ -317,7 +567,7 @@ export function createBehaviour() {
       }
       nextIn -= dt;
       if (nextIn <= 0) {
-        const a = choose(P, mood?.bias);
+        const a = choose(P, mood?.bias, mood?.id);
         action = a;
         elapsed = 0;
         duration = a.dur[0] + Math.random() * (a.dur[1] - a.dur[0]);

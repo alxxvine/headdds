@@ -71,6 +71,7 @@ export function createAnimator() {
     saccadeIn: 0.8,
     blinkIn: 2.5,
     blinkT: -1,
+    blinkDur: 0.16,
     // maw
     jaw: 0,
     jawVel: 0,
@@ -197,8 +198,35 @@ export function createAnimator() {
     behaviour.update(pose, step, personality, mood);
     mood.posture(pose, t);
 
+    // --- the rhythm the mood is carried by ----------------------------------
+    //
+    // The posture layer gives each mood a static offset, and that is the easy
+    // half. What tells a player which state a creature is in from across a room
+    // is the RHYTHM — how fast it breathes, whether it is holding still, how
+    // long it goes without blinking. Every mood used to breathe at 1.7, sway at
+    // 0.42 and blink every two to six seconds, and only an overall tempo
+    // multiplier moved, so the five states were five postures rather than five
+    // creatures.
+    //
+    // Read off the DRIVES rather than the mood's name, so it slides between
+    // states instead of snapping at the threshold.
+    const D = mood.drives;
+
     // --- breathing: the body swells, the head rides on top -----------------
-    const breath = Math.sin(t * 1.7);
+    // Angry breathing is fast and shallow, exhausted breathing is slow and
+    // deep, and being wound up drives it faster without deepening it. The
+    // ragged term is a second harmonic that only exhaustion switches on: a
+    // breath that catches rather than one that runs smoothly.
+    const breathRate = 1.7 * (1 + D.anger * 0.85 + D.arousal * 0.45 - D.fatigue * 0.5);
+    const breathDeep = 1 + D.fatigue * 0.9 - D.anger * 0.45 - D.arousal * 0.2;
+    // The catch is a WARP OF THE PHASE, not a second wave added on top. Adding
+    // a harmonic gives the trace extra turning points, and a slow breath with a
+    // ripple in it then measures — and reads — as a fast breath: exactly the
+    // one thing exhaustion had to be told apart from. Warping the phase makes
+    // the breath draw in fast and let go slowly, which is a sigh, and leaves
+    // the rate alone.
+    const phase = t * breathRate + D.fatigue * 0.7 * Math.sin(t * breathRate);
+    const breath = Math.sin(phase) * Math.max(0.3, breathDeep) * (1 - Math.min(0.8, pose.still));
     const b = base.body;
     rig.bodyPivot.scale.set(
       b.scale.x * (1 + breath * 0.02 - pose.body.squash * 0.35),
@@ -208,8 +236,28 @@ export function createAnimator() {
     spin(rig.bodyPivot, base.body, pose.body.lean, pose.body.twist, 0);
 
     // --- weight shift from foot to foot ------------------------------------
-    const sway = Math.sin(t * 0.42);
-    const swayAmp = 0.03 + T.wobble * 0.05 + T.menace * 0.02;
+    // Weight shifts slowly when nothing is happening and quickly when it is —
+    // and a furious creature does not sway at all, it plants itself and rocks
+    // in place. `dwell` squares off the wave towards the ends, so hostile holds
+    // its weight on one foot and then shifts, instead of gliding to and fro.
+    // Exhaustion is not simply everything at half speed — that reads as calm.
+    // What reads as running out is UNEVENNESS: it moves, it stops, it moves
+    // again. `flag` is a slow envelope that only fatigue switches on, and every
+    // idle amplitude below rides on it, so the whole creature goes quiet
+    // together rather than one channel at a time.
+    // ...and `still` is the same dial driven the other way, by a gesture rather
+    // than by a drive: `freeze` writes it, and holding a body rigid is
+    // something a pose offset cannot express — you can only express it by
+    // taking the idle motion away.
+    const flag = (1 - D.fatigue * 0.6 * Math.max(0, Math.sin(t * 0.55)) ** 2)
+      * (1 - Math.min(0.95, pose.still));
+
+    const swayRate = 0.42 * (1 + D.arousal * 0.8 - D.fatigue * 0.4);
+    const raw = Math.sin(t * swayRate);
+    const dwell = D.anger;
+    const sway = raw * (1 - dwell) + Math.tanh(raw * 2.6) * dwell;
+    const swayAmp = (0.03 + T.wobble * 0.05 + T.menace * 0.02)
+      * (1 - D.anger * 0.35 + D.fatigue * 0.25) * flag;
     // A jump: off the ground, and back onto it.
     const lift = pose.root.y;
     if (lift > 0.06 && S.lastLift <= 0.06) fire('launch', Math.min(1, lift * 6));
@@ -290,8 +338,13 @@ export function createAnimator() {
     const stiffness = 26 + (1 - T.wobble) * 46;
     const damping = 2 * Math.sqrt(stiffness) * (0.32 + 0.6 * (1 - T.wobble));
 
-    const idleYaw = Math.sin(t * 0.31) * (0.05 + T.menace * 0.09) + (T.blind ? Math.sin(t * 0.22) * 0.22 : 0);
-    const idlePitch = Math.sin(t * 0.53) * 0.035 - sway * 0.02;
+    // The head's own drift, and the fine tremor a wound-up creature cannot keep
+    // out of it. The tremor is fast and small: at this render resolution it
+    // reads as a creature vibrating rather than as one moving.
+    const idleYaw = (Math.sin(t * 0.31) * (0.05 + T.menace * 0.09)
+      + (T.blind ? Math.sin(t * 0.22) * 0.22 : 0)) * flag;
+    const idlePitch = (Math.sin(t * 0.53) * 0.035 - sway * 0.02) * flag
+      + Math.sin(t * 23) * D.arousal * (1 - D.fatigue) * 0.012;
     const pointerX = input.active ? input.pointer.x : 0;
     const pointerY = input.active ? input.pointer.y : 0;
     // an alert creature locks on harder than a bored one
@@ -332,24 +385,43 @@ export function createAnimator() {
     );
 
     // --- eyes: blinking and saccades ---------------------------------------
+    // How often it blinks, and how long the lid stays down, are both mood. A
+    // creature that has decided it dislikes you stops blinking and stares; a
+    // worn-out one blinks slowly and heavily, and the lid lingers; a wound-up
+    // one flutters. This is the loudest single tell in the whole set, and it
+    // used to be one interval for all five states.
     S.blinkIn -= step;
     if (S.blinkIn <= 0 && S.blinkT < 0) {
       S.blinkT = 0;
-      S.blinkIn = 2 + Math.random() * 4.5;
+      const gap = (2 + Math.random() * 4.5)
+        * (1 + D.anger * 2.6)                       // hostile: a stare
+        * (1 - D.arousal * 0.45)                    // wired: a flutter
+        * (1 - D.fatigue * 0.25);
+      S.blinkIn = Math.max(0.35, gap);
+      S.blinkDur = 0.16 * (1 + D.fatigue * 2.2);    // spent: heavy and slow
       fire('blink');
     }
     let blink = 0;
     if (S.blinkT >= 0) {
-      const dur = 0.16;
+      const dur = S.blinkDur || 0.16;
       S.blinkT += step;
-      blink = S.blinkT >= dur ? 0 : 1 - Math.abs(1 - (S.blinkT / dur) * 2);
+      // The lid falls quickly and lifts slowly when the creature is tired, and
+      // symmetrically when it is not — a slow close reads as sleepy either way,
+      // but a slow OPEN is what actually reads as "about to stop".
+      const k = S.blinkT / dur;
+      const shape = k < 0.35 ? k / 0.35 : 1 - (k - 0.35) / 0.65;
+      blink = S.blinkT >= dur ? 0 : Math.max(0, shape);
       if (S.blinkT >= dur) S.blinkT = -1;
     }
 
     S.saccadeIn -= step;
     if (S.saccadeIn <= 0) {
-      S.saccadeIn = 0.5 + Math.random() * (2.4 - T.curiosity * 1.2);
-      S.lookTarget.set((Math.random() * 2 - 1) * 0.7, (Math.random() * 2 - 1) * 0.5);
+      // Alert scans; hostile locks on and stops scanning; spent barely moves
+      // its eyes at all.
+      S.saccadeIn = (0.5 + Math.random() * (2.4 - T.curiosity * 1.2))
+        * (1 - D.attention * 0.45 + D.fatigue * 1.4) * (1 + D.anger * 1.6);
+      const reach = 0.7 * (1 - D.anger * 0.55 - D.fatigue * 0.4);
+      S.lookTarget.set((Math.random() * 2 - 1) * reach, (Math.random() * 2 - 1) * reach * 0.7);
     }
     if (input.active) S.lookTarget.set(input.pointer.x, input.pointer.y);
     if (pose.eyes.x || pose.eyes.y) S.lookTarget.set(pose.eyes.x, pose.eyes.y);
