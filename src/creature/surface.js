@@ -13,6 +13,11 @@ const _dir = new THREE.Vector3();
 const _hi = new THREE.Vector3();
 const _lo = new THREE.Vector3();
 const _mid = new THREE.Vector3();
+const _bandHit = { point: new THREE.Vector3(), normal: new THREE.Vector3() };
+const _du = new THREE.Vector3();
+const _dv = new THREE.Vector3();
+const _dp = new THREE.Vector3();
+const _dhit = { point: new THREE.Vector3(), normal: new THREE.Vector3() };
 const _sagd = new THREE.Vector3();
 
 /**
@@ -72,6 +77,36 @@ export function skinAlong(headMesh, dir) {
   raycaster.set(_rayFrom, _rayDir.clone().negate());
   const hits = raycaster.intersectObject(headMesh, false);
   return hits.length ? hits[0].point.length() : 0;
+}
+
+const _radFrom = new THREE.Vector3();
+const _radDir = new THREE.Vector3();
+
+/**
+ * The skin along a direction from the head's centre, as {point, normal}, taken
+ * off the mesh that is drawn.
+ *
+ * `surfaceAt` shoots from the FRONT at a point in the frontal plane, which is
+ * the same thing only while the skin faces the camera. Out towards the
+ * silhouette the surface turns edge-on to that ray, and an even lattice of
+ * screen positions becomes a wildly uneven lattice on the skin. Asking along
+ * the sample's own radial direction has no such preferred axis.
+ */
+export function surfaceRadial(headMesh, point, out = { point: new THREE.Vector3(), normal: new THREE.Vector3() }) {
+  if (point.lengthSq() < 1e-9) point.set(0, 0, 1);
+  _radDir.copy(point).normalize();
+  _radFrom.copy(_radDir).multiplyScalar(60);
+  raycaster.set(_radFrom, _radDir.clone().negate());
+  const hits = raycaster.intersectObject(headMesh, false);
+  if (!hits.length) {
+    out.point.copy(point);
+    out.normal.copy(_radDir);
+    return out;
+  }
+  out.point.copy(hits[0].point);
+  out.normal.copy(hits[0].face ? hits[0].face.normal : _radDir).normalize();
+  if (out.normal.dot(_radDir) < 0) out.normal.negate();
+  return out;
 }
 
 /**
@@ -140,6 +175,43 @@ export function orientUpright(obj, point, normal) {
 }
 
 /**
+ * A patch's own frame on the skin: where its middle sits, and a pair of tangent
+ * axes there. Every sample a patch takes is then a step ACROSS THE SKIN dropped
+ * onto the skull along its own direction, rather than a step across the SCREEN
+ * dropped along the camera's.
+ *
+ * The two agree on the front of a face and part company towards the
+ * silhouette, where the skin turns edge-on to the camera's ray. A frontal
+ * query out there misses the head altogether and walks in towards the middle
+ * of the face until it lands, so the sample comes back from somewhere else
+ * entirely: a socket asked to be a tenth of a head across came out as a black
+ * streak nearly three times the width of the face, and the corners of a wide
+ * mouth were dragged inward and then LIFTED, because the lift is measured from
+ * how far the skin stands above the quad and a walked-in sample makes that
+ * look like a third of a mouth. The maw stood an eighth of a head radius clear
+ * of the cheek for it.
+ */
+export function patchFrame(headMesh, p, cx, cy) {
+  const seat = surfaceAt(headMesh, p, cx, cy);
+  const point = seat.point.clone();
+  const normal = seat.normal.clone();
+  const du = new THREE.Vector3(Math.abs(normal.y) > 0.9 ? 1 : 0, Math.abs(normal.y) > 0.9 ? 0 : 1, 0)
+    .cross(normal).normalize();
+  const dv = new THREE.Vector3().crossVectors(normal, du).normalize();
+  return {
+    point,
+    normal,
+    du,
+    dv,
+    /** the skin at a tangent offset from the middle of the patch */
+    at(ox, oy, out = _dhit) {
+      _dp.copy(point).addScaledVector(du, ox).addScaledVector(dv, oy);
+      return surfaceRadial(headMesh, _dp, out);
+    },
+  };
+}
+
+/**
  * A decal patch: an elliptical disc (or ring) that hugs the skull.
  * Used for the maw cavity, the lips and hollow eye sockets.
  */
@@ -167,16 +239,26 @@ export function decalGeometry(headMesh, p, {
   const normals = new Float32Array(count * 3);
   const index = [];
 
+  // The patch's own frame: where its middle sits on the skin, and a pair of
+  // tangent axes there. Every sample is then taken as a step ACROSS THE SKIN
+  // and dropped onto the skull along its own direction, rather than as a step
+  // across the SCREEN dropped along the camera's. The two agree on the front of
+  // a face and part company towards the silhouette, where the skin turns
+  // edge-on to the camera's ray: a socket asked to be a tenth of a head across
+  // came out as a black streak nearly three times the width of the face, and
+  // half of all creatures had a decal past half again its own size.
+  const { at } = patchFrame(headMesh, p, cx, cy);
+
   const pts = new Array(count);
   const nrm = new Array(count);
   for (let r = 0; r <= rings; r++) {
     const t = inner + (1 - inner) * (r / rings);
     for (let s = 0; s < segs; s++) {
       const a = (s / segs) * Math.PI * 2;
-      const hit = surfaceAt(headMesh, p, cx + Math.cos(a) * rx * t, cy + Math.sin(a) * ry * t);
+      const hit = at(Math.cos(a) * rx * t, Math.sin(a) * ry * t);
       const i = r * segs + s;
-      pts[i] = hit.point;
-      nrm[i] = hit.normal;
+      pts[i] = hit.point.clone();
+      nrm[i] = hit.normal.clone();
     }
   }
 
@@ -212,7 +294,7 @@ export function decalGeometry(headMesh, p, {
     for (let r = 0; r < rings; r++) {
       const t = inner + (1 - inner) * ((r + 0.5) / rings);
       const a = ((s + 0.5) / segs) * Math.PI * 2;
-      const mid = surfaceAt(headMesh, p, cx + Math.cos(a) * rx * t, cy + Math.sin(a) * ry * t);
+      const mid = at(Math.cos(a) * rx * t, Math.sin(a) * ry * t);
       const c0 = r * segs + s;
       const c1 = (r + 1) * segs + s;
       const c2 = r * segs + s2;
@@ -249,6 +331,8 @@ export function decalGeometry(headMesh, p, {
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
   geo.setIndex(index);
+  geo.userData.rx = rx;   // what it was asked to be, so a tool can see if it got it
+  geo.userData.ry = ry;
   geo.computeBoundingSphere();
   return geo;
 }
@@ -305,16 +389,21 @@ export function bandGeometry(headMesh, p, {
   const pts = new Array(count);
   const nrm = new Array(count);
 
+  // Sampled in the band's own frame on the skin rather than by a frontal query
+  // — see patchFrame. The mouth is the widest patch on the creature and its
+  // corners are the furthest round the skull, which is exactly where a frontal
+  // query stops telling the truth.
+  const frame = patchFrame(headMesh, p, cx, cy);
   for (let ci = 0; ci <= cols; ci++) {
     const u = -1 + (ci / cols) * 2;
     const hi = up(u);
     const lo = down(u);
     for (let ri = 0; ri <= rows; ri++) {
       const y = lo + (hi - lo) * (ri / rows);
-      const hit = surfaceAt(headMesh, p, cx + u * rx, cy + y * ry);
+      const hit = frame.at(u * rx, y * ry);
       const i = ci * (rows + 1) + ri;
-      pts[i] = hit.point;
-      nrm[i] = hit.normal;
+      pts[i] = hit.point.clone();
+      nrm[i] = hit.normal.clone();
     }
   }
 
@@ -340,12 +429,20 @@ export function bandGeometry(headMesh, p, {
     const hi = up(u);
     const lo = down(u);
     for (let ri = 0; ri < rows; ri++) {
-      const y = lo + (hi - lo) * ((ri + 0.5) / rows);
-      const mid = surfaceAt(headMesh, p, cx + u * rx, cy + y * ry);
       const i = ci * (rows + 1) + ri;
       const j = (ci + 1) * (rows + 1) + ri;
       _mid.copy(pts[i]).add(pts[i + 1]).add(pts[j]).add(pts[j + 1]).multiplyScalar(0.25);
-      const one = quadSag(mid, _mid, Math.min(rx, ry) * 0.35, pts[i].distanceTo(pts[j + 1]));
+      // The skin over the middle of the quad, found along the quad's OWN ray
+      // out of the head rather than by a frontal query. A frontal query at the
+      // corner of a wide mouth is grazing the skull, misses, and walks in
+      // towards the middle of the face until it lands — and where the skin
+      // faces sideways that walk is almost pure normal, so a sample that came
+      // back from somewhere else entirely reads as a sag of a third of the
+      // mouth and lifts that corner of the band bodily off the head. The maw
+      // was standing an eighth of a head radius clear of the face at its
+      // corners, which from three quarters on is a dark fin off the cheek.
+      surfaceRadial(headMesh, _mid, _bandHit);
+      const one = quadSag(_bandHit, _mid, Math.min(rx, ry) * 0.35, pts[i].distanceTo(pts[j + 1]));
       if (one === null) continue;
       const want = Math.min(offset + one * 2.6, cap);
       for (const c of [i, i + 1, j, j + 1]) if (want > lift[c]) lift[c] = want;
