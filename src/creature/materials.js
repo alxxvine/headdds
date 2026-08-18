@@ -22,6 +22,14 @@ function toonGradient(steps, sheen = 0) {
   return tex;
 }
 
+/** Raises a color towards white until it is at least `floor` bright. */
+function lift(hex, floor) {
+  const c = new THREE.Color(hex);
+  const l = c.r * 0.299 + c.g * 0.587 + c.b * 0.114;
+  if (l >= floor) return c;
+  return c.lerp(new THREE.Color('#ffffff'), Math.min(0.8, (floor - l) / Math.max(1 - l, 1e-3)));
+}
+
 /** Pushes a color towards ink (amount 0..1). */
 export function shade(hex, amount) {
   return new THREE.Color(hex).lerp(INK, THREE.MathUtils.clamp(amount, 0, 1));
@@ -60,9 +68,11 @@ export function makeMaterials(p) {
     // already chosen to stand away from the skin, and it glows, so the motes
     // read as something the creature gives off.
     mote: new THREE.MeshToonMaterial({
-      color: new THREE.Color(p.eyeColor),
+      // ...and never so dark that it disappears into the background. A halo of
+      // navy shards over black is a smudge, not a halo.
+      color: lift(p.eyeColor, 0.42),
       gradientMap,
-      emissive: new THREE.Color(p.eyeColor),
+      emissive: lift(p.eyeColor, 0.42),
       emissiveIntensity: 0.35 + glow * 0.5,
     }),
     pupil: new THREE.MeshBasicMaterial({ color: new THREE.Color(p.pupilColor) }),

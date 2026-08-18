@@ -32,9 +32,9 @@ export const headUnit = (p) => (p.headWidth + p.headHeight) * 0.5;
 // in it. A trunk is the one exception — it hangs over the mouth by design, and
 // its number is a placement, not a clearance.
 const NOSE_REACH = {
-  none: 0, holes: 0.8, slits: 1.0, button: 1.0, beak: 2.4, pig: 2.25,
-  plate: 1.35, star: 1.15, double: 1.4, snout: 3.25, tusks: 0.6, straw: 1.75,
-  horn: 1.45, ridge: 2.0, hook: 2.25, blob: 3.5, bump: 2.6, trunk: 2.6,
+  none: 0, holes: 0.8, slits: 1.0, button: 1.0, beak: 2.35, pig: 2.25,
+  plate: 1.35, star: 1.15, double: 1.4, snout: 2.85, tusks: 0.4, straw: 1.6,
+  horn: 1.4, ridge: 2.0, hook: 2.05, blob: 3.05, bump: 3.4, trunk: 2.6,
 };
 
 /**
@@ -100,7 +100,18 @@ export function faceLimits(p) {
   // it replaced, and everything above has to know.
   const box = mawBox(p, p.lopsided);
   const mouthTop = box.my + box.mh * (1 + Math.max(0, p.lips)) * 1.25 * Math.max(1, box.hi) * 1.05;
-  const noseSize = p.noseSize * S;
+  // A nose is measured in head units, which say nothing about how wide the
+  // skull is where the nose goes. On a narrow face the top of the slider put a
+  // bulb half a head across on it — not a nose but a stain with a black arc
+  // round the top of it, which is the outline doing its job on something that
+  // should never have been that big. Capped against the face it is on.
+  let noseSize = p.noseSize * S;
+  for (let k = 0; k < 3; k++) {
+    const at = p.noseY * p.headHeight * 0.7;
+    const half = silhouetteAt(p, at);
+    if (half <= 0) break;
+    noseSize = Math.min(noseSize, half * 0.42);
+  }
   // How tall the nose really is, rather than how tall a ball of `noseSize`
   // would be. `addNose` scales its mesh by a roll of up to 1.6 on top of the
   // per-kind proportions, so the thing that got built was two to two and a half
@@ -1242,10 +1253,13 @@ function buildNose(parent, headMesh, p, mats, rng) {
     mesh.position.set(0, -size * 0.35, size * 0.8);
   } else if (p.noseType === 'blob') {
     // a heavy bulb hanging off the middle of the face
-    geo = new THREE.SphereGeometry(size * 1.15, 11, 9);
+    // ...hanging OFF it. Set a quarter of a radius out from the skin it was
+    // four fifths buried, and a sphere four fifths buried is not a bulb, it is
+    // a flat patch of darker skin with part of an outline round it.
+    geo = new THREE.SphereGeometry(size * 0.95, 11, 9);
     mesh = new THREE.Mesh(geo, mats.trim);
-    mesh.scale.set(wide * 0.95, 1.35 * tall, 1.0 * deep);
-    mesh.position.set(0, -size * 0.45, size * 0.25);
+    mesh.scale.set(wide * 0.95, 1.25 * tall, 1.0 * deep);
+    mesh.position.set(0, -size * 0.4, size * 0.6);
   } else if (p.noseType === 'button') {
     // a full stop in the middle of the face
     geo = new THREE.SphereGeometry(size * 0.45, 9, 7);
