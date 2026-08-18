@@ -61,19 +61,9 @@ export function orientTo(obj, point, normal) {
  * A decal patch: an elliptical disc (or ring) that hugs the skull.
  * Used for the maw cavity, the lips and hollow eye sockets.
  */
-/**
- * A patch glued to the skin, built as a fan of concentric rings.
- *
- * `rim(a)` gives the shape's outline in unit coordinates — the default is a
- * circle, which under rx/ry is the ellipse this always used to draw. A mouth
- * hands in its own rim so the lips, the cavity and the rows of teeth all follow
- * the same curve; see maw.js.
- */
-const CIRCLE_RIM = (a) => [Math.cos(a), Math.sin(a)];
-
 export function decalGeometry(headMesh, p, {
   cx = 0, cy = 0, rx = 0.3, ry = 0.2,
-  inner = 0, offset = 0.012, rings = 5, segs = 28, rim = CIRCLE_RIM,
+  inner = 0, offset = 0.012, rings = 5, segs = 28,
 }) {
   const count = (rings + 1) * segs;
   const positions = new Float32Array(count * 3);
@@ -84,8 +74,7 @@ export function decalGeometry(headMesh, p, {
     const t = inner + (1 - inner) * (r / rings);
     for (let s = 0; s < segs; s++) {
       const a = (s / segs) * Math.PI * 2;
-      const [ux, uy] = rim(a);
-      const hit = surfaceAt(headMesh, p, cx + ux * rx * t, cy + uy * ry * t);
+      const hit = surfaceAt(headMesh, p, cx + Math.cos(a) * rx * t, cy + Math.sin(a) * ry * t);
       const i = (r * segs + s) * 3;
       positions[i] = hit.point.x + hit.normal.x * offset;
       positions[i + 1] = hit.point.y + hit.normal.y * offset;
@@ -103,6 +92,62 @@ export function decalGeometry(headMesh, p, {
       const b = r * segs + s2;
       const c = (r + 1) * segs + s;
       const d = (r + 1) * segs + s2;
+      index.push(a, c, b, b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  geo.setIndex(index);
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+
+/**
+ * A patch between two curves, glued to the skin: at each u across the patch it
+ * fills from down(u) to up(u), both in units of ry.
+ *
+ * This exists because the fan above scales its rings towards the decal's
+ * CENTRE, and that only works for a shape that contains its own centre. Five of
+ * the maw's shapes do not — a grin's corners are hauled above its middle, a
+ * crescent lies entirely below it — and on those the inner rings collapsed
+ * through a point outside the shape, painting a dark wedge from the corner of
+ * the mouth towards its centre. A band has no centre to collapse through.
+ */
+export function bandGeometry(headMesh, p, {
+  cx = 0, cy = 0, rx = 0.3, ry = 0.2,
+  up, down, offset = 0.012, cols = 24, rows = 3,
+}) {
+  const count = (cols + 1) * (rows + 1);
+  const positions = new Float32Array(count * 3);
+  const normals = new Float32Array(count * 3);
+  const index = [];
+
+  for (let ci = 0; ci <= cols; ci++) {
+    const u = -1 + (ci / cols) * 2;
+    const hi = up(u);
+    const lo = down(u);
+    for (let ri = 0; ri <= rows; ri++) {
+      const y = lo + (hi - lo) * (ri / rows);
+      const hit = surfaceAt(headMesh, p, cx + u * rx, cy + y * ry);
+      const i = (ci * (rows + 1) + ri) * 3;
+      positions[i] = hit.point.x + hit.normal.x * offset;
+      positions[i + 1] = hit.point.y + hit.normal.y * offset;
+      positions[i + 2] = hit.point.z + hit.normal.z * offset;
+      normals[i] = hit.normal.x;
+      normals[i + 1] = hit.normal.y;
+      normals[i + 2] = hit.normal.z;
+    }
+  }
+
+  for (let ci = 0; ci < cols; ci++) {
+    for (let ri = 0; ri < rows; ri++) {
+      const a = ci * (rows + 1) + ri;
+      const b = a + 1;
+      const c = (ci + 1) * (rows + 1) + ri;
+      const d = c + 1;
       index.push(a, c, b, b, c, d);
     }
   }
