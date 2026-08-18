@@ -558,11 +558,19 @@ function settleEyes(p, plan, L, clear, headMesh) {
   }
 }
 
-function addPupil(pivot, p, mats, size) {
+/**
+ * `deep` is how far out of the eye the pupil rides, as a share of the eye's
+ * size. It defaults to the front of a ball, because most styles draw one. A
+ * style that draws no ball has to say so: `button` is a patch sewn flat onto
+ * the skin, and giving its pupil a ball's depth left a dot hanging four fifths
+ * of an eye in front of the face with nothing behind it — invisible head-on and
+ * plain the moment the creature turns.
+ */
+function addPupil(pivot, p, mats, size, deep = 0.82) {
   if (p.pupilShape === 'blind') return;
 
   const r = size * 0.52 * p.pupilSize + size * 0.08;
-  const z = size * 0.82;
+  const z = size * deep;
   const put = (geo, rot) => {
     const m = new THREE.Mesh(geo, mats.pupil);
     m.position.set(0, 0, z);
@@ -884,7 +892,7 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       });
       parent.add(new THREE.Mesh(patch, mats.eye));
       orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, size * 0.06), hit.normal);
-      addPupil(pivot, q, mats, size * 0.9);
+      addPupil(pivot, q, mats, size * 0.9, 0.12);
     } else if (p.eyeStyle === 'slot') {
       // a rectangular window with something behind it
       const cut = decalGeometry(headMesh, p, {
