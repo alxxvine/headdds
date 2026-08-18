@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { headPoint, headHalfWidth } from './head.js';
-import { surfaceAt, surfaceByDir, orientTo, orientUpright, decalGeometry, bandGeometry } from './surface.js';
+import { surfaceAt, surfaceByDir, orientTo, orientUpright, decalGeometry, bandGeometry, snapToMesh } from './surface.js';
 import { withOutline } from './materials.js';
 import { warpGeometry, warpRoll } from './warp.js';
 import { addHair } from './hair.js';
@@ -1270,14 +1270,12 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   // colour shows only as the border around it.
   const profile = mawProfile(p.mawShape);
 
-  let lipLift = 0;
   if (p.lips > 0.01) {
     const grow = 1 + p.lips;
     const lips = bandGeometry(headMesh, p, {
       cx: mx, cy: my, rx: mw * grow, ry: mh * grow * 1.25,
       up: profile.up, down: profile.down, offset: 0.018, cols: 30, rows: 11,
     });
-    lipLift = lips.userData.lift;
     const lipMesh = new THREE.Mesh(lips, mats.lip);
     lipMesh.userData.maw = true;
     parent.add(lipMesh);
@@ -1288,15 +1286,15 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   // lumpy skull a straight line between two points of skin passes UNDER the
   // bump between them — which put a wedge of bare skin through the middle of
   // the mouth. Rows cost almost nothing; a hole in the face costs the creature.
-  // ...and it has to stand in front of the lips, because that standing-in-front
-  // is the whole reason the lip reads as a border round a hole rather than as a
-  // patch over one.
+  // The cavity keeps its own honest lift and wins the ordering on depth instead
+  // — see mats.maw. Asking for a lift above the LIP'S worst point meant one bad
+  // quad anywhere on the lip stood the whole dark of the mouth off the face,
+  // and the seating sweep put the maw at the top of its blame list for it.
   const cavity = bandGeometry(headMesh, p, {
     cx: mx, cy: my, rx: mw, ry: mh,
     up: profile.up, down: profile.down, offset: 0.04, cols: 30, rows: 13,
-    minLift: lipLift + 0.022,
   });
-  const cavityMesh = new THREE.Mesh(cavity, mats.cavity);
+  const cavityMesh = new THREE.Mesh(cavity, mats.maw);
   cavityMesh.userData.maw = true;
   parent.add(cavityMesh);
 
@@ -1643,6 +1641,13 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
         if (!(dir.z > 0.5 && Math.abs(dir.y - p.mouthY * 0.8) < 0.35)) break;
       }
       const hit = surfaceByDir(p, dir.x, dir.y, dir.z);
+      // ...and then onto the skull that is DRAWN. Warts were the biggest single
+      // entry in the seating sweep's blame list, and not because of where they
+      // are put: they are put on the analytic surface, and where a lump field
+      // is finer than the tessellation the mesh sits well inside it. A wart
+      // planted on the field it was generated from floats above the face by the
+      // difference.
+      snapToMesh(headMesh, hit.point);
       // One geometry serves all forty of them, so the only way a wart can
       // differ from its neighbour is in how it is placed: an uneven scale on
       // all three axes and a roll about the normal, instead of the same
@@ -1651,7 +1656,7 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
       scl.set(s * (0.7 + rng() * 0.7), s * (0.7 + rng() * 0.7), s * (0.5 + rng() * 0.6));
       q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), hit.normal);
       q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), rng() * Math.PI * 2));
-      m4.compose(hit.point.addScaledVector(hit.normal, p.wartSize * S * 0.25), q, scl);
+      m4.compose(hit.point.addScaledVector(hit.normal, -p.wartSize * S * 0.1), q, scl);
       inst.setMatrixAt(i, m4);
     }
     inst.instanceMatrix.needsUpdate = true;
@@ -1664,6 +1669,7 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
     const idx = Math.floor(i / 2);
     dir.set(side * (0.3 + idx * 0.28), 1 - idx * 0.22, -0.12 + idx * 0.1).normalize();
     const hit = surfaceByDir(p, dir.x, dir.y, dir.z);
+    snapToMesh(headMesh, hit.point);   // the drawn skull, not the field behind it
     // A horn grows UP-OUT of the skull, not along the skin's normal. On a
     // round crown the two agree, which is why aiming along the normal looked
     // right for so long — but on a strongly tapered skull the crown directions

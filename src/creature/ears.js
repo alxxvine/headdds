@@ -237,7 +237,12 @@ export function addEars(parent, headMesh, p, mats, S, rng) {
     const want = Math.min(st.len * 0.35, S * 0.14);
     if (inner > -want) {
       _ed.copy(st.pivot.position).normalize();
-      st.pivot.position.addScaledVector(_ed, -Math.min(inner + want, st.len * 0.45));
+      // ...and not so far that it comes out of the other side. A skull is only
+      // so thick, and on a narrow one the sink that seats a tall ear on this
+      // side pushes its root through to the far cheek — which the seating sweep
+      // caught as `bat` going in one side and out the other.
+      const across = skinAlong(headMesh, _ed) + skinAlong(headMesh, _ed.clone().negate());
+      st.pivot.position.addScaledVector(_ed, -Math.min(inner + want, st.len * 0.45, across * 0.16));
     }
   }
 

@@ -74,6 +74,22 @@ export function skinAlong(headMesh, dir) {
   return hits.length ? hits[0].point.length() : 0;
 }
 
+/**
+ * Moves a point found on the ANALYTIC surface onto the skull that is drawn.
+ *
+ * `headPoint` is the field the skull is generated from; the mesh is a
+ * polyhedron through samples of it, and with a lump field finer than the
+ * tessellation the two disagree by a good fraction of a head radius. Anything
+ * seated by direction — a wart, a horn, a strand — therefore lands on a surface
+ * the player never sees, and floats or sinks by that difference. The direction
+ * is right either way; only the distance along it is wrong.
+ */
+export function snapToMesh(headMesh, point) {
+  const r = skinAlong(headMesh, point);
+  if (r > 0) point.setLength(r);
+  return point;
+}
+
 /** Skin point along a direction (for horns, warts, tendrils). */
 export function surfaceByDir(p, x, y, z) {
   _dir.set(x, y, z);
@@ -182,26 +198,37 @@ export function decalGeometry(headMesh, p, {
   // from somewhere else entirely raises the whole patch with it, and the tool
   // caught a socket floating a head radius in front of a face. A decal that has
   // left the head is a worse defect than the hole it was closing.
-  let sag = 0;
+  // ...and the lift belongs to the VERTEX, not to the patch. One lift for the
+  // whole thing means the worst quad in it decides where every other quad goes,
+  // so a socket with one bad chord at its rim floated bodily off the face —
+  // measured at a whole head radius on the worst of them, and a decal that has
+  // left the head is a worse defect than the hole it was closing. Each corner
+  // takes the deepest sag of the quads that meet there, so a lumpy rim rises
+  // and a calm middle stays down.
+  const lift = new Float32Array(count).fill(offset);
+  const cap = offset + Math.min(rx, ry) * 0.3;
   for (let s = 0; s < segs; s++) {
     const s2 = (s + 1) % segs;
     for (let r = 0; r < rings; r++) {
       const t = inner + (1 - inner) * ((r + 0.5) / rings);
       const a = ((s + 0.5) / segs) * Math.PI * 2;
       const mid = surfaceAt(headMesh, p, cx + Math.cos(a) * rx * t, cy + Math.sin(a) * ry * t);
-      _mid.copy(pts[r * segs + s]).add(pts[(r + 1) * segs + s])
-        .add(pts[r * segs + s2]).add(pts[(r + 1) * segs + s2]).multiplyScalar(0.25);
-      const one = quadSag(mid, _mid, Math.min(rx, ry) * 0.35,
-        pts[r * segs + s].distanceTo(pts[(r + 1) * segs + s2]));
-      if (one !== null) sag = Math.max(sag, one);
+      const c0 = r * segs + s;
+      const c1 = (r + 1) * segs + s;
+      const c2 = r * segs + s2;
+      const c3 = (r + 1) * segs + s2;
+      _mid.copy(pts[c0]).add(pts[c1]).add(pts[c2]).add(pts[c3]).multiplyScalar(0.25);
+      const one = quadSag(mid, _mid, Math.min(rx, ry) * 0.35, pts[c0].distanceTo(pts[c3]));
+      if (one === null) continue;
+      const want = Math.min(offset + one * 2.6, cap);
+      for (const c of [c0, c1, c2, c3]) if (want > lift[c]) lift[c] = want;
     }
   }
-  const lift = Math.min(offset + sag * 1.55, offset + Math.min(rx, ry) * 0.3);
 
   for (let i = 0; i < count; i++) {
-    positions[i * 3] = pts[i].x + nrm[i].x * lift;
-    positions[i * 3 + 1] = pts[i].y + nrm[i].y * lift;
-    positions[i * 3 + 2] = pts[i].z + nrm[i].z * lift;
+    positions[i * 3] = pts[i].x + nrm[i].x * lift[i];
+    positions[i * 3 + 1] = pts[i].y + nrm[i].y * lift[i];
+    positions[i * 3 + 2] = pts[i].z + nrm[i].z * lift[i];
     normals[i * 3] = nrm[i].x;
     normals[i * 3 + 1] = nrm[i].y;
     normals[i * 3 + 2] = nrm[i].z;
@@ -303,7 +330,11 @@ export function bandGeometry(headMesh, p, {
   // by that. Sampled every fourth column, because the answer varies slowly and
   // each sample is a raycast.
   // Measured and capped, for the reasons given in decalGeometry.
-  let sag = 0;
+  // A lift per VERTEX, for the reason given in decalGeometry: one lift for the
+  // whole band lets its worst quad decide where the rest of it sits, and the
+  // mouth is the biggest patch on the creature.
+  const lift = new Float32Array(count).fill(offset);
+  const cap = offset + Math.min(rx, ry) * 0.3;
   for (let ci = 0; ci < cols; ci++) {
     const u = -1 + ((ci + 0.5) / cols) * 2;
     const hi = up(u);
@@ -315,20 +346,21 @@ export function bandGeometry(headMesh, p, {
       const j = (ci + 1) * (rows + 1) + ri;
       _mid.copy(pts[i]).add(pts[i + 1]).add(pts[j]).add(pts[j + 1]).multiplyScalar(0.25);
       const one = quadSag(mid, _mid, Math.min(rx, ry) * 0.35, pts[i].distanceTo(pts[j + 1]));
-      if (one !== null) sag = Math.max(sag, one);
+      if (one === null) continue;
+      const want = Math.min(offset + one * 2.6, cap);
+      for (const c of [i, i + 1, j, j + 1]) if (want > lift[c]) lift[c] = want;
     }
   }
-  // `minLift` is how a patch that has to sit IN FRONT of another one says so.
-  // Two patches that each measure their own sag do not stay in the order they
-  // were written in: the lips are bigger and coarser than the cavity, so they
-  // measured a bigger sag, lifted further, and on one creature in ten stood in
-  // front of the very hole they are the border of.
-  const lift = Math.max(minLift, Math.min(offset + sag * 1.55, offset + Math.min(rx, ry) * 0.3));
+  let worst = 0;
+  for (let i = 0; i < count; i++) {
+    if (minLift > lift[i]) lift[i] = minLift;
+    if (lift[i] > worst) worst = lift[i];
+  }
 
   for (let i = 0; i < count; i++) {
-    positions[i * 3] = pts[i].x + nrm[i].x * lift;
-    positions[i * 3 + 1] = pts[i].y + nrm[i].y * lift;
-    positions[i * 3 + 2] = pts[i].z + nrm[i].z * lift;
+    positions[i * 3] = pts[i].x + nrm[i].x * lift[i];
+    positions[i * 3 + 1] = pts[i].y + nrm[i].y * lift[i];
+    positions[i * 3 + 2] = pts[i].z + nrm[i].z * lift[i];
     normals[i * 3] = nrm[i].x;
     normals[i * 3 + 1] = nrm[i].y;
     normals[i * 3 + 2] = nrm[i].z;
@@ -349,6 +381,6 @@ export function bandGeometry(headMesh, p, {
   geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
   geo.setIndex(index);
   geo.computeBoundingSphere();
-  geo.userData.lift = lift;   // so whatever must sit over this can clear it
+  geo.userData.lift = worst;   // so whatever must sit over this can clear it
   return geo;
 }

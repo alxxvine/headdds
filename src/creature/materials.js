@@ -77,6 +77,18 @@ export function makeMaterials(p) {
     }),
     pupil: new THREE.MeshBasicMaterial({ color: new THREE.Color(p.pupilColor) }),
     cavity: new THREE.MeshBasicMaterial({ color: shade(p.lipColor, 0.78) }),
+    // The mouth's own interior. It has to draw in front of the lip band that
+    // rings it — that ordering is the whole reason a lip reads as a border
+    // round a hole rather than a patch over one — and lifting it geometrically
+    // to get there means lifting it past the LIP'S worst point, which stood the
+    // dark of the mouth off the face wherever the lip happened to have one bad
+    // quad. A depth bias buys the same ordering without moving anything.
+    maw: new THREE.MeshBasicMaterial({
+      color: shade(p.lipColor, 0.78),
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    }),
     // The rim an eyeball sits in. Well darker than the face on purpose: a
     // bulging eye the same tone as the skin reads as a lump, and the thin
     // outline around it is not enough to separate the two.
