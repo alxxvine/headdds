@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { headSurfaceByDir } from './head.js';
+import { headPoint, headSurfaceByDir } from './head.js';
 
 // Features never float in front of the face — each one is planted on the
 // actual skin of the skull. For points given in frontal coordinates (x, y) we
@@ -10,25 +10,45 @@ const raycaster = new THREE.Raycaster();
 const DOWN_Z = new THREE.Vector3(0, 0, -1);
 const ORIGIN = new THREE.Vector3();
 const _dir = new THREE.Vector3();
+const _hi = new THREE.Vector3();
+const _lo = new THREE.Vector3();
 
-/** Frontal raycast: returns { point, normal } in head-local coordinates. */
+/**
+ * Frontal raycast: returns { point, normal } in head-local coordinates.
+ *
+ * A ray can miss even when the caller has checked that the skull is wide
+ * enough there: the outline is solved on the analytic surface and the ray hits
+ * the TESSELLATED one, whose facets cut the corner near the crown. The old
+ * answer to a miss was to aim at an ellipsoid of headWidth by headHeight —
+ * which is not the shape of the skull and not even its size — and near the top
+ * of the head that came back with a point a third of a head away, wearing a
+ * normal that pointed into the screen. Everything planted through it went with
+ * it: eyes that had been settled clear of one another arrived on top of one
+ * another, facing backwards.
+ *
+ * Now a miss walks the query in towards the middle of the face until it lands.
+ * The feature ends up slightly inside where it was asked for, which is what
+ * "as close to there as there is skin" means, and it always ends up on skin
+ * that faces the player.
+ */
 export function surfaceAt(headMesh, p, x, y) {
-  ORIGIN.set(x, y, 60);
-  raycaster.set(ORIGIN, DOWN_Z);
-  const hits = raycaster.intersectObject(headMesh, false);
-  if (hits.length) {
-    const h = hits[0];
-    return {
-      point: h.point.clone(),
-      normal: h.face ? h.face.normal.clone().normalize() : new THREE.Vector3(0, 0, 1),
-    };
+  const mid = (headPoint(p, _dir.set(0, 1, 0), _hi).y + headPoint(p, _dir.set(0, -1, 0), _lo).y) * 0.5;
+  for (let k = 0; k <= 12; k++) {
+    const f = 1 - k * 0.07;
+    ORIGIN.set(x * f, mid + (y - mid) * f, 60);
+    raycaster.set(ORIGIN, DOWN_Z);
+    const hits = raycaster.intersectObject(headMesh, false);
+    for (const h of hits) {
+      const n = h.face ? h.face.normal.clone().normalize() : new THREE.Vector3(0, 0, 1);
+      // a facet that faces away is the far side of the head showing through a
+      // fold, not the front of it
+      if (n.z <= 0.05) continue;
+      return { point: h.point.clone(), normal: n };
+    }
   }
-  // fallback: aim at a point on the ellipsoid of the skull's extents
-  const u = THREE.MathUtils.clamp(x / (p.headWidth * 1.05), -0.98, 0.98);
-  const v = THREE.MathUtils.clamp(y / (p.headHeight * 1.05), -0.98, 0.98);
-  const w = Math.sqrt(Math.max(0.02, 1 - u * u - v * v));
-  _dir.set(u, v, w);
-  const s = headSurfaceByDir(p, _dir);
+  // Nothing anywhere down the midline, which should not happen: fall back to
+  // the analytic surface along the direction of the request.
+  const s = headSurfaceByDir(p, _dir.set(x, y - mid, Math.max(0.35, Math.hypot(x, y - mid))));
   return { point: s.point.clone(), normal: s.normal.clone() };
 }
 
@@ -51,6 +71,30 @@ export function orientTo(obj, point, normal) {
   if (Math.abs(_z.y) > 0.97) _y.set(0, 0, -Math.sign(_z.y) || -1);
   _x.crossVectors(_y, _z).normalize();
   _y.crossVectors(_z, _x).normalize();
+  _m.makeBasis(_x, _y, _z);
+  obj.quaternion.setFromRotationMatrix(_m);
+  obj.position.copy(point);
+  return obj;
+}
+
+/**
+ * Places an object at a point with its +Y straight up and its +Z out of the
+ * skin — the tangent frame with the sideways lean taken out of it.
+ *
+ * `orientTo` builds its basis from the skin normal alone, which is right for
+ * anything glued to the skull and wrong for anything GROWING out of it. A row
+ * of teeth is the case: the normal at the corner of a wide mouth points down
+ * and out, so the frame's "up" tipped a third of a turn sideways and the tooth
+ * grew along the cheek instead of into the mouth. Worse, a curled tooth spins
+ * about the frame's X, and a tilted X threw barbs and tusks clean across the
+ * face. Here X is horizontal by construction, so a curl is a forward sweep and
+ * nothing else, and the growth axis is the mouth's own vertical.
+ */
+export function orientUpright(obj, point, normal) {
+  _y.set(0, 1, 0);
+  _z.copy(normal).addScaledVector(_y, -normal.dot(_y));
+  if (_z.lengthSq() < 1e-8) _z.set(0, 0, 1); else _z.normalize();
+  _x.crossVectors(_y, _z).normalize();
   _m.makeBasis(_x, _y, _z);
   obj.quaternion.setFromRotationMatrix(_m);
   obj.position.copy(point);

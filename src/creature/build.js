@@ -1,11 +1,58 @@
 import * as THREE from 'three';
 import { makeRng } from '../lib/noise.js';
-import { makeHeadGeometry } from './head.js';
+import { makeHeadGeometry, headPoint } from './head.js';
 import { makeMaterials, withOutline } from './materials.js';
 import { addEyes, addMouth, addNose, addGrowths, addScars, headUnit } from './features.js';
 import { buildBody } from './body.js';
 import { sanitize } from './schema.js';
 import { computeStats } from './stats.js';
+
+
+const _pv = new THREE.Vector3();
+const _pd = new THREE.Vector3();
+const _ps = new THREE.Vector3();
+
+/**
+ * Takes the outline off anything that is buried in the skull.
+ *
+ * The outline is an inverted hull — a shell of the part, grown and drawn
+ * back-faces-only — so it draws a line wherever the part has a silhouette. A
+ * part that is nine tenths inside the head has a silhouette a few pixels long,
+ * and what a player sees is a black dash lying on bare skin with nothing under
+ * it: "a black outline through the middle of the body rather than around its
+ * edge". A frond that has curled back into the scalp, a wart under a lump, the
+ * far side of a half-sunk nose — each leaves one.
+ *
+ * Nothing is moved and nothing is deleted but the shell: the part is still
+ * there, still shading, just no longer ringed. Sampled rather than exhaustive,
+ * because this runs on every slider drag.
+ */
+function pruneBuriedOutlines(head, headMesh, p) {
+  head.updateMatrixWorld(true);
+  const doomed = [];
+  head.traverse((o) => {
+    if (!o.isMesh || o.material?.side !== THREE.BackSide || o === headMesh) return;
+    const pos = o.geometry.attributes.position;
+    if (!pos) return;
+    const step = Math.max(1, Math.floor(pos.count / 48));
+    let proud = 0;
+    let seen = 0;
+    for (let i = 0; i < pos.count; i += step) {
+      _pv.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      headMesh.worldToLocal(_pv);
+      if (_pv.lengthSq() < 1e-9) continue;
+      _pd.copy(_pv).normalize();
+      headPoint(p, _pd, _ps);
+      seen++;
+      if (_pv.lengthSq() > _ps.lengthSq()) proud++;
+    }
+    if (seen > 4 && proud / seen < 0.18) doomed.push(o);
+  });
+  for (const o of doomed) {
+    o.parent.remove(o);
+    o.geometry.dispose();
+  }
+}
 
 /**
  * params -> a ready THREE.Group. Fully deterministic: the same parameter set
@@ -31,7 +78,10 @@ export function buildCreature(rawParams) {
   addNose(head, headMesh, p, mats, rng);
   const eyes = addEyes(head, headMesh, p, mats, rng);
   const { jaw, maw } = addMouth(head, headMesh, p, mats, rng);
-  addScars(head, headMesh, p, mats, rng);
+  addScars(head, headMesh, p, mats, rng, maw);
+  // ...and while the head is still in its own coordinates, before it is hung
+  // on the neck, so the skin can be asked about directly.
+  pruneBuriedOutlines(head, headMesh, p);
 
   // --- body derived from the head share
   const skull = headGeo.boundingBox;
