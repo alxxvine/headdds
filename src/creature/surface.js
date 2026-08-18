@@ -13,6 +13,7 @@ const _dir = new THREE.Vector3();
 const _hi = new THREE.Vector3();
 const _lo = new THREE.Vector3();
 const _mid = new THREE.Vector3();
+const _sagd = new THREE.Vector3();
 
 /**
  * Frontal raycast: returns { point, normal } in head-local coordinates.
@@ -154,22 +155,28 @@ export function decalGeometry(headMesh, p, {
   // gets the median right and the MAXIMUM wrong, and it is the maximum that
   // decides whether a hole opens — the sockets that still leaked were the ones
   // whose worst quad the sampling had stepped over.
+  // One lift for the whole patch, measured at the middle of every quad — where
+  // the lattice sags furthest under a curved skull — and then CAPPED. Both
+  // halves matter. Without the measurement the lift is a guess that fits calm
+  // skulls and holes on lumpy ones; without the cap, one sample that came back
+  // from somewhere else entirely raises the whole patch with it, and the tool
+  // caught a socket floating a head radius in front of a face. A decal that has
+  // left the head is a worse defect than the hole it was closing.
   let sag = 0;
-  const step = 1;
-  for (let s = 0; s < segs; s += step) {
-    const s2 = (s + step) % segs;
+  for (let s = 0; s < segs; s++) {
+    const s2 = (s + 1) % segs;
     for (let r = 0; r < rings; r++) {
-      // the middle of a quad, which is where a patch sags furthest under the
-      // skin — the middles of its edges are only half the story
       const t = inner + (1 - inner) * ((r + 0.5) / rings);
-      const a = ((s + step * 0.5) / segs) * Math.PI * 2;
+      const a = ((s + 0.5) / segs) * Math.PI * 2;
       const mid = surfaceAt(headMesh, p, cx + Math.cos(a) * rx * t, cy + Math.sin(a) * ry * t);
       _mid.copy(pts[r * segs + s]).add(pts[(r + 1) * segs + s])
         .add(pts[r * segs + s2]).add(pts[(r + 1) * segs + s2]).multiplyScalar(0.25);
-      sag = Math.max(sag, mid.point.sub(_mid).dot(mid.normal));
+      const one = quadSag(mid, _mid, Math.min(rx, ry) * 0.35,
+        pts[r * segs + s].distanceTo(pts[(r + 1) * segs + s2]));
+      if (one !== null) sag = Math.max(sag, one);
     }
   }
-  const lift = offset + Math.max(0, sag) * 1.55;
+  const lift = Math.min(offset + sag * 1.55, offset + Math.min(rx, ry) * 0.3);
 
   for (let i = 0; i < count; i++) {
     positions[i * 3] = pts[i].x + nrm[i].x * lift;
@@ -199,6 +206,35 @@ export function decalGeometry(headMesh, p, {
   return geo;
 }
 
+
+
+/**
+ * One quad's sag, or null if the sample cannot be trusted.
+ *
+ * The measurement is "how far is the skin above the flat quad", and it is only
+ * that when the sample landed where it was asked to. surfaceAt walks a query
+ * that misses the mesh in towards the middle of the face until it lands, so a
+ * sample taken near the edge of a patch can come back from somewhere else
+ * entirely — and the difference then reads as a sag of half a head, which lifts
+ * the WHOLE patch by half a head. A socket floating a head radius in front of
+ * the face is a worse defect than the hole it was trying to close.
+ *
+ * A real sag is almost pure normal: the sample sits over the middle of the
+ * quad. So a sample that has moved mostly sideways is thrown away, and one that
+ * claims more than a third of the patch's own size is thrown away too.
+ */
+function quadSag(mid, corner, cap, span) {
+  _sagd.copy(mid.point).sub(corner);
+  const along = _sagd.dot(mid.normal);
+  if (along <= 0) return 0;
+  if (along > cap) return null;
+  // How far sideways the sample landed, judged against the QUAD's own size —
+  // not against the sag, which on a coarse lattice is legitimately much smaller
+  // than the sideways spread of four corners around a curved middle. A sample
+  // that has moved further than the quad is wide did not land in the quad.
+  if (_sagd.lengthSq() - along * along > span * span) return null;
+  return along;
+}
 
 /**
  * A patch between two curves, glued to the skin: at each u across the patch it
@@ -246,24 +282,23 @@ export function bandGeometry(headMesh, p, {
   // calmest one off its face, the patch measures its own worst chord and lifts
   // by that. Sampled every fourth column, because the answer varies slowly and
   // each sample is a raycast.
+  // Measured and capped, for the reasons given in decalGeometry.
   let sag = 0;
-  const step = 1;   // every quad — see decalGeometry
-  for (let ci = 0; ci + step <= cols; ci += step) {
-    const u = -1 + ((ci + step * 0.5) / cols) * 2;
+  for (let ci = 0; ci < cols; ci++) {
+    const u = -1 + ((ci + 0.5) / cols) * 2;
     const hi = up(u);
     const lo = down(u);
     for (let ri = 0; ri < rows; ri++) {
-      // the middle of a quad, not the middle of an edge: that is where the
-      // patch is furthest under the skin
       const y = lo + (hi - lo) * ((ri + 0.5) / rows);
       const mid = surfaceAt(headMesh, p, cx + u * rx, cy + y * ry);
       const i = ci * (rows + 1) + ri;
-      const j = (ci + step) * (rows + 1) + ri;
+      const j = (ci + 1) * (rows + 1) + ri;
       _mid.copy(pts[i]).add(pts[i + 1]).add(pts[j]).add(pts[j + 1]).multiplyScalar(0.25);
-      sag = Math.max(sag, mid.point.sub(_mid).dot(mid.normal));
+      const one = quadSag(mid, _mid, Math.min(rx, ry) * 0.35, pts[i].distanceTo(pts[j + 1]));
+      if (one !== null) sag = Math.max(sag, one);
     }
   }
-  const lift = offset + Math.max(0, sag) * 1.55;
+  const lift = Math.min(offset + sag * 1.55, offset + Math.min(rx, ry) * 0.3);
 
   for (let i = 0; i < count; i++) {
     positions[i * 3] = pts[i].x + nrm[i].x * lift;
