@@ -56,9 +56,10 @@
 //    to walk — raises the ENTIRE patch, and the tool caught eye sockets
 //    floating a whole head radius in front of the face. The lift is reported
 //    against the patch's own footprint as well as in head units, because a
-//    plate hanging off the head is not a decal however well it covers the skin. SHEARED QUADS: a quad whose ends lie on
-//    different facets of the skull is lifted along two normals up to forty
-//    degrees apart, so the lift does not translate it, it twists it. SLID OFF:
+//    plate hanging off the head is not a decal however well it covers the
+//    skin. SHEARED QUADS: a quad whose ends lie on different facets of the
+//    skull is lifted along two normals up to forty degrees apart, so the lift
+//    does not translate it, it twists it. SLID OFF:
 //    the lift goes along the normal, not along the ray, so where the skin
 //    slants away from the ray a big lift carries the whole decal off its own
 //    footprint, and rays through the skin under the patch hit no patch at all.
