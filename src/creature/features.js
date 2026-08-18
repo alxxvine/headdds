@@ -1205,7 +1205,11 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     tooth.position.set(0, -side * len * 0.45, 0.02 * S);
     if (curl) {
       tooth.rotation.x = curl;
-      tooth.position.z += len * 0.3;
+      // Forward, but not out in front of the mouth. A third of the tooth's own
+      // length was enough to carry a curled one clear of the opening it grows
+      // from, and a pair of them — one row curling down, the other up — crossed
+      // in the air outside the face like a pair of scissors.
+      tooth.position.z += len * 0.16;
     }
     tooth.scale.z = flat;
 
@@ -1231,7 +1235,7 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
         const out = _tip.length() - _fs.length();
         if (!wide && out <= headR * 0.28) break;
         tooth.rotation.x *= 0.7;
-        tooth.position.z = 0.02 * S + len * 0.3 * (tooth.rotation.x / curl);
+        tooth.position.z = 0.02 * S + len * 0.16 * (tooth.rotation.x / curl);
       }
     }
     // tagged so tools/face-sweep.mjs can pick the teeth out of a head full of
