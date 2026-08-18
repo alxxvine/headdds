@@ -187,6 +187,7 @@ export function addEars(parent, headMesh, p, mats, S, rng) {
     // thing. It is deliberately smaller than the ear so the silhouette is still
     // the ear's.
     const collar = new THREE.Mesh(new THREE.SphereGeometry(size * 0.62, 10, 7), mats.skin);
+    collar.userData.collar = true;   // not part of the ear, for the sinking below
     collar.scale.set(1, 1, 0.5);
     collar.position.z = -size * 0.12;
     pivot.add(collar);
@@ -201,38 +202,42 @@ export function addEars(parent, headMesh, p, mats, S, rng) {
     });
   }
 
-  // Every ear is rooted ON the skin, and half the kinds never get any further
-  // in than that: a fin, a flap, a stub or a hole reaches a thousandth of a head
-  // radius past the surface, which is touching rather than entering. An ear
-  // that only touches shows its own back end — the near rim of a pipe, the flat
-  // side of a plate, the dark inside of anything hollow — and its outline draws
-  // a hard black line all the way round the join. What a player sees is an ear
-  // butted against the head rather than growing out of it: "the ear falls off".
+  // Every ear is rooted ON the skin, and that is all the contact some of them
+  // get. `bat` is the clearest case: a tall blade whose middle sits a size and
+  // a half ABOVE its root and a third of a size out from it, on a skull that
+  // tapers as it rises — so the skin falls away under the whole length of it
+  // and the ear hangs beside the head with an even black gap down its inside
+  // edge. It has fallen off, and it never was on.
   //
-  // So each one is pushed in along its own normal until enough of it is inside
-  // the skull to hide the join. Measured on what was built, because how deep a
-  // kind already reaches is a property of its shape and not worth a table.
+  // Each ear is pushed in along its own normal until a decent share of it is
+  // behind the skin. Measured on the EAR, not on the collar below it — the
+  // collar is buried by construction, and including it told this loop that
+  // every ear was already seated, which is why the first version of it did
+  // nothing at all.
   parent.updateMatrixWorld(true);
   for (const st of pivots) {
-    const want = Math.min(st.len * 0.4, S * 0.16);
-    let deepest = -Infinity;
+    const gaps = [];
     st.pivot.traverse((o) => {
-      if (!o.isMesh || o.material?.side === THREE.BackSide) return;
+      if (!o.isMesh || o.material?.side === THREE.BackSide || o.userData.collar) return;
       const pos = o.geometry.attributes.position;
       if (!pos) return;
-      const step = Math.max(1, Math.floor(pos.count / 40));
+      const step = Math.max(1, Math.floor(pos.count / 30));
       for (let k = 0; k < pos.count; k += step) {
         _ev.fromBufferAttribute(pos, k).applyMatrix4(o.matrixWorld);
-        if (_ev.lengthSq() < 1e-9) { deepest = Math.max(deepest, 9); continue; }
+        if (_ev.lengthSq() < 1e-9) { gaps.push(-9); continue; }
         _ed.copy(_ev).normalize();
-        // against the skull that is DRAWN, not the surface it is sampled from:
-        // the two differ by as much as the burial itself
-        deepest = Math.max(deepest, skinAlong(headMesh, _ed) - _ev.length());
+        gaps.push(_ev.length() - skinAlong(headMesh, _ed));
       }
     });
-    if (deepest > -Infinity && deepest < want) {
+    if (!gaps.length) continue;
+    // The gap a third of the way up the sorted list: the ear's inner region
+    // rather than its tip, which is meant to be in the air.
+    gaps.sort((a, b) => a - b);
+    const inner = gaps[Math.floor(gaps.length * 0.3)];
+    const want = Math.min(st.len * 0.35, S * 0.14);
+    if (inner > -want) {
       _ed.copy(st.pivot.position).normalize();
-      st.pivot.position.addScaledVector(_ed, -(want - deepest));
+      st.pivot.position.addScaledVector(_ed, -Math.min(inner + want, st.len * 0.45));
     }
   }
 
