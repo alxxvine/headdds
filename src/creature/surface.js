@@ -12,6 +12,7 @@ const ORIGIN = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 const _hi = new THREE.Vector3();
 const _lo = new THREE.Vector3();
+const _mid = new THREE.Vector3();
 
 /**
  * Frontal raycast: returns { point, normal } in head-local coordinates.
@@ -109,24 +110,66 @@ export function decalGeometry(headMesh, p, {
   cx = 0, cy = 0, rx = 0.3, ry = 0.2,
   inner = 0, offset = 0.012, rings = 5, segs = 28,
 }) {
+  // Every call site picked its ring and segment counts by eye, and a socket
+  // two rings deep spans a fifth of a face with three points across it. The
+  // skull between those points is not flat, and a lift measured at a few
+  // sample quads cannot cover a lump field finer than the sampling — so the
+  // patch gets a floor on its density instead, set by how big it is on this
+  // head rather than by how big it looked when it was written. Sag falls with
+  // the square of the spacing, so this is the cheap half of the fix and the
+  // measured lift below is the rest.
+  const near = (p.headWidth + p.headHeight) * 0.03;
+  rings = Math.min(9, Math.max(rings, Math.ceil(Math.max(rx, ry) * (1 - inner) / near)));
+  segs = Math.min(44, Math.max(segs, Math.ceil((Math.max(rx, ry) * 6.28) / near)));
   const count = (rings + 1) * segs;
   const positions = new Float32Array(count * 3);
   const normals = new Float32Array(count * 3);
   const index = [];
 
+  const pts = new Array(count);
+  const nrm = new Array(count);
   for (let r = 0; r <= rings; r++) {
     const t = inner + (1 - inner) * (r / rings);
     for (let s = 0; s < segs; s++) {
       const a = (s / segs) * Math.PI * 2;
       const hit = surfaceAt(headMesh, p, cx + Math.cos(a) * rx * t, cy + Math.sin(a) * ry * t);
-      const i = (r * segs + s) * 3;
-      positions[i] = hit.point.x + hit.normal.x * offset;
-      positions[i + 1] = hit.point.y + hit.normal.y * offset;
-      positions[i + 2] = hit.point.z + hit.normal.z * offset;
-      normals[i] = hit.normal.x;
-      normals[i + 1] = hit.normal.y;
-      normals[i + 2] = hit.normal.z;
+      const i = r * segs + s;
+      pts[i] = hit.point;
+      nrm[i] = hit.normal;
     }
+  }
+
+  // The same self-measured lift the bands use: the faces are flat triangles
+  // between points ON the skin, so the skull rises between them by the sag of
+  // the chord, and a lump field finer than the sampling puts that sag well over
+  // any fixed offset. Nearly half the creatures in a random population had bare
+  // face punched through a socket, a nostril or a scar. Measured on the ring
+  // spacing, which is the coarse direction — the segments around a decal are
+  // close together, the rings across it are not.
+  let sag = 0;
+  const step = Math.max(1, Math.round(segs / 10));
+  for (let s = 0; s < segs; s += step) {
+    const s2 = (s + step) % segs;
+    for (let r = 0; r < rings; r++) {
+      // the middle of a quad, which is where a patch sags furthest under the
+      // skin — the middles of its edges are only half the story
+      const t = inner + (1 - inner) * ((r + 0.5) / rings);
+      const a = ((s + step * 0.5) / segs) * Math.PI * 2;
+      const mid = surfaceAt(headMesh, p, cx + Math.cos(a) * rx * t, cy + Math.sin(a) * ry * t);
+      _mid.copy(pts[r * segs + s]).add(pts[(r + 1) * segs + s])
+        .add(pts[r * segs + s2]).add(pts[(r + 1) * segs + s2]).multiplyScalar(0.25);
+      sag = Math.max(sag, mid.point.sub(_mid).dot(mid.normal));
+    }
+  }
+  const lift = offset + Math.max(0, sag) * 1.15;
+
+  for (let i = 0; i < count; i++) {
+    positions[i * 3] = pts[i].x + nrm[i].x * lift;
+    positions[i * 3 + 1] = pts[i].y + nrm[i].y * lift;
+    positions[i * 3 + 2] = pts[i].z + nrm[i].z * lift;
+    normals[i * 3] = nrm[i].x;
+    normals[i * 3 + 1] = nrm[i].y;
+    normals[i * 3 + 2] = nrm[i].z;
   }
 
   for (let r = 0; r < rings; r++) {
@@ -168,6 +211,8 @@ export function bandGeometry(headMesh, p, {
   const positions = new Float32Array(count * 3);
   const normals = new Float32Array(count * 3);
   const index = [];
+  const pts = new Array(count);
+  const nrm = new Array(count);
 
   for (let ci = 0; ci <= cols; ci++) {
     const u = -1 + (ci / cols) * 2;
@@ -176,14 +221,49 @@ export function bandGeometry(headMesh, p, {
     for (let ri = 0; ri <= rows; ri++) {
       const y = lo + (hi - lo) * (ri / rows);
       const hit = surfaceAt(headMesh, p, cx + u * rx, cy + y * ry);
-      const i = (ci * (rows + 1) + ri) * 3;
-      positions[i] = hit.point.x + hit.normal.x * offset;
-      positions[i + 1] = hit.point.y + hit.normal.y * offset;
-      positions[i + 2] = hit.point.z + hit.normal.z * offset;
-      normals[i] = hit.normal.x;
-      normals[i + 1] = hit.normal.y;
-      normals[i + 2] = hit.normal.z;
+      const i = ci * (rows + 1) + ri;
+      pts[i] = hit.point;
+      nrm[i] = hit.normal;
     }
+  }
+
+  // How far the skull rises between two samples, which is the thing that lets
+  // bare face through a patch. The faces are FLAT triangles between points ON
+  // the skin, so between them the skull is outside the patch by the sag of the
+  // chord — and a lump field finer than the sampling makes that sag much bigger
+  // than the fixed lift the patch was given. A quarter of the mouths in a
+  // random population had the face showing through the lip ring.
+  //
+  // Rather than guess a lift that covers the lumpiest skull and stands the
+  // calmest one off its face, the patch measures its own worst chord and lifts
+  // by that. Sampled every fourth column, because the answer varies slowly and
+  // each sample is a raycast.
+  let sag = 0;
+  const step = Math.max(1, Math.round(cols / 10));
+  for (let ci = 0; ci + step <= cols; ci += step) {
+    const u = -1 + ((ci + step * 0.5) / cols) * 2;
+    const hi = up(u);
+    const lo = down(u);
+    for (let ri = 0; ri < rows; ri++) {
+      // the middle of a quad, not the middle of an edge: that is where the
+      // patch is furthest under the skin
+      const y = lo + (hi - lo) * ((ri + 0.5) / rows);
+      const mid = surfaceAt(headMesh, p, cx + u * rx, cy + y * ry);
+      const i = ci * (rows + 1) + ri;
+      const j = (ci + step) * (rows + 1) + ri;
+      _mid.copy(pts[i]).add(pts[i + 1]).add(pts[j]).add(pts[j + 1]).multiplyScalar(0.25);
+      sag = Math.max(sag, mid.point.sub(_mid).dot(mid.normal));
+    }
+  }
+  const lift = offset + Math.max(0, sag) * 1.15;
+
+  for (let i = 0; i < count; i++) {
+    positions[i * 3] = pts[i].x + nrm[i].x * lift;
+    positions[i * 3 + 1] = pts[i].y + nrm[i].y * lift;
+    positions[i * 3 + 2] = pts[i].z + nrm[i].z * lift;
+    normals[i * 3] = nrm[i].x;
+    normals[i * 3 + 1] = nrm[i].y;
+    normals[i * 3 + 2] = nrm[i].z;
   }
 
   for (let ci = 0; ci < cols; ci++) {
