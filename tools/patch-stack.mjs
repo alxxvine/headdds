@@ -99,12 +99,12 @@ function headMeshOf(head) {
   return best;
 }
 
-const stat = () => ({ n: 0, hole: 0, vals: [], deep: [], stand: [], rel: [], resid: [], standM: [], relM: [] });
+const stat = () => ({ n: 0, hole: 0, vals: [], deep: [], stand: [], rel: [], resid: [], standM: [], relM: [], nz: [] });
 const bump = (m, k) => (m[k] || (m[k] = stat()));
 
 const perClass = {};
 const creature = { holes: 0, standoff: 0, lipOver: 0, walked: 0, borderLost: 0, inverted: 0, n: 0 };
-const lipLift = []; const cavLift = []; const walkStat = [];
+const lipLift = []; const cavLift = []; const walkStat = []; const overShare = [];
 const worstHole = [];
 const worstStand = [];
 const worstBorder = [];
@@ -198,6 +198,20 @@ for (const seed of seeds) {
     else cls = 'socket:' + p.eyeStyle;
     if (m.userData.maw) { if (cls === 'lip') lipMesh = m; else cavMesh = m; }
 
+    // --- HOW FAR ROUND THE HEAD the patch reached.
+    //
+    // Every one of these patches is laid out in FRONTAL coordinates and planted
+    // by a ray down -Z, which is a parameterisation of the skull only where the
+    // skull faces the viewer. Near the silhouette it stops being one: a step of
+    // a twentieth in x is a step of most of a head in z, and the flat quad
+    // between two such samples is a chord through the skull rather than a
+    // patch on it. The vertex normals in the buffer say exactly how far round a
+    // patch reached — n.z is the cosine of the angle between the skin there and
+    // the view — so this is measured, not inferred, and needs nothing from the
+    // call site.
+    let minNz = 1; let maxStep = 0;
+    for (let i = 0; i < nv; i++) minNz = Math.min(minNz, Nv[i].z);
+
     // --- THE WALK, for a fan.
     //
     // decalGeometry lays its rings at t = r/rings of the way out, so before
@@ -232,15 +246,16 @@ for (const seed of seeds) {
       const a = idx.getX(t * 3); const b = idx.getX(t * 3 + 1); const c2 = idx.getX(t * 3 + 2);
       const edge = Math.max(V[a].distanceTo(V[b]), V[b].distanceTo(V[c2]), V[c2].distanceTo(V[a]));
       for (const [u, v, w] of BARY) {
-        const P0 = new THREE.Vector3()
-          .addScaledVector(V[a], u).addScaledVector(V[b], v).addScaledVector(V[c2], w);
-        const Nn = new THREE.Vector3()
-          .addScaledVector(Nv[a], u).addScaledVector(Nv[b], v).addScaledVector(Nv[c2], w);
-        if (Nn.lengthSq() < 1e-12) continue;
-        Nn.normalize();
-        P0.addScaledVector(Nn, -lift);                       // back down onto the skin lattice
+        // The un-lifted lattice, interpolated — NOT the built triangle pushed
+        // back down an interpolated normal. Each vertex went out along its OWN
+        // normal, and where two normals differ by tens of degrees the average
+        // of them is shorter than a unit, so subtracting it as if it were one
+        // moves the sample. Un-lift per vertex, then interpolate.
         for (const [L, sink] of [[lift, 0], [CONTROL, 1]]) {
-          const P = P0.clone().addScaledVector(Nn, L);
+          const P = new THREE.Vector3();
+          for (const [vi, bw] of [[a, u], [b, v], [c2, w]]) {
+            P.addScaledVector(V[vi], bw).addScaledVector(Nv[vi], bw * (L - lift));
+          }
           const len = P.length();
           if (len < 1e-9) continue;
           const sk = probe.along(P.clone().multiplyScalar(1 / len));
@@ -249,12 +264,14 @@ for (const seed of seeds) {
           if (sink === 0) {
             if (gap < -deep) { deep = -gap; deepEdge = edge; deepAt = [P.x - cx0, P.y - cy0]; }
             if (gap > stand) stand = gap;
-          }
-          else if (gap < -deepC) deepC = -gap;
+          } else if (gap < -deepC) deepC = -gap;
         }
       }
     }
-    const s = bump(perClass, cls);
+        const s = bump(perClass, cls);
+    s.nz.push(minNz);
+    if (minNz < 0.35) { s.steep = (s.steep || 0) + 1; if (deep > EPS) s.steepHole = (s.steepHole || 0) + 1; }
+    else if (deep > EPS) s.flatHole = (s.flatHole || 0) + 1;
     s.n++; s.vals.push(lift); s.resid.push(resid);
     s.stand.push(lift); s.rel.push(lift / Math.max(foot, 1e-6));
     if (deep > EPS) {
@@ -302,7 +319,10 @@ for (const seed of seeds) {
       seen++;
       if (best > len + 1e-4) over++;
     }
-    if (over > 0) { creature.lipOver++; worstBorder.push([over / seen, seed, 'lip-over-cavity', over, seen]); }
+    if (over > 0) {
+      creature.lipOver++; overShare.push(over / seen);
+      worstBorder.push([over / seen, seed, 'lip-over-cavity', over, seen]);
+    }
 
     // ---- the walk, and the stack, both from the ASKED-for rim.
     //
@@ -406,6 +426,8 @@ console.log('patches whose lift could not be bracketed', railed);
 console.log('creatures with any hole   ', pct(creature.holes, creature.n));
 console.log('creatures with a patch standing off > 0.05', pct(creature.standoff, creature.n));
 console.log('creatures where the lip paints over the cavity', pct(creature.lipOver, creature.n));
+console.log('  of those, share of the cavity painted over: >90% on', overShare.filter((x) => x > 0.9).length,
+  'creatures, >50% on', overShare.filter((x) => x > 0.5).length, ', any on', overShare.length);
 console.log('creatures where the lip edge landed inside the cavity rim', pct(creature.borderLost, creature.n));
 console.log('creatures where lip lift >= cavity lift (border inverted)', pct(creature.inverted, creature.n));
 console.log('creatures where a band vertex had to be walked > 0.004', pct(creature.walked, creature.n));
@@ -418,6 +440,14 @@ const show = (title, arr, n = 10) => {
   arr.sort((a, b) => b[0] - a[0]);
   for (const r of arr.slice(0, n)) console.log('   ', r.map((x) => (typeof x === 'number' ? f3(x) : x)).join('  '));
 };
+console.log('');
+console.log('patch                 n   min n.z p10   patches reaching past n.z 0.35   holes among those   holes among the rest');
+for (const k of names) {
+  const s = perClass[k];
+  console.log(k.padEnd(18), String(s.n).padStart(5), f3(q(s.nz, 0.1)).padStart(10),
+    pct(s.steep || 0, s.n).padStart(24), pct(s.steepHole || 0, s.steep || 0).padStart(18), pct(s.flatHole || 0, s.n - (s.steep || 0)).padStart(20));
+}
+console.log('');
 show('worst holes (deep/R, seed, class, deep, lift, edge-of-that-triangle, footprint, angle-from-centre, walk)', worstHole);
 show('worst walks (walk, seed, class, vertices walked, of)', walkers);
 show('worst standoff (lift/foot, seed, class, lift, footprint, worst radial gap)', worstStand);
