@@ -16,7 +16,7 @@ import { createGait } from './gait.js';
 // the WORLD is tuned in these units
 const STATURE = 2.2;
 
-function WalkScene({ params, inputRef }) {
+function WalkScene({ params, inputRef, camRef, jumpRef }) {
   const { camera, controls } = useThree();
 
   const built = useMemo(() => buildCreature(params), [params]);
@@ -27,7 +27,7 @@ function WalkScene({ params, inputRef }) {
 
   // the walker and the gait OUTLIVE the build: dragging a slider mid-walk
   // swaps the puppet, not the position
-  const walker = useMemo(() => createWalker(), []);
+  const walker = useMemo(() => createWalker(terrain.colliders), [terrain]);
   const gait = useMemo(() => createGait(), []);
 
   const carrier = useRef();
@@ -48,6 +48,24 @@ function WalkScene({ params, inputRef }) {
       camera.far = 300;
       camera.updateProjectionMatrix();
       controls.update();
+    }
+
+    // the right stick swings the camera around the creature: x orbits, y
+    // raises and lowers the eye, clamped just above the ground plane
+    const ci = camRef?.current;
+    if (ci && (ci.x || ci.y)) {
+      const off = camera.position.clone().sub(controls.target);
+      const sph = new THREE.Spherical().setFromVector3(off);
+      sph.theta -= ci.x * 2.4 * dt;
+      sph.phi = THREE.MathUtils.clamp(sph.phi - ci.y * 1.6 * dt, 0.3, Math.PI / 2 - 0.06);
+      off.setFromSpherical(sph);
+      camera.position.copy(controls.target).add(off);
+    }
+
+    // a queued jump fires on this frame's ground truth
+    if (jumpRef?.current) {
+      jumpRef.current = false;
+      walker.jump();
     }
 
     // stick/keys are camera-relative: up on the stick is away from the lens
@@ -77,7 +95,7 @@ function WalkScene({ params, inputRef }) {
 
     // the tests read the walk from here — cheaper than teaching them to parse
     // a pixelated screenshot
-    window.__walk = { x: w.pos.x, y: w.pos.y, z: w.pos.z, speed: w.speed, grade: w.grade };
+    window.__walk = { x: w.pos.x, y: w.pos.y, z: w.pos.z, speed: w.speed, grade: w.grade, air: w.air, vy: w.vy };
   });
 
   const fit = STATURE / Math.max(1e-6, built.fitSize.y);
@@ -97,7 +115,7 @@ function WalkScene({ params, inputRef }) {
   );
 }
 
-export default function WorldStage({ params, inputRef }) {
+export default function WorldStage({ params, inputRef, camRef, jumpRef }) {
   const pixelate = params.pixelate !== 'off';
   // the world's sky is the pedestal background lifted a shade toward dusk
   // blue, and the fog is the SAME color — so the horizon melts into the sky
@@ -121,7 +139,7 @@ export default function WorldStage({ params, inputRef }) {
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
       <PixelScale pixelSize={params.pixelSize} pixelate={pixelate} />
       <Controls minDistance={2.2} maxDistance={26} maxPolar={Math.PI / 2 - 0.06} />
-      <WalkScene params={params} inputRef={inputRef} />
+      <WalkScene params={params} inputRef={inputRef} camRef={camRef} jumpRef={jumpRef} />
     </Canvas>
   );
 }

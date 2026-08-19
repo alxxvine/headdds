@@ -50,9 +50,11 @@ export default function App() {
   const [viewReset, setViewReset] = useState(0);
   const [edit, setEdit] = useState(false);
   const [walk, setWalk] = useState(false);
-  // what the walk stick / keys are asking for right now; a ref, because the
-  // world reads it every frame and touch events fire far faster than React
+  // what the walk stick / keys are asking for right now; refs, because the
+  // world reads them every frame and touch events fire far faster than React
   const walkInput = useRef({ x: 0, y: 0 });
+  const walkCam = useRef({ x: 0, y: 0 });
+  const walkJump = useRef(false);
   const [placeKind, setPlaceKind] = useState(null);
   // which style the next planted part of a kind wears; null = same as the face
   const [placeStyles, setPlaceStyles] = useState({ eye: null, arm: 'stick', ear: null, hair: null, nose: null });
@@ -127,6 +129,11 @@ export default function App() {
     };
     const down = (e) => {
       const k = e.key.toLowerCase();
+      if (k === ' ') {
+        e.preventDefault();
+        walkJump.current = true;
+        return;
+      }
       if (!'wasd'.includes(k) && !k.startsWith('arrow')) return;
       e.preventDefault();
       held.add(k);
@@ -397,7 +404,7 @@ export default function App() {
     <div className={edit ? 'app edit-on' : walk ? 'app walk-on' : 'app'}>
       <div className="viewport" onDragOver={(e) => e.preventDefault()} onDrop={onDropPart}>
         {walk ? (
-          <WorldStage params={scene} inputRef={walkInput} />
+          <WorldStage params={scene} inputRef={walkInput} camRef={walkCam} jumpRef={walkJump} />
         ) : (
         <Stage
           params={scene}
@@ -438,8 +445,18 @@ export default function App() {
         )}
         {walk && (
           <>
-            <div className="walk-hint">WASD / arrows{' '}·{' '}drag to look</div>
+            <div className="walk-hint">WASD / arrows · space to jump · drag to look</div>
             <Joystick inputRef={walkInput} />
+            <Joystick inputRef={walkCam} className="stick stick-right" />
+            <button
+              type="button"
+              className="jump-btn"
+              onPointerDown={(e) => { e.preventDefault(); walkJump.current = true; }}
+              onContextMenu={(e) => e.preventDefault()}
+              title="jump"
+            >
+              ⭡
+            </button>
           </>
         )}
         {edit && selected === null && (

@@ -14,11 +14,14 @@ export const TUNE = {
   maxGrade: 1.15,   // tan of the steepest slope it can climb at all (~49°)
   stride: 2.3,      // units of ground covered by one full step cycle
   glue: 18,         // how hard the feet stick to the ground (height chase rate)
+  body: 0.55,       // how wide the walker is against trunks and boulders
+  jumpVel: 8.2,     // take-off speed straight up
+  gravity: 21,      // heavier than earth: floaty jumps read as swimming
 };
 
 const _n = new THREE.Vector3();
 
-export function createWalker() {
+export function createWalker(colliders = []) {
   const pos = new THREE.Vector3(0, groundHeight(0, 0), 0);
   const state = {
     pos,
@@ -28,7 +31,16 @@ export function createWalker() {
     grade: 0,        // ground grade along the direction of travel
     pitch: 0,        // body tilt matching the slope underfoot
     roll: 0,
+    air: false,      // off the ground mid-jump
+    vy: 0,           // vertical speed while airborne
   };
+
+  /** Take off — only from the ground; mid-air mashing does nothing. */
+  function jump() {
+    if (state.air) return;
+    state.air = true;
+    state.vy = TUNE.jumpVel;
+  }
 
   /**
    * One tick. `ix, iz` is the wanted direction in WORLD space (already
@@ -75,26 +87,53 @@ export function createWalker() {
       pos.z = THREE.MathUtils.clamp(pos.z + fz * state.speed * step, -(WORLD - 2), WORLD - 2);
     }
 
+    // trunks and boulders are round walls: whatever the step did, the body
+    // ends it OUTSIDE every circle, pushed straight back out — so it slides
+    // along a rock it walked into instead of stopping dead or ghosting through
+    for (const c of colliders) {
+      const dx = pos.x - c.x;
+      const dz = pos.z - c.z;
+      const keep = c.r + TUNE.body;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < keep * keep && d2 > 1e-9) {
+        const d = Math.sqrt(d2);
+        pos.x = c.x + (dx / d) * keep;
+        pos.z = c.z + (dz / d) * keep;
+      }
+    }
+
     // feet glued to the formula, softened just enough to eat washboard jitter.
     // On a steep face the ground rises under the front of the body, so the
     // stance point is lifted with the tilt — otherwise the downhill-side feet
     // stand right and the uphill side is buried to the shins.
     groundNormal(pos.x, pos.z, _n);
     const floor = groundHeight(pos.x, pos.z) + (1 - _n.y) * 0.8;
-    pos.y += (floor - pos.y) * (1 - Math.exp(-step * TUNE.glue));
+    if (state.air) {
+      // ballistic until the ground comes back up to meet the feet
+      state.vy -= TUNE.gravity * step;
+      pos.y += state.vy * step;
+      if (state.vy <= 0 && pos.y <= floor) {
+        pos.y = floor;
+        state.air = false;
+        state.vy = 0;
+      }
+    } else {
+      pos.y += (floor - pos.y) * (1 - Math.exp(-step * TUNE.glue));
+    }
 
     // the body leans with the ground it stands on — a fraction of the true
     // tilt reads as footing, the whole of it reads as falling over
     const fx = Math.sin(state.yaw);
     const fz = Math.cos(state.yaw);
-    const wantPitch = Math.atan2(_n.x * fx + _n.z * fz, _n.y) * 0.55;
-    const wantRoll = Math.atan2(_n.x * fz - _n.z * fx, _n.y) * 0.35;
+    // ...and in the air there is no ground to lean with
+    const wantPitch = state.air ? 0 : Math.atan2(_n.x * fx + _n.z * fz, _n.y) * 0.55;
+    const wantRoll = state.air ? 0 : Math.atan2(_n.x * fz - _n.z * fx, _n.y) * 0.35;
     state.pitch += (wantPitch - state.pitch) * (1 - Math.exp(-step * 8));
     state.roll += (wantRoll - state.roll) * (1 - Math.exp(-step * 8));
 
-    state.phase += (state.speed * step / TUNE.stride) * Math.PI * 2;
+    if (!state.air) state.phase += (state.speed * step / TUNE.stride) * Math.PI * 2;
     return state;
   }
 
-  return { state, update };
+  return { state, update, jump };
 }

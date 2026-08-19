@@ -21,6 +21,7 @@ export function createGait() {
   let rig = null;
   let base = null;
   let t = 0;
+  let airB = 0;   // 0 on the ground .. 1 mid-jump, smoothed so poses blend
 
   const node = (o) => (o ? { pos: o.position.clone(), quat: o.quaternion.clone(), scale: o.scale.clone() } : null);
   const bind = (next) => {
@@ -54,32 +55,38 @@ export function createGait() {
     const S = rig.scale || 1;
     const on = Math.min(1, w.speed / top);   // 0 standing .. 1 full stride
     const ph = w.phase;
+    // in the air the walk pose gives way to the jump pose, smoothly both ways
+    airB += ((w.air ? 1 : 0) - airB) * (1 - Math.exp(-Math.min(0.05, dt) * 12));
 
-    // --- legs scissor, arms answer -----------------------------------------
+    // --- legs scissor, arms answer — or trail and flail mid-jump ------------
     rig.legs.forEach((leg, i) => {
-      spin(leg, base.legs[i], Math.sin(ph + Math.PI * i) * GAIT.legAmp * on, 0, 0);
+      const walk = Math.sin(ph + Math.PI * i) * GAIT.legAmp * on;
+      spin(leg, base.legs[i], walk * (1 - airB) + 0.5 * airB, 0, 0);
     });
     rig.shoulders.forEach((sh, i) => {
       const cap = sh.userData.lift ?? 1.4;
-      const swing = Math.sin(ph + Math.PI * i + Math.PI) * GAIT.armAmp * on
+      const walk = Math.sin(ph + Math.PI * i + Math.PI) * GAIT.armAmp * on
         + Math.sin(t * 1.6 + i * 2.1) * 0.05 * (1 - on);
+      const swing = walk * (1 - airB) - 0.85 * airB;
       spin(sh, base.shoulders[i], Math.max(-cap, Math.min(cap, swing)), 0, 0);
     });
 
     // --- the body rides the steps -------------------------------------------
     // Two bounces per cycle: highest as the legs cross, lowest at full split.
-    const bob = Math.cos(ph * 2) * 0.5 * GAIT.bob * S * on;
+    const bob = Math.cos(ph * 2) * 0.5 * GAIT.bob * S * on * (1 - airB);
     const idleBreath = Math.sin(t * 1.7) * 0.012 * S * (1 - on);
     rig.root.position.set(
       base.root.pos.x,
       base.root.pos.y + bob + idleBreath,
       base.root.pos.z,
     );
+    // rising it looks up, falling it looks down — the arc reads in the spine
+    const airPitch = Math.max(-0.3, Math.min(0.3, -(w.vy ?? 0) * 0.03)) * airB;
     spin(
       rig.root, base.root,
-      w.pitch + GAIT.lean * on,
+      w.pitch + GAIT.lean * on * (1 - airB) + airPitch,
       0,
-      w.roll + Math.sin(ph) * GAIT.sway * on,
+      w.roll + Math.sin(ph) * GAIT.sway * on * (1 - airB),
     );
 
     // --- the skull is heavy: it lags the bounce and nods into the effort ----

@@ -3,7 +3,7 @@ import { useRef } from 'react';
 // The phone's legs: a fixed virtual stick in the lower-left corner. It only
 // writes into `inputRef` — the world reads that ref every frame, so no state
 // and no re-renders happen at touch rate.
-export default function Joystick({ inputRef }) {
+export default function Joystick({ inputRef, className = 'stick' }) {
   const pad = useRef(null);
   const knob = useRef(null);
   const active = useRef(null);
@@ -43,7 +43,7 @@ export default function Joystick({ inputRef }) {
   return (
     <div
       ref={pad}
-      className="stick"
+      className={className}
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}
