@@ -65,6 +65,8 @@ export function buildStrand(parent, p, mats, rng, S, kind, dir, lenScale = 1) {
   const pivot = new THREE.Group();
   pivot.position.copy(hit.point);
   const strand = growStrand(pivot, p, mats, rng, S, kind, hit, len);
+  // where this strand rooted, so the editor can hand it over as a placed one
+  strand.pivot.userData.strandAt = { x: dir.x, y: dir.y, z: dir.z, s: lenScale };
   parent.add(pivot);
   sinkStrand(p, strand);
   return strand;

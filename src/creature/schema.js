@@ -214,6 +214,9 @@ export const PARAMS = [
 
   // --- MAW ---------------------------------------------------------------
   range('mouthY', 'mouth', 'height', -0.85, 0.15, -0.42),
+  // Player-only: RANDOM never rolls it (and rolls nothing for it, so the rng
+  // sequence — and every existing seed's look — stays exactly as it was).
+  range('mouthX', 'mouth', 'shift', -0.45, 0.45, 0, { random: () => 0 }),
   range('mouthWidth', 'mouth', 'width', 0.08, 0.85, 0.4, { random: (rng) => 0.22 + rng() * 0.55 }),
   range('mouthOpen', 'mouth', 'opening', 0.02, 0.6, 0.18, { random: (rng) => 0.08 + rng() * 0.42 }),
   int('teethTop', 'mouth', 'top teeth', 0, 14, 8),

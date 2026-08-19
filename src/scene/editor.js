@@ -25,7 +25,7 @@ const MAP = {
   skull: { x: 'headWidth', y: ['headHeight', 'up'], wheel: 'headDepth' },
   torso: { x: 'BAND', y: ['belly', 'down'], wheel: 'bodyWidth' },
   eye: { x: 'eyeSpread', y: ['eyeY', 'up'], wheel: 'eyeSize' },
-  mouth: { x: 'mouthWidth', y: ['mouthY', 'up'], wheel: 'mouthOpen' },
+  mouth: { x: ['mouthX', 'pos'], y: ['mouthY', 'up'], wheel: 'mouthWidth' },
   tooth: { y: ['toothSize', 'down'], wheel: 'toothSize' },
   nose: { y: ['noseY', 'up'], wheel: 'noseSize' },
   ear: { y: ['earY', 'up'], wheel: 'earSize' },
@@ -338,6 +338,25 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
         return;
       }
       if (d.placedIndex !== undefined) {
+        d.lastX = e.clientX;
+        d.lastY = e.clientY;
+        if (d.pinch) {
+          // two fingers: the spread is the size
+          const pn = d.pinch;
+          if (pn.pts[e.pointerId]) pn.pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+          const a = pn.pts[pn.ids[0]];
+          const b = pn.pts[pn.ids[1]];
+          const s = Math.min(2.5, Math.max(0.3, pn.s0 * (Math.hypot(a.x - b.x, a.y - b.y) / pn.d0)));
+          const list = placedNow().slice();
+          if (!list[d.placedIndex]) return;
+          list[d.placedIndex] = { ...list[d.placedIndex], s };
+          pushPlaced(list);
+          return;
+        }
+        if (d.lpTimer && Math.hypot(e.clientX - (d.sx ?? e.clientX), e.clientY - (d.sy ?? e.clientY)) > 10) {
+          clearTimeout(d.lpTimer);
+          d.lpTimer = 0;
+        }
         const list = placedNow().slice();
         const prev = list[d.placedIndex];
         if (!prev) return;
@@ -375,7 +394,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
         const realKey = key === 'BAND' ? d.band : key;
         const def = PARAM_BY_KEY[realKey];
         if (!def) continue;
-        const sign = mode === 'up' ? -1 : mode === 'down' ? 1 : d.side;
+        const sign = mode === 'up' ? -1 : mode === 'down' ? 1 : mode === 'pos' ? d.posSign : d.side;
         // a drag over 60% of the viewport's height covers the whole range
         let v = d.base[realKey] + sign * deltas[axis] * ((def.max - def.min) / (h * 0.6));
         v = clampTo(def, v);
@@ -387,6 +406,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
     const endDrag = () => {
       const d = drag.current;
       if (!d) return;
+      if (d.lpTimer) clearTimeout(d.lpTimer);
       drag.current = null;
       if (d.placedIndex !== undefined && d.offSkull) {
         // let go off the head: the part comes off in your hand
@@ -403,6 +423,21 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
     };
 
     const startDrag = (e, d) => {
+      d.pointerId = e.pointerId;
+      d.sx = d.sx ?? e.clientX;
+      d.sy = d.sy ?? e.clientY;
+      // a touch held still on a placed part takes it off — the phone has no
+      // right-click, and this is its long-press
+      if (e.pointerType === 'touch' && d.placedIndex !== undefined) {
+        d.lpTimer = setTimeout(() => {
+          if (drag.current !== d || d.pinch) return;
+          const idx = d.placedIndex;
+          endDrag();
+          pushPlaced(placedNow().filter((_, k) => k !== idx));
+          flush.current();
+          onNote?.('part removed');
+        }, 650);
+      }
       drag.current = d;
       if (controls) controls.enabled = false;
       dom.style.cursor = 'grabbing';
@@ -474,6 +509,17 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
         }
         if (!entries.length) return -1;
         push('armType', 'none');
+      } else if (found.part === 'hair') {
+        // a fur coat is dozens of tufts and stays generated; a head of strands
+        // fits in the hand
+        for (const rec of built.rig.tendrils) {
+          const at = rec.pivot?.userData?.strandAt;
+          if (!at || rec.pivot.userData.part !== 'hair') continue;
+          take({ k: 'hair', x: at.x, y: at.y, z: at.z, s: Math.min(2.5, Math.max(0.3, at.s)), t: p.hairType },
+            found.root === rec.pivot);
+        }
+        if (!entries.length) return -1;
+        push('tendrils', 0);
       } else {
         return -1;
       }
@@ -487,13 +533,33 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
     };
 
     // which grown kinds hand themselves over when grabbed
-    const DETACHABLE = { eye: 1, ear: 1, horn: 1, nose: 1, arm: 1 };
+    const DETACHABLE = { eye: 1, ear: 1, horn: 1, nose: 1, arm: 1, hair: 1 };
 
     const onDown = (e) => {
       if (e.button !== undefined && e.button !== 0) return;
-      // a second finger while a grab is running belongs to nobody: not to a
-      // fresh grab (it would overwrite the live one) and not to the orbit
-      if (drag.current) { e.stopPropagation(); e.preventDefault(); return; }
+      // A second finger during a placed-part grab starts a PINCH: the part
+      // scales with the spread of the two fingers — the phone's wheel. During
+      // any other grab the extra finger still belongs to nobody.
+      if (drag.current) {
+        const d = drag.current;
+        if (d.placedIndex !== undefined && !d.pinch) {
+          const list = placedNow();
+          const s0 = list[d.placedIndex]?.s ?? 1;
+          d.pinch = {
+            ids: [d.pointerId, e.pointerId],
+            pts: { [d.pointerId]: { x: d.lastX ?? d.sx ?? e.clientX, y: d.lastY ?? d.sy ?? e.clientY }, [e.pointerId]: { x: e.clientX, y: e.clientY } },
+            d0: 0,
+            s0,
+          };
+          const a = d.pinch.pts[d.pinch.ids[0]];
+          const b = d.pinch.pts[d.pinch.ids[1]];
+          d.pinch.d0 = Math.max(24, Math.hypot(a.x - b.x, a.y - b.y));
+          if (d.lpTimer) { clearTimeout(d.lpTimer); d.lpTimer = 0; }
+        }
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
 
       const aim = armedNow();
 
@@ -572,6 +638,8 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
         sx: e.clientX,
         sy: e.clientY,
         side: sideSign(camera, found.hit.point),
+        // for position drags: +1 when world +x currently points screen-right
+        posSign: sideSign(camera, new THREE.Vector3(0.2, found.hit.point.y, found.hit.point.z)),
         band: found.part === 'torso' ? torsoBand(builtRef.current.rig, found.hit.point.y) : null,
       });
     };

@@ -56,7 +56,7 @@ export function mawBox(p, skew = 0) {
   const { hi, lo } = mawExtent(profile);
   // the lips are drawn a size larger than the cavity, and taller than wide
   const grow = 1 + Math.max(0, p.lips);
-  const mx = skew * p.headWidth * 0.1;
+  let mx = skew * p.headWidth * 0.1 + (p.mouthX || 0) * p.headWidth;
   let mw = p.mouthWidth * p.headWidth;
   let mh = Math.max(0.03, p.mouthOpen * p.headHeight * 0.55);
   let my = p.mouthY * p.headHeight * 0.8 + skew * p.headHeight * 0.06;
@@ -87,6 +87,9 @@ export function mawBox(p, skew = 0) {
       if (q > 0) half = Math.min(half, q);
     }
     if (!Number.isFinite(half) || Math.abs(mx) + mw * grow <= half * 0.92) break;
+    // the player may shift the mouth right to the cheek but not round it:
+    // spend the shift first, and only then start narrowing the mouth itself
+    if (Number.isFinite(half) && Math.abs(mx) > half * 0.4) { mx *= 0.8; continue; }
     mw *= 0.87;
   }
 

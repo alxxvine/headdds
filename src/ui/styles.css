@@ -567,3 +567,21 @@ input[type='range']::-moz-range-thumb {
   grid-template-columns: 1fr 1fr;
   gap: 4px;
 }
+
+/* edit tools on a phone: a thumb-sized strip along the bottom of the stage,
+   not a column across the creature */
+@media (max-width: 720px) {
+  .edit-tools {
+    top: auto;
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+  .edit-grid { display: contents; }
+  .edit-tool { padding: 8px 10px; font-size: 11px; }
+  .edit-style { order: 2; flex: 1 1 100%; max-width: none; padding: 8px; }
+  .edit-toggle { padding: 8px 16px; }
+}
