@@ -676,3 +676,14 @@ input[type='range']::-moz-range-thumb {
 }
 
 .gz-ok { color: var(--accent); border-color: #3c5a45; font-size: 11px; letter-spacing: 1px; }
+
+/* keep editing gestures out of the browser's hands: no page pinch-zoom from
+   the stage, no double-tap zoom from any control */
+.viewport { touch-action: none; }
+button, select, input { touch-action: manipulation; }
+.edit-toggle, .edit-tools, .gizmo { z-index: 5; }
+
+.edit-exit { color: var(--accent); border-color: #3c5a45; }
+@media (max-width: 720px) {
+  .edit-exit { order: -1; flex: 1 1 100%; text-align: center; padding: 10px; }
+}
