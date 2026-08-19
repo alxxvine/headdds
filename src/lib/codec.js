@@ -21,6 +21,12 @@ export function toDiff(params) {
       ...(it.t ? { t: it.t } : {}),
     }));
   }
+  // ...and the sculpt dabs, same rule: absent when empty, so old links hold
+  if (params.sculpt?.length) {
+    out.sculpt = params.sculpt.map((it) => ({
+      part: it.part, x: round(it.x), y: round(it.y), z: round(it.z), r: round(it.r), a: round(it.a),
+    }));
+  }
   return out;
 }
 

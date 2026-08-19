@@ -274,7 +274,8 @@ export function computeStats(p) {
       0.16 * nk(p, 'eyeSpread') -
       0.12 * nk(p, 'eyeLid') +
       from(EYE_SIGHT, p.eyeStyle) +
-      from(EAR_SIGHT, p.earType) * (0.5 + nk(p, 'earSize') * 0.8),
+      from(EAR_SIGHT, p.earType) * (0.5 + nk(p, 'earSize') * 0.8) +
+      0.04 * placedCount(p, 'ear'),
     dread:
       0.24 * teeth +
       0.2 * horns +
@@ -284,6 +285,8 @@ export function computeStats(p) {
       0.14 * dark +
       from(HAIR_DREAD, p.hairType) +
       from(NOSE_DREAD, p.noseType) +
+      0.03 * placedCount(p, 'hair') +
+      0.02 * placedCount(p, 'nose') +
       0.1 * nk(p, 'bodyLumps') +
       0.06 * nk(p, 'bodyBox'),
     balance:

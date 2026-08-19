@@ -80,8 +80,10 @@ export function buildCreature(rawParams) {
   const eyes = addEyes(head, headMesh, p, mats, rng);
   const { jaw, maw } = addMouth(head, headMesh, p, mats, rng);
   // the parts the player put on by hand — placed eyes join the rig's list so
-  // they blink and look around like the grown ones
-  eyes.push(...addPlaced(head, headMesh, p, mats));
+  // they blink and look around, placed ears and strands sway with the hair
+  const planted = addPlaced(head, headMesh, p, mats);
+  eyes.push(...planted.eyes);
+  growths.tendrils.push(...planted.strands);
   // now that the eyes and the nose exist, bury the warts that broke into them
   pruneWarts(head, headMesh, p, eyes);
   addScars(head, headMesh, p, mats, rng, maw);

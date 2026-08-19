@@ -489,16 +489,28 @@ export const PARAM_BY_KEY = Object.fromEntries(PARAMS.map((p) => [p.key, p]));
 // the same share links, and RESET clears it with everything else.
 // An entry may carry its own type `t` (a placed eye can be a compound eye on a
 // face full of balls; a placed arm names which kind of arm it is).
-export const PLACED_KINDS = ['eye', 'horn', 'wart', 'arm'];
+export const PLACED_KINDS = ['eye', 'horn', 'wart', 'arm', 'ear', 'hair', 'nose'];
 export const PLACED_MAX = 24;
 export const PLACED_TYPES = {
   eye: () => PARAM_BY_KEY.eyeStyle.options.map((o) => o.value),
   arm: () => PARAM_BY_KEY.armType.options.map((o) => o.value).filter((v) => v !== 'none'),
+  ear: () => PARAM_BY_KEY.earType.options.map((o) => o.value).filter((v) => v !== 'none'),
+  // a single placed crest plate makes no sense; the crest is a whole row
+  hair: () => PARAM_BY_KEY.hairType.options.map((o) => o.value).filter((v) => v !== 'none' && v !== 'crest'),
+  nose: () => PARAM_BY_KEY.noseType.options.map((o) => o.value).filter((v) => v !== 'none'),
 };
+
+// Sculpt dabs: local bumps and dents the player pressed into the skull or the
+// trunk by hand. Each is a gaussian on the surface — a direction, a radius in
+// radians and an amplitude (positive swells, negative dents). Applied inside
+// headPoint/bodyPoint themselves, so every part that seats on the skin seats
+// on the sculpted skin.
+export const SCULPT_MAX = 40;
 
 export const DEFAULTS = Object.freeze({
   seed: 1337,
   placed: Object.freeze([]),
+  sculpt: Object.freeze([]),
   ...Object.fromEntries(PARAMS.map((p) => [p.key, p.def])),
 });
 
@@ -527,6 +539,24 @@ export function sanitize(input) {
         z: num(it.z, 4),
         s: Math.min(2.5, Math.max(0.3, num(it.s, 2.5, 1) || 1)),
         ...(t ? { t } : {}),
+      }];
+    });
+  }
+
+  if (Array.isArray(input.sculpt)) {
+    const num = (v, lo, hi, d = 0) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
+    };
+    out.sculpt = input.sculpt.slice(0, SCULPT_MAX).flatMap((it) => {
+      if (!it || (it.part !== 'head' && it.part !== 'body')) return [];
+      const x = num(it.x, -2, 2), y = num(it.y, -2, 2), z = num(it.z, -2, 2);
+      if (x * x + y * y + z * z < 1e-6) return [];
+      return [{
+        part: it.part,
+        x, y, z,
+        r: num(it.r, 0.12, 1.4, 0.45),
+        a: num(it.a, -0.5, 0.6, 0.15),
       }];
     });
   }

@@ -3,8 +3,8 @@ import { headPoint, headHalfWidth } from './head.js';
 import { surfaceAt, surfaceByDir, surfaceRadial, patchFrame, orientTo, orientUpright, decalGeometry, bandGeometry, snapToMesh } from './surface.js';
 import { withOutline } from './materials.js';
 import { warpGeometry, warpRoll } from './warp.js';
-import { addHair } from './hair.js';
-import { addEars } from './ears.js';
+import { addHair, buildStrand } from './hair.js';
+import { addEars, buildEar, seatEars } from './ears.js';
 import { addAura } from './aura.js';
 import { makeRng } from '../lib/noise.js';
 import { mawProfile, mawExtent } from './maw.js';
@@ -1643,12 +1643,18 @@ export function addNose(parent, headMesh, p, mats, rng) {
   parent.add(nose);
 }
 
-function buildNose(parent, headMesh, p, mats, rng) {
+/**
+ * `at` places the nose somewhere other than its reserved spot on the midline —
+ * a hand-placed nose (EDIT mode) lands wherever the click did, at whatever
+ * size factor it carries. Exported for addPlaced.
+ */
+export function buildNose(parent, headMesh, p, mats, rng, at = null) {
   if (p.noseType === 'none') return;
   const L = faceLimits(p);
   const S = L.S;
-  const ny = L.noseY;   // already lifted clear of the maw
-  const size = L.noseSize;
+  const cx = at?.x ?? 0;
+  const ny = at?.y ?? L.noseY;   // by default: already lifted clear of the maw
+  const size = L.noseSize * (at?.s ?? 1);
   // Every bump used to be the same oval. Give this one its own proportions:
   // wide and flat, or narrow and long, or pushed out from the face.
   const wide = 0.65 + rng() * 0.95;
@@ -1658,21 +1664,21 @@ function buildNose(parent, headMesh, p, mats, rng) {
   if (p.noseType === 'holes') {
     for (const dx of [-1, 1]) {
       const hole = decalGeometry(headMesh, p, {
-        cx: dx * size * 0.7, cy: ny, rx: size * 0.42, ry: size * 0.62, offset: 0.008, rings: 2, segs: 12,
+        cx: cx + dx * size * 0.7, cy: ny, rx: size * 0.42, ry: size * 0.62, offset: 0.008, rings: 2, segs: 12,
       });
       parent.add(new THREE.Mesh(hole, mats.cavity));
     }
     return;
   }
 
-  const hit = surfaceAt(headMesh, p, 0, ny);
+  const hit = surfaceAt(headMesh, p, cx, ny);
   const frame = new THREE.Group();
   orientTo(frame, hit.point, hit.normal);
 
   if (p.noseType === 'tusks') {
     // not a nose so much as what grows either side of one
     for (const dx of [-1, 1]) {
-      const h = surfaceAt(headMesh, p, dx * size * 0.9, ny);
+      const h = surfaceAt(headMesh, p, cx + dx * size * 0.9, ny);
       const f = new THREE.Group();
       orientTo(f, h.point, h.normal);
       const g = warpGeometry(new THREE.ConeGeometry(size * 0.34, size * 3.2, 6, 3),
@@ -1689,7 +1695,7 @@ function buildNose(parent, headMesh, p, mats, rng) {
 
   if (p.noseType === 'trunk') {
     // a heavy hanging tube, built from segments so it can droop
-    const h = surfaceAt(headMesh, p, 0, ny);
+    const h = surfaceAt(headMesh, p, cx, ny);
     const frame = new THREE.Group();
     orientTo(frame, h.point, h.normal);
     const links = 5;
@@ -1717,7 +1723,7 @@ function buildNose(parent, headMesh, p, mats, rng) {
     // a bony crest running down the middle of the face
     for (let i = 0; i < 5; i++) {
       const k = i / 4;
-      const h = surfaceAt(headMesh, p, 0, ny + (0.5 - k) * size * 2.4);
+      const h = surfaceAt(headMesh, p, cx, ny + (0.5 - k) * size * 2.4);
       const f = new THREE.Group();
       orientTo(f, h.point, h.normal);
       const g = warpGeometry(new THREE.SphereGeometry(size * (0.5 - k * 0.22), 9, 7),
@@ -1735,7 +1741,7 @@ function buildNose(parent, headMesh, p, mats, rng) {
     for (const dx of [-1, 1]) {
       for (let i = 0; i < 2; i++) {
         const cut = decalGeometry(headMesh, p, {
-          cx: dx * size * (0.5 + i * 0.45), cy: ny,
+          cx: cx + dx * size * (0.5 + i * 0.45), cy: ny,
           rx: size * 0.16, ry: size * 0.9, offset: 0.008, rings: 2, segs: 10,
         });
         parent.add(new THREE.Mesh(cut, mats.cavity));
@@ -1745,7 +1751,7 @@ function buildNose(parent, headMesh, p, mats, rng) {
   }
   if (p.noseType === 'star') {
     // a rosette of small lobes around a nostril, like something that digs
-    const h = surfaceAt(headMesh, p, 0, ny);
+    const h = surfaceAt(headMesh, p, cx, ny);
     const f = new THREE.Group();
     orientTo(f, h.point, h.normal);
     for (let i = 0; i < 7; i++) {
@@ -1763,7 +1769,7 @@ function buildNose(parent, headMesh, p, mats, rng) {
   if (p.noseType === 'double') {
     // two bumps where one would do
     for (const dx of [-1, 1]) {
-      const h = surfaceAt(headMesh, p, dx * size * 0.55, ny);
+      const h = surfaceAt(headMesh, p, cx + dx * size * 0.55, ny);
       const f = new THREE.Group();
       orientTo(f, h.point, h.normal);
       const g = warpGeometry(new THREE.SphereGeometry(size * 0.62, 10, 8), rng(), warpRoll(p, rng));
@@ -2000,12 +2006,37 @@ const _phit = { point: new THREE.Vector3(), normal: new THREE.Vector3() };
  */
 export function addPlaced(parent, headMesh, p, mats) {
   const eyes = [];
+  const strands = [];
   const S = headUnit(p);
   const dir = new THREE.Vector3();
   (p.placed || []).forEach((it, i) => {
     const rng = makeRng((p.seed >>> 0) ^ 0x706c6163 ^ Math.imul(i + 1, 0x9e3779b9));
     let roots = [];
-    if (it.k === 'eye') {
+    if (it.k === 'ear') {
+      dir.set(it.x, it.y, it.z || 0);
+      if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0);
+      dir.normalize();
+      const kind = it.t || (p.earType !== 'none' ? p.earType : 'flaps');
+      const hit = surfaceByDir(p, dir.x, dir.y, dir.z);
+      const rec = buildEar(parent, headMesh, p, mats, S, rng, kind,
+        hit, p.earSize * S * it.s, dir.x >= 0 ? 1 : -1);
+      seatEars(parent, headMesh, [rec], S);
+      strands.push(rec);
+      roots = [rec.pivot];
+    } else if (it.k === 'hair') {
+      dir.set(it.x, it.y, it.z || 0);
+      if (dir.lengthSq() < 1e-6) dir.set(0, 1, 0);
+      const kind = it.t || (p.hairType !== 'none' && p.hairType !== 'crest' ? p.hairType : 'tendrils');
+      const rec = buildStrand(parent, p, mats, rng, S, kind, dir.normalize(), it.s);
+      strands.push(rec);
+      roots = [rec.pivot];
+    } else if (it.k === 'nose') {
+      const kind = it.t || (p.noseType !== 'none' ? p.noseType : 'bump');
+      const group = new THREE.Group();
+      buildNose(group, headMesh, { ...p, noseType: kind }, mats, rng, { x: it.x, y: it.y, s: it.s });
+      parent.add(group);
+      roots = [group];
+    } else if (it.k === 'eye') {
       // a placed eye may wear its own style: a compound eye on a face of balls
       const pEye = it.t && it.t !== p.eyeStyle ? { ...p, eyeStyle: it.t } : p;
       const rec = buildEye(parent, headMesh, pEye, mats, rng, {
@@ -2030,7 +2061,7 @@ export function addPlaced(parent, headMesh, p, mats) {
       root.userData.placedIndex = i;
     }
   });
-  return eyes;
+  return { eyes, strands };
 }
 
 /** One wart, grown to order — the instanced field in addGrowths stays as is. */
