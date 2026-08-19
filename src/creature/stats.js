@@ -47,7 +47,10 @@ const clamp01 = (v) => Math.min(1, Math.max(0, v));
 // which turned the whole stat block into NaN and emptied the panel.
 const from = (table, key) => table[key] ?? 0;
 
-const HAND_BITE = { none: -0.06, ball: 0, claw: 0.12, pincer: 0.14, club: 0.06 };
+const HAND_BITE = {
+  none: -0.06, ball: 0, claw: 0.12, pincer: 0.14, club: 0.06,
+  fist: 0.07, spikes: 0.12, hook: 0.13, fingers: 0.02,
+};
 const EYE_SIGHT = {
   ball: 0, hole: -0.08, bead: -0.04, stalk: 0.1,
   compound: 0.14, lantern: 0.02, gash: -0.1,
@@ -61,10 +64,10 @@ const NOSE_DREAD = { none: 0, bump: 0, beak: 0.03, snout: 0.02, holes: 0.01, tru
 // no hearing stat, so ears count towards the sense the creature does have
 const EAR_SIGHT = { none: 0, flaps: 0.07, fins: 0.05, trumpets: 0.1, holes: 0.03 };
 
-const LEG_SPEED = { stick: 0.06, thick: -0.04, bent: 0.12, stump: -0.12 };
-const LEG_BALANCE = { stick: -0.04, thick: 0.08, bent: -0.02, stump: 0.12 };
-const FOOT_BALANCE = { ball: 0, none: -0.1, splay: 0.12, hoof: -0.02 };
-const FOOT_SPEED = { ball: 0, none: 0.04, splay: -0.05, hoof: 0.08 };
+const LEG_SPEED = { stick: 0.06, thick: -0.04, bent: 0.12, stump: -0.12, frog: 0.1, peg: -0.06 };
+const LEG_BALANCE = { stick: -0.04, thick: 0.08, bent: -0.02, stump: 0.12, frog: 0.05, peg: -0.1 };
+const FOOT_BALANCE = { ball: 0, none: -0.1, splay: 0.12, hoof: -0.02, claws: 0.06, boot: 0.1 };
+const FOOT_SPEED = { ball: 0, none: 0.04, splay: -0.05, hoof: 0.08, claws: 0.05, boot: -0.06 };
 
 /**
  * Scales raw stats so they sum to exactly BUDGET while every value stays in
@@ -202,6 +205,14 @@ export const TRAITS = [
   { id: 'broadChest', label: 'BROAD-CHESTED', when: (p) => p.chestWide > 0.4, mods: { vigor: 9, balance: -3 } },
   { id: 'wasp', label: 'WASP-WAISTED', when: (p) => p.waistWide < -0.3, mods: { speed: 8, vigor: -5 } },
   { id: 'hooded', label: 'HOODED', when: (p) => p.eyeLid >= 0.6, mods: { dread: 6, sight: -6 } },
+  { id: 'winged', label: 'WINGED', when: (p) => p.armType === 'wing', mods: { speed: 8, vigor: -4, dread: 3 } },
+  { id: 'tentacled2', label: 'TENTACLE-ARMED', when: (p) => p.armType === 'tentacle', mods: { dread: 6, bite: 3, balance: -4 } },
+  { id: 'branched', label: 'BRANCH-LIMBED', when: (p) => p.armType === 'branch', mods: { dread: 5, vigor: 3, speed: -3 } },
+  { id: 'hookHanded', label: 'HOOK-HANDED', when: (p) => p.handType === 'hook' && p.armType !== 'none', mods: { bite: 7, dread: 4 } },
+  { id: 'maceFisted', label: 'MACE-FISTED', when: (p) => p.handType === 'spikes' && p.armType !== 'none', mods: { bite: 8, vigor: 3, speed: -3 } },
+  { id: 'leaper', label: 'LEAPER', when: (p) => p.legType === 'frog', mods: { speed: 9, balance: -4 } },
+  { id: 'pegLegged', label: 'PEG-LEGGED', when: (p) => p.legType === 'peg', mods: { dread: 4, balance: -8, speed: -3 } },
+  { id: 'taloned', label: 'TALONED', when: (p) => p.footType === 'claws', mods: { dread: 5, bite: 4 } },
 ];
 
 /**

@@ -98,6 +98,18 @@ function addHand(parent, p, mats, rng, { limbR, ink, tip, dir }) {
   frame.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir.clone().normalize());
   parent.add(frame);
 
+  if (p.handType === 'fist') {
+    // a blocky mitt — knuckles, no fingers to speak of
+    const geo = warpGeometry(
+      new THREE.BoxGeometry(limbR * 1.7, limbR * 1.5, limbR * 1.7, 2, 2, 2),
+      rng(), warpRoll(p, rng, 0.45));
+    const fist = new THREE.Mesh(geo, mats.trim);
+    fist.position.y = -limbR * 0.5;
+    fist.rotation.y = (rng() - 0.5) * 0.5;
+    withOutline(frame, fist, geo, ink, mats.outline);
+    return;
+  }
+
   // A hand is a ball at this size, and a perfect ball is the one thing that
   // never reads as flesh. Knocked out of true like everything else.
   const palmGeo = warpGeometry(
@@ -107,6 +119,67 @@ function addHand(parent, p, mats, rng, { limbR, ink, tip, dir }) {
   if (p.handType === 'club') palm.scale.set(1.1, 1.3, 1.1);
   withOutline(frame, palm, palmGeo, ink, mats.outline);
   if (p.handType === 'ball' || p.handType === 'club') return;
+
+  if (p.handType === 'spikes') {
+    // a morning-star: short thorns all round the ball. Directions are a fixed
+    // fan, not random — a spike pointing back up the arm reads as a glitch.
+    const spikeGeo = new THREE.ConeGeometry(limbR * 0.3, limbR * 1.2, 5, 2);
+    const dirs = [
+      new THREE.Vector3(0, -1, 0),
+      new THREE.Vector3(0.8, -0.5, 0.2), new THREE.Vector3(-0.8, -0.5, 0.2),
+      new THREE.Vector3(0.3, -0.4, 0.85), new THREE.Vector3(-0.3, -0.4, 0.85),
+      new THREE.Vector3(0.5, -0.4, -0.75), new THREE.Vector3(-0.5, -0.4, -0.75),
+    ];
+    for (const d of dirs) {
+      d.normalize();
+      const spike = new THREE.Mesh(spikeGeo, mats.growth);
+      // cones point +Y; aim each one outward from the palm's centre
+      spike.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d);
+      spike.position.copy(d).multiplyScalar(limbR * 1.15);
+      withOutline(frame, spike, spikeGeo, ink * 0.6, mats.outline);
+    }
+    return;
+  }
+
+  if (p.handType === 'hook') {
+    // one heavy talon curling forward: two cones chained at a knuckle, the
+    // same nested-group trick the mantis elbow uses
+    const baseLen = limbR * 2.6;
+    const baseGeo = new THREE.ConeGeometry(limbR * 0.55, baseLen, 6, 3);
+    const base = new THREE.Mesh(baseGeo, mats.growth);
+    base.position.y = -limbR * 0.6 - baseLen * 0.5;
+    base.rotateZ(Math.PI);
+    withOutline(frame, base, baseGeo, ink * 0.8, mats.outline);
+
+    const knuckle = new THREE.Group();
+    knuckle.position.set(0, -limbR * 0.6 - baseLen * 0.85, 0);
+    knuckle.rotation.x = 1.05;   // the curl: tip swings forward
+    frame.add(knuckle);
+    const tipLen = limbR * 1.9;
+    const tipGeo = new THREE.ConeGeometry(limbR * 0.36, tipLen, 5, 2);
+    const claw = new THREE.Mesh(tipGeo, mats.growth);
+    claw.position.y = -tipLen * 0.42;
+    claw.rotateZ(Math.PI);
+    withOutline(knuckle, claw, tipGeo, ink * 0.6, mats.outline);
+    return;
+  }
+
+  if (p.handType === 'fingers') {
+    // three limp digits hanging off the palm — the closest thing to a hand
+    // a freak gets
+    const fingerLen = limbR * 1.9;
+    const fingerGeo = warpGeometry(
+      new THREE.CapsuleGeometry(limbR * 0.27, fingerLen, 3, 5),
+      rng(), warpRoll(p, rng, 0.5));
+    for (let i = -1; i <= 1; i++) {
+      const digit = new THREE.Mesh(fingerGeo, mats.trim);
+      digit.rotation.z = i * 0.2;
+      digit.rotation.x = 0.1;
+      digit.position.set(i * limbR * 0.55, -limbR * 0.8 - fingerLen * 0.5, limbR * 0.1);
+      withOutline(frame, digit, fingerGeo, ink * 0.6, mats.outline);
+    }
+    return;
+  }
 
   // claws and pincers are cones fanned around the tip
   const fingers = p.handType === 'pincer' ? 2 : 3;
@@ -195,6 +268,116 @@ function addSegments(parent, p, mats, { limbR, ink, len, side }) {
     return { tip, dir };
   }
 
+  if (p.armType === 'tentacle') {
+    // a tapering curl: three capsule segments, each thinner and kicked a
+    // little further forward — chained groups, like the mantis elbow
+    const segLens = [len * 0.42, len * 0.34, len * 0.28];
+    const radii = [0.95, 0.62, 0.38];
+    const chain = [];
+    let node = parent;
+    for (let i = 0; i < 3; i++) {
+      const g = new THREE.Group();
+      if (i > 0) {
+        g.position.y = -segLens[i - 1];
+        g.rotation.x = -0.55;             // curl forward
+        g.rotation.z = side * 0.16;       // ...and a touch outward
+      }
+      node.add(g);
+      const geo = new THREE.CapsuleGeometry(limbR * radii[i], segLens[i], 3, 6);
+      const seg = new THREE.Mesh(geo, mats.body);
+      seg.position.y = -segLens[i] * 0.5;
+      withOutline(g, seg, geo, ink * (1 - i * 0.25), mats.outline);
+      g.updateMatrix();
+      chain.push(g);
+      node = g;
+    }
+    // fold the chain to get the tip and its direction in shoulder space
+    tip.set(0, -segLens[2] - limbR * 0.3, 0);
+    dir.set(0, -1, 0);
+    for (let i = chain.length - 1; i >= 0; i--) {
+      tip.applyMatrix4(chain[i].matrix);
+      dir.applyQuaternion(chain[i].quaternion);
+    }
+    return { tip, dir };
+  }
+
+  if (p.armType === 'wing') {
+    // three bony spars fanned down-and-out with a membrane stretched between
+    // them — a bat wing that has seen better days
+    const sparLens = [len * 0.95, len * 0.72, len * 0.48];
+    const angles = [0.12, 0.5, 0.88];   // from straight down, opening outward
+    const tips = [];
+    for (let i = 0; i < 3; i++) {
+      const g = new THREE.Group();
+      g.rotation.z = side * angles[i];
+      parent.add(g);
+      const geo = new THREE.CapsuleGeometry(limbR * (0.42 - i * 0.06), sparLens[i], 3, 5);
+      const spar = new THREE.Mesh(geo, mats.body);
+      spar.position.y = -sparLens[i] * 0.5;
+      withOutline(g, spar, geo, ink * 0.7, mats.outline);
+      // R_z(side*a) applied to (0, -L, 0)
+      tips.push(new THREE.Vector3(
+        side * Math.sin(angles[i]) * sparLens[i],
+        -Math.cos(angles[i]) * sparLens[i],
+        0,
+      ));
+    }
+    // the membrane: a fan of two triangles pinned at the shoulder. Slightly
+    // behind the spars so it never z-fights them.
+    const verts = new Float32Array([
+      0, 0, -limbR * 0.1, tips[0].x, tips[0].y, -limbR * 0.1, tips[1].x, tips[1].y, -limbR * 0.1,
+      0, 0, -limbR * 0.1, tips[1].x, tips[1].y, -limbR * 0.1, tips[2].x, tips[2].y, -limbR * 0.1,
+    ]);
+    const memGeo = new THREE.BufferGeometry();
+    memGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+    memGeo.computeVertexNormals();
+    // the shared toon material is single-sided; the membrane is a sheet seen
+    // from both, so it gets its own two-sided copy (dispose() collects it)
+    const memMat = mats.body.clone();
+    memMat.side = THREE.DoubleSide;
+    parent.add(new THREE.Mesh(memGeo, memMat));
+
+    tip.copy(tips[0]).addScaledVector(new THREE.Vector3(side * Math.sin(angles[0]), -Math.cos(angles[0]), 0), limbR * 0.3);
+    dir.set(side * Math.sin(angles[0]), -Math.cos(angles[0]), 0);
+    return { tip, dir };
+  }
+
+  if (p.armType === 'branch') {
+    // one bough that forks into two twigs at a knot
+    const mainLen = len * 0.55;
+    const mainGeo = new THREE.CapsuleGeometry(limbR * 0.8, mainLen, 3, 6);
+    const bough = new THREE.Mesh(mainGeo, mats.body);
+    bough.position.y = -mainLen * 0.5;
+    withOutline(parent, bough, mainGeo, ink, mats.outline);
+
+    const fork = new THREE.Group();
+    fork.position.y = -mainLen;
+    parent.add(fork);
+    const twigLens = [len * 0.48, len * 0.36];
+    const twigRots = [
+      { z: side * 0.38, x: 0.12 },
+      { z: side * -0.32, x: -0.2 },
+    ];
+    let mainTwig = null;
+    for (let i = 0; i < 2; i++) {
+      const g = new THREE.Group();
+      g.rotation.z = twigRots[i].z;
+      g.rotation.x = twigRots[i].x;
+      fork.add(g);
+      const geo = new THREE.CapsuleGeometry(limbR * (0.5 - i * 0.08), twigLens[i], 3, 5);
+      const twig = new THREE.Mesh(geo, mats.body);
+      twig.position.y = -twigLens[i] * 0.5;
+      withOutline(g, twig, geo, ink * 0.7, mats.outline);
+      g.updateMatrix();
+      if (i === 0) mainTwig = g;
+    }
+    // the hand rides the longer twig
+    fork.updateMatrix();
+    tip.set(0, -twigLens[0] - limbR * 0.3, 0).applyMatrix4(mainTwig.matrix).applyMatrix4(fork.matrix);
+    dir.set(0, -1, 0).applyQuaternion(mainTwig.quaternion);
+    return { tip, dir };
+  }
+
   // stick — the plain hanging limb
   const geo = new THREE.CapsuleGeometry(limbR * 0.85, len, 3, 6);
   const arm = new THREE.Mesh(geo, mats.body);
@@ -234,7 +417,12 @@ export function buildArm(p, mats, rng, opts) {
   // of those drop the shoulder by a fraction of its own height, carrying the
   // whole arm down with it. A margin measured only in limb radii covers a fat
   // arm and leaves a thin one on a tall body scraping the ground.
-  const clearance = limbR * 0.9 + shoulderY * 0.12;
+  //
+  // And part of it with how far FORWARD the tip sits: the same tired lean
+  // pitches the whole body, and a point out in front of the chest drops by its
+  // forward reach times the pitch — which is what put a curled tentacle's tip
+  // through the floor while every straight arm cleared it.
+  const clearance = limbR * 0.9 + shoulderY * 0.12 + Math.max(0, tip.z) * 0.25;
 
   // Opening the arm outward is the cheap way to hold a hand off the floor, and
   // it was allowed to run to 1.5 radians — 86 degrees, an arm pointing straight

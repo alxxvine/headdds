@@ -3,6 +3,7 @@ import { GROUPS, PARAMS } from '../creature/schema.js';
 import { STATS, computeStats, describeMods } from '../creature/stats.js';
 import { nameOf } from '../creature/name.js';
 import Control from './Control.jsx';
+import Catalog from './Catalog.jsx';
 
 const TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 const HINT = TOUCH ? 'drag to spin, pinch to zoom' : 'drag to spin, wheel to zoom';
@@ -149,6 +150,9 @@ export default function Panel({
           </details>
         ))}
       </div>
+
+      {/* the index of everything the builder can grow: tap a part to try it */}
+      <Catalog params={params} onChange={onChange} />
 
       {/* which build this page is — the short commit and when it was built,
           so a stale deploy is visible from the phone it is stale on */}

@@ -62,10 +62,16 @@ export function buildBody(p, mats, headBox, rng) {
   // leaving that out of the estimate meant the number the hips are spaced by
   // was smaller than the leg actually is. There was slack enough to hide it
   // while the spacing was generous; there is not once it is tight.
-  const legWidest = legRPre * (p.legType === 'bent' ? 1.15 : 1);
+  // A frog leg bows outward and a peg is widest at the hip — both are wider
+  // than the shin radius the spacing would otherwise be done by.
+  const legWidest = legRPre * (p.legType === 'bent' ? 1.15
+    : p.legType === 'frog' ? 1.25
+    : p.legType === 'peg' ? 1.2 : 1);
   const legHalf0 = Math.max(legWidest, p.footType === 'none' ? 0
     : p.footType === 'splay' ? footRPre * 1.8
     : p.footType === 'hoof' ? footRPre * 1.15
+    : p.footType === 'claws' ? footRPre * 1.6
+    : p.footType === 'boot' ? footRPre * 1.4
     : footRPre * 1.1);
 
   // Now the torso: as wide as asked for, but never narrower than the hips and
@@ -230,7 +236,30 @@ export function buildBody(p, mats, headBox, rng) {
     group.add(legPivot);
     legs.push(legPivot);
 
-    if (p.legType === 'bent') {
+    if (p.legType === 'frog') {
+      // a squat bow: thigh swung out to the side, shin swung back in, so the
+      // knee sticks out sideways — a leg mid-crouch
+      const half = legLen * 0.58;
+      const bow = 0.5;
+      const thighGeo = new THREE.CapsuleGeometry(legR * 1.1, half, 3, 7);
+      const thigh = new THREE.Mesh(thighGeo, mats.body);
+      thigh.position.set(side * half * 0.22, legR + half * 1.35 - legH, 0);
+      thigh.rotation.z = -side * bow;
+      withOutline(legPivot, thigh, thighGeo, ink, mats.outline);
+
+      const shinGeo = new THREE.CapsuleGeometry(legR * 0.85, half, 3, 7);
+      const shin = new THREE.Mesh(shinGeo, mats.body);
+      shin.position.set(side * half * 0.24, legR + half * 0.42 - legH, 0);
+      shin.rotation.z = side * bow * 0.85;
+      withOutline(legPivot, shin, shinGeo, ink, mats.outline);
+    } else if (p.legType === 'peg') {
+      // a rigid taper: wide where it meets the hip, next to nothing at the
+      // floor — a pirate's peg
+      const pegGeo = new THREE.CylinderGeometry(legR * 1.2, legR * 0.45, legLen + legR, 8, 3);
+      const peg = new THREE.Mesh(pegGeo, mats.body);
+      peg.position.set(0, (legLen + legR) * 0.5 - legH, 0);
+      withOutline(legPivot, peg, pegGeo, ink, mats.outline);
+    } else if (p.legType === 'bent') {
       // A digitigrade leg: thigh angled back, shin angled forward, so the knee
       // sticks out behind. Both halves are shortened to keep the ankle at the
       // same height a straight leg would have reached.
@@ -253,7 +282,31 @@ export function buildBody(p, mats, headBox, rng) {
       withOutline(legPivot, leg, legGeo, ink, mats.outline);
     }
 
-    if (p.footType !== 'none') {
+    if (p.footType === 'claws') {
+      // three talons splayed on the ground, no pad under them — each one a
+      // cone laid nearly flat, pointing forward and a little apart
+      const toeGeo = new THREE.ConeGeometry(footR * 0.38, footR * 2.1, 5, 2);
+      for (let t = -1; t <= 1; t++) {
+        const aim = new THREE.Group();
+        aim.position.set(0, footR * 0.38 - legH, legR * 0.5);
+        aim.rotation.y = t * 0.5;
+        legPivot.add(aim);
+        const toe = new THREE.Mesh(toeGeo, mats.trim);
+        // cones point +Y; lay this one down so it points along +Z with a
+        // slight rake — the tip grazes the floor without piercing it
+        toe.rotation.x = Math.PI / 2 - 0.12;
+        toe.position.z = footR * 0.9;
+        withOutline(aim, toe, toeGeo, ink * 0.7, mats.outline);
+      }
+    } else if (p.footType === 'boot') {
+      // a blocky stump of a foot, like it was carved rather than grown
+      const bootGeo = warpGeometry(
+        new THREE.BoxGeometry(footR * 2.1, footR * 1.4, footR * 2.5, 2, 2, 2),
+        rng(), warpRoll(p, rng, 0.4));
+      const boot = new THREE.Mesh(bootGeo, mats.trim);
+      boot.position.set(0, footR * 0.75 - legH, legR * 0.5);
+      withOutline(legPivot, boot, bootGeo, ink, mats.outline);
+    } else if (p.footType !== 'none') {
       const foot = new THREE.Mesh(footGeo, mats.trim);
       if (p.footType === 'hoof') {
         foot.position.set(0, footR * 0.7 - legH, 0);

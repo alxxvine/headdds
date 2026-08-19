@@ -400,8 +400,14 @@ export const PARAMS = [
     { value: 'stick', label: 'sticks' },
     { value: 'noodle', label: 'noodles' },
     { value: 'mantis', label: 'mantis' },
+    { value: 'tentacle', label: 'tentacles' },
+    { value: 'wing', label: 'wings' },
+    { value: 'branch', label: 'branches' },
   ], 'stick', {
-    random: (rng) => weighted(rng, [['none', 1], ['stub', 3], ['stick', 4], ['noodle', 3], ['mantis', 3]]),
+    random: (rng) => weighted(rng, [
+      ['none', 1], ['stub', 3], ['stick', 4], ['noodle', 3], ['mantis', 3],
+      ['tentacle', 2], ['wing', 2], ['branch', 2],
+    ]),
   }),
   select('handType', 'body', 'hands', [
     { value: 'none', label: 'none' },
@@ -409,8 +415,15 @@ export const PARAMS = [
     { value: 'claw', label: 'claws' },
     { value: 'pincer', label: 'pincer' },
     { value: 'club', label: 'club' },
+    { value: 'fist', label: 'fist' },
+    { value: 'spikes', label: 'spiked ball' },
+    { value: 'hook', label: 'hook' },
+    { value: 'fingers', label: 'fingers' },
   ], 'ball', {
-    random: (rng) => weighted(rng, [['none', 1], ['ball', 4], ['claw', 3], ['pincer', 2], ['club', 2]]),
+    random: (rng) => weighted(rng, [
+      ['none', 1], ['ball', 4], ['claw', 3], ['pincer', 2], ['club', 2],
+      ['fist', 2], ['spikes', 2], ['hook', 2], ['fingers', 3],
+    ]),
   }),
   range('armLen', 'body', 'arm length', 0.2, 1.5, 1.0),
   range('armLift', 'body', 'arm lift', -1, 1, 0, { random: (rng) => rng() * 2 - 1 }),
@@ -420,16 +433,24 @@ export const PARAMS = [
     { value: 'thick', label: 'thick' },
     { value: 'bent', label: 'bent' },
     { value: 'stump', label: 'stumps' },
+    { value: 'frog', label: 'frog' },
+    { value: 'peg', label: 'pegs' },
   ], 'stick', {
-    random: (rng) => weighted(rng, [['stick', 3], ['thick', 3], ['bent', 3], ['stump', 2]]),
+    random: (rng) => weighted(rng, [
+      ['stick', 3], ['thick', 3], ['bent', 3], ['stump', 2], ['frog', 2], ['peg', 2],
+    ]),
   }),
   select('footType', 'body', 'feet', [
     { value: 'ball', label: 'ball' },
     { value: 'none', label: 'none' },
     { value: 'splay', label: 'splayed' },
     { value: 'hoof', label: 'hoof' },
+    { value: 'claws', label: 'claws' },
+    { value: 'boot', label: 'blocks' },
   ], 'ball', {
-    random: (rng) => weighted(rng, [['ball', 3], ['none', 2], ['splay', 3], ['hoof', 2]]),
+    random: (rng) => weighted(rng, [
+      ['ball', 3], ['none', 2], ['splay', 3], ['hoof', 2], ['claws', 2], ['boot', 2],
+    ]),
   }),
   range('legLen', 'body', 'leg length', 0.2, 1.5, 0.8),
   range('stance', 'body', 'stance', 0, 1, 0.45),
