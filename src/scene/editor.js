@@ -136,7 +136,22 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
     if (!q.timer) q.timer = setTimeout(() => flush.current(), 120);
   };
   const push = (k, v) => { queue.current.params.set(k, v); arm(); };
-  const pushPlaced = (list) => { queue.current.placed = list; arm(); };
+  // Props into the Canvas lag a frame behind the panel (react-three-fiber
+  // schedules its own tree), so right after one of OUR writes paramsRef can
+  // still hold the pre-write list — basing the next write on it would undo the
+  // first. A short-lived shadow of the last list we wrote is authoritative.
+  const shadow = useRef({ list: null, at: 0 });
+  const placedNow = () => {
+    if (queue.current.placed) return queue.current.placed;
+    const sh = shadow.current;
+    if (sh.list && performance.now() - sh.at < 800) return sh.list;
+    return paramsRef.current.placed || [];
+  };
+  const pushPlaced = (list) => {
+    queue.current.placed = list;
+    shadow.current = { list, at: performance.now() };
+    arm();
+  };
 
   // a rebuild swaps every mesh and material: the old highlight clones can only
   // leak, and the old hover points into a disposed graph
@@ -323,7 +338,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
         return;
       }
       if (d.placedIndex !== undefined) {
-        const list = (paramsRef.current.placed || []).slice();
+        const list = placedNow().slice();
         const prev = list[d.placedIndex];
         if (!prev) return;
         if (d.kind === 'arm') {
@@ -375,8 +390,8 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       drag.current = null;
       if (d.placedIndex !== undefined && d.offSkull) {
         // let go off the head: the part comes off in your hand
-        const list = (paramsRef.current.placed || []).filter((_, i) => i !== d.placedIndex);
-        queue.current.placed = list;
+        const list = placedNow().filter((_, i) => i !== d.placedIndex);
+        pushPlaced(list);
         onNote?.('part removed');
       }
       flush.current();   // the final value lands immediately, not on the timer
@@ -395,6 +410,84 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       window.addEventListener('pointerup', endDrag);
       window.addEventListener('pointercancel', endDrag);
     };
+
+    /**
+     * A grabbed GROWN part hands its whole family over to the player: every
+     * eye (ear, horn, arm — or the one nose) becomes a placed entry at the
+     * seat it actually grew in, and the family's own generator is switched
+     * off, so nothing re-rolls and nothing jumps. From then on each part
+     * moves, resizes and removes on its own. Returns the placed index of the
+     * grabbed part, or -1 when this kind does not detach / no room is left.
+     */
+    const detachFamily = (found) => {
+      const built = builtRef.current;
+      const p = paramsRef.current;
+      if (!built) return -1;
+      const S = built.rig.scale;
+      const entries = [];
+      let grabbed = -1;
+      const take = (entry, isGrabbed) => {
+        if (isGrabbed) grabbed = entries.length;
+        entries.push(entry);
+      };
+
+      if (found.part === 'eye') {
+        for (const rec of built.rig.eyes) {
+          if (rec.pivot.userData.part !== 'eye') continue;   // already placed
+          const at = rec.pivot.userData.eyePlan;
+          if (!at) continue;
+          take({
+            k: 'eye', x: at.x, y: at.y, z: 0,
+            s: Math.min(2.5, Math.max(0.3, at.size / Math.max(1e-6, p.eyeSize * S))),
+            t: p.eyeStyle,
+          }, found.root === rec.pivot || found.root === rec.stalk);
+        }
+        if (!entries.length) return -1;
+        push('eyeCount', 0);
+      } else if (found.part === 'ear') {
+        for (const rec of built.rig.tendrils) {
+          const at = rec.pivot?.userData?.earAt;
+          if (!at || rec.pivot.userData.part !== 'ear') continue;
+          take({ k: 'ear', x: at.x, y: at.y, z: at.z, s: Math.min(2.5, Math.max(0.3, at.s)), t: p.earType },
+            found.root === rec.pivot);
+        }
+        if (!entries.length) return -1;
+        push('earType', 'none');
+      } else if (found.part === 'horn') {
+        built.group.traverse((o) => {
+          const at = o.userData?.hornDir;
+          if (!at || o.userData.part !== 'horn') return;
+          take({ k: 'horn', x: at.x, y: at.y, z: at.z, s: 1 }, found.root === o);
+        });
+        if (!entries.length) return -1;
+        push('horns', 0);
+      } else if (found.part === 'nose') {
+        const at = found.root.userData?.noseAt;
+        if (!at) return -1;
+        take({ k: 'nose', x: at.x, y: at.y, z: 0, s: 1, t: p.noseType }, true);
+        push('noseType', 'none');
+      } else if (found.part === 'arm') {
+        for (const sh of built.rig.shoulders) {
+          const at = sh.userData?.armAt;
+          if (!at || sh.userData.part !== 'arm') continue;
+          take({ k: 'arm', x: at.side, y: at.fy, z: 0, s: 1, t: p.armType }, found.root === sh);
+        }
+        if (!entries.length) return -1;
+        push('armType', 'none');
+      } else {
+        return -1;
+      }
+
+      const list = placedNow().concat(entries);
+      if (list.length > PLACED_MAX) { onNote?.('no room left to take these by hand'); return -1; }
+      pushPlaced(list);
+      flush.current();
+      onNote?.(`the ${found.part}${entries.length > 1 ? 's are' : ' is'} in your hands now — each moves on its own`);
+      return grabbed < 0 ? -1 : list.length - entries.length + grabbed;
+    };
+
+    // which grown kinds hand themselves over when grabbed
+    const DETACHABLE = { eye: 1, ear: 1, horn: 1, nose: 1, arm: 1 };
 
     const onDown = (e) => {
       if (e.button !== undefined && e.button !== 0) return;
@@ -434,9 +527,9 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
         if (!entry) return;   // missed the body part it roots on — orbit keeps the drag
         e.stopPropagation();
         e.preventDefault();
-        const list = (paramsRef.current.placed || []).slice(0, PLACED_MAX - 1);
+        const list = placedNow().slice(0, PLACED_MAX - 1);
         list.push(entry);
-        queue.current.placed = list;
+        pushPlaced(list);
         flush.current();
         onNote?.(`${aim.kind} planted — drag it to move, wheel to resize`);
         return;
@@ -447,7 +540,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       e.preventDefault();
       if (found.part === 'placed') {
         const idx = found.root.userData.placedIndex;
-        const kind = (paramsRef.current.placed || [])[idx]?.k;
+        const kind = placedNow()[idx]?.k;
         startDrag(e, {
           placedIndex: idx,
           kind,
@@ -455,6 +548,20 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
           offSkull: false,
         });
         return;
+      }
+      // a grown eye/ear/horn/nose/arm hands itself over on grab and the drag
+      // carries straight on as a placed-part move
+      if (DETACHABLE[found.part]) {
+        const idx = detachFamily(found);
+        if (idx >= 0) {
+          startDrag(e, {
+            placedIndex: idx,
+            kind: found.part,
+            torso: found.part === 'arm' ? torsoFrame() : null,
+            offSkull: false,
+          });
+          return;
+        }
       }
       const p = paramsRef.current;
       const base = {};
@@ -476,12 +583,23 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       e.preventDefault();
       if (found.part === 'placed') {
         const i = found.root.userData.placedIndex;
-        const list = (paramsRef.current.placed || []).slice();
+        const list = placedNow().slice();
         if (!list[i]) return;
         const s = Math.min(2.5, Math.max(0.3, list[i].s * (e.deltaY < 0 ? 1.12 : 0.9)));
         list[i] = { ...list[i], s };
         pushPlaced(list);
         return;
+      }
+      if (DETACHABLE[found.part]) {
+        const idx = detachFamily(found);
+        if (idx >= 0) {
+          const list = placedNow().slice();
+          if (!list[idx]) return;
+          const s = Math.min(2.5, Math.max(0.3, list[idx].s * (e.deltaY < 0 ? 1.12 : 0.9)));
+          list[idx] = { ...list[idx], s };
+          pushPlaced(list);
+          return;
+        }
       }
       const key = MAP[found.part].wheel;
       const def = key && PARAM_BY_KEY[key];
@@ -500,7 +618,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       e.stopPropagation();
       e.preventDefault();
       const i = found.root.userData.placedIndex;
-      queue.current.placed = (paramsRef.current.placed || []).filter((_, k) => k !== i);
+      pushPlaced(placedNow().filter((_, k) => k !== i));
       flush.current();
       onNote?.('part removed');
     };

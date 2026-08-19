@@ -28,7 +28,11 @@ export function addEars(parent, headMesh, p, mats, S, rng) {
     // out and a little up: on a skull this round, straight out of the side sits
     // too low to read as an ear
     const hit = surfaceByDir(p, side * 1, p.earY * 0.9, -0.15);
-    pivots.push(buildEar(parent, headMesh, p, mats, S, rng, kind, hit, size, side));
+    const rec = buildEar(parent, headMesh, p, mats, S, rng, kind, hit, size, side);
+    // where this ear rooted and how big it rolled, so the editor can hand it
+    // over to the player as a placed ear without it jumping
+    rec.pivot.userData.earAt = { x: side, y: p.earY * 0.9, z: -0.15, s: size / base };
+    pivots.push(rec);
   }
 
   seatEars(parent, headMesh, pivots, S);

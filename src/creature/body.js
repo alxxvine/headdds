@@ -338,6 +338,7 @@ export function buildBody(p, mats, headBox, rng) {
       stance: p.stance,
     });
     if (shoulder) {
+      shoulder.userData.armAt = { side, fy: 0.52 };
       group.add(shoulder);
       shoulders.push(shoulder);
     }

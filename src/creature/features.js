@@ -1636,6 +1636,10 @@ export function addMouth(parent, headMesh, p, mats, rng) {
 export function addNose(parent, headMesh, p, mats, rng) {
   const nose = new THREE.Group();
   nose.userData.part = 'nose';
+  if (p.noseType !== 'none') {
+    const L = faceLimits(p);
+    nose.userData.noseAt = { x: 0, y: L.noseY };
+  }
   buildNose(nose, headMesh, p, mats, rng);
   nose.traverse((o) => {
     if (o.isMesh && o.material?.side !== THREE.BackSide) o.userData.nose = true;
@@ -2193,7 +2197,8 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
     const side = i % 2 === 0 ? 1 : -1;
     const idx = Math.floor(i / 2);
     dir.set(side * (0.3 + idx * 0.28), 1 - idx * 0.22, -0.12 + idx * 0.1).normalize();
-    buildHorn(parent, headMesh, p, mats, rng, dir);
+    const frame = buildHorn(parent, headMesh, p, mats, rng, dir);
+    frame.userData.hornDir = { x: dir.x, y: dir.y, z: dir.z };
   }
 
   // hair of whatever kind lives in hair.js
