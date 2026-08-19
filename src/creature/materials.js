@@ -51,28 +51,32 @@ export function makeMaterials(p) {
     }),
     // hands, feet and ears: the same skin, further into the ink
     trim: toon(shade(p.skinColor, p.trim ?? 0.35)),
-    // A tooth stands in the mouth's own cavity, and that cavity is a decal
-    // pulled four units towards the camera so it can beat the lip. The teeth
-    // sit within a hair of it — their far side is bedded into the gum on
-    // purpose — so with no bias of their own the dark won patches of them and
-    // the row came out chopped: half a tooth here, none of the next one, a
-    // hard horizontal cut across the rest. They win against everything in the
-    // mouth by the same means the mouth wins against the face.
-    tooth: new THREE.MeshToonMaterial({
-      color: new THREE.Color('#f4ecd6'),
-      gradientMap,
-      polygonOffset: true,
-      polygonOffsetFactor: -7,
-      polygonOffsetUnits: -7,
-    }),
+    // Plain: the teeth are solid objects and are ordered against the skull by
+    // their own depth. What they are NOT ordered against is the mouth's two
+    // decals, which do not write depth at all — see `lip` and `maw` below, and
+    // the render order set on them in addMouth.
+    tooth: toon(new THREE.Color('#f4ecd6')),
     // The lip is a decal on the skin and wins its ordering against the skin on
     // DEPTH, not on height — so its geometric lift can stay small enough that
     // the band does not stand off the cheek and out through the outline. The
     // maw's bias is stronger again, so the dark interior still draws over the
     // lip that rings it.
+    // The lip and the cavity are DECALS: paint on the skull, not objects in
+    // front of it. They keep a depth bias so they beat the skin they are
+    // painted on, and they do not WRITE depth, so nothing drawn after them has
+    // to argue with them about who is in front — the order among the three
+    // things in a mouth is fixed by renderOrder in addMouth instead.
+    //
+    // Ordering by bias alone could not work: a polygon offset is scaled by the
+    // polygon's slope to the camera, so which of two nearly-coincident surfaces
+    // wins CHANGES AS THE CREATURE TURNS. Dead on, the teeth won and the row
+    // was whole; from three quarters the cavity's slope grew faster than the
+    // teeth's and the dark took bites out of them. "Зубы по-разному видно под
+    // разными ракурсами" is exactly what a slope-scaled tie-break looks like.
     lip: new THREE.MeshToonMaterial({
       color: new THREE.Color(p.lipColor),
       gradientMap,
+      depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
@@ -109,6 +113,7 @@ export function makeMaterials(p) {
     // quad. A depth bias buys the same ordering without moving anything.
     maw: new THREE.MeshBasicMaterial({
       color: shade(p.lipColor, 0.78),
+      depthWrite: false,
       polygonOffset: true,
       // Clear of the lip by more than one step: the two bands are eight
       // thousandths apart geometrically and their per-vertex lifts cross, so a

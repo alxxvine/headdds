@@ -1385,6 +1385,10 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     // horns and warts built from the same primitives
     tooth.userData.tooth = { len: len * tooth.scale.y, side };
     withOutline(stem, tooth, geo, p.outline * 0.45 * S, mats.outline);
+    // ...after both of the mouth's decals, tooth and ink alike. Within the one
+    // order they still sort by depth against each other and against the skull,
+    // which is what keeps a tooth behind a lip that overhangs it.
+    frame.traverse((o) => { o.renderOrder = 3; });
     // The jaw group hangs at the hinge, so its children are stored relative
     // to it — otherwise chewing would swing them around the head's origin.
     frame.position.sub(parent.position);
@@ -1472,6 +1476,11 @@ export function addMouth(parent, headMesh, p, mats, rng) {
     });
     const lipMesh = new THREE.Mesh(lips, mats.lip);
     lipMesh.userData.maw = true;
+    // The three things in a mouth are drawn in a fixed order — lip, then the
+    // dark, then the teeth — and the two decals do not write depth, so that
+    // order is the whole of the answer. Left to a depth bias it changed as the
+    // creature turned: see mats.lip.
+    lipMesh.renderOrder = 1;
     parent.add(lipMesh);
   }
 
@@ -1496,6 +1505,7 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   });
   const cavityMesh = new THREE.Mesh(cavity, mats.maw);
   cavityMesh.userData.maw = true;
+  cavityMesh.renderOrder = 2;
   parent.add(cavityMesh);
 
   // The cavity and the lips are decals glued to the skull — moving them would
