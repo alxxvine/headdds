@@ -19,18 +19,23 @@ const TYPE_SOURCE = { eye: 'eyeStyle', arm: 'armType', ear: 'earType', hair: 'ha
 // [caption, schema key]; steps come from the schema (ints move by 1).
 const FAMILY_ROWS = {
   tooth: [['top', 'teethTop'], ['low', 'teethBottom'], ['size', 'toothSize']],
-  mouth: [['width', 'mouthWidth'], ['open', 'mouthOpen'], ['top', 'teethTop'], ['low', 'teethBottom']],
+  mouth: [['width', 'mouthWidth'], ['open', 'mouthOpen'], ['shift', 'mouthX'], ['top', 'teethTop'], ['low', 'teethBottom']],
   hair: [['count', 'tendrils'], ['length', 'tendrilLen']],
   wart: [['count', 'warts'], ['size', 'wartSize']],
   horn: [['count', 'horns'], ['length', 'hornLen']],
-  eye: [['count', 'eyeCount'], ['size', 'eyeSize']],
+  eye: [['count', 'eyeCount'], ['size', 'eyeSize'], ['spread', 'eyeSpread'], ['height', 'eyeY']],
   ear: [['size', 'earSize'], ['height', 'earY']],
   nose: [['size', 'noseSize'], ['height', 'noseY']],
   aura: [['count', 'spores'], ['size', 'auraSize']],
+  skull: [['width', 'headWidth'], ['height', 'headHeight'], ['depth', 'headDepth'], ['boxy', 'boxiness'], ['jaw', 'jaw']],
+  torso: [['width', 'bodyWidth'], ['belly', 'belly'], ['chest', 'chestWide'], ['waist', 'waistWide'], ['hips', 'hipWide']],
+  leg: [['length', 'legLen'], ['stance', 'stance'], ['thick', 'limbThick']],
+  arm: [['length', 'armLen'], ['lift', 'armLift'], ['uneven', 'asymmetry'], ['thick', 'limbThick']],
 };
 const FAMILY_LABEL = {
   tooth: 'teeth', mouth: 'maw', hair: 'hair', wart: 'warts', horn: 'horns',
   eye: 'eyes', ear: 'ears', nose: 'nose', aura: 'aura',
+  skull: 'skull', torso: 'body', leg: 'legs', arm: 'arms',
 };
 
 export default function App() {
@@ -459,7 +464,23 @@ export default function App() {
                 </div>
               );
             })}
-            <div className="gz-hint">drag the part itself to take it in hand</div>
+            {selected.split && (
+              <button
+                type="button"
+                className="gz gz-split"
+                onClick={() => {
+                  const idx = selected.split();
+                  if (idx >= 0) { setSelected({ placed: idx }); flash('each one is on its own now'); }
+                  else flash('too many to take apart — clear some hand-placed parts');
+                }}
+                title="hand every one of these over: each will move, size and aim on its own"
+              >
+                ⛏ SPLIT — each on its own
+              </button>
+            )}
+            <div className="gz-hint">
+              {selected.split ? 'or drag the part itself to take it in hand' : 'tap empty space to finish'}
+            </div>
           </div>
         )}
         {edit && selected?.placed !== undefined && params.placed?.[selected.placed] && (

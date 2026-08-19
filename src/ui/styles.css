@@ -702,3 +702,13 @@ button, select, input { touch-action: manipulation; }
 @media (max-width: 720px) {
   .edit-exit { order: -1; flex: 1 1 100%; text-align: center; padding: 10px; }
 }
+
+.gz-split {
+  flex: none;
+  width: 100%;
+  padding: 8px 0;
+  color: var(--accent);
+  border-color: #3c5a45;
+  letter-spacing: 1px;
+  font-size: 11px;
+}
