@@ -333,3 +333,14 @@ input[type='range']::-moz-range-thumb {
   }
   .row { grid-template-columns: 84px 1fr 30px; }
 }
+
+/* the build stamp: quiet, at the very bottom, legible when you go looking */
+.build {
+  margin-top: 14px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  user-select: all;
+}

@@ -106,6 +106,10 @@ export default function Panel({
           </details>
         ))}
       </div>
+
+      {/* which build this page is — the short commit and when it was built,
+          so a stale deploy is visible from the phone it is stale on */}
+      <div className="build">build {typeof __BUILD__ === 'string' ? __BUILD__ : 'dev'}</div>
     </aside>
   );
 }
