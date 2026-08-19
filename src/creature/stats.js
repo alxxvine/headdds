@@ -133,6 +133,9 @@ const placedCount = (p, kind) => {
   return n;
 };
 
+/** True when the creature has any arm at all — grown or planted. */
+const hasArms = (p) => p.armType !== 'none' || placedCount(p, 'arm') > 0;
+
 /** Rough perceived brightness of a #rrggbb colour, 0..1. */
 function luminance(hex) {
   const n = parseInt(String(hex).slice(1), 16);
@@ -183,13 +186,13 @@ export const TRAITS = [
   {
     id: 'clawed',
     label: 'CLAWED',
-    when: (p) => p.armType !== 'none' && (p.handType === 'claw' || p.handType === 'pincer'),
+    when: (p) => hasArms(p) && (p.handType === 'claw' || p.handType === 'pincer'),
     mods: { bite: 8, dread: 5 },
   },
   {
     id: 'armless',
     label: 'ARMLESS',
-    when: (p) => p.armType === 'none',
+    when: (p) => !hasArms(p),
     mods: { speed: 6, vigor: -8, bite: -4 },
   },
   { id: 'stalkEyed', label: 'STALK-EYED', when: (p) => p.eyeStyle === 'stalk' && p.eyeCount + placedCount(p, 'eye') > 0, mods: { sight: 12, vigor: -5 } },
@@ -215,11 +218,17 @@ export const TRAITS = [
   { id: 'winged', label: 'WINGED', when: (p) => p.armType === 'wing', mods: { speed: 8, vigor: -4, dread: 3 } },
   { id: 'tentacled2', label: 'TENTACLE-ARMED', when: (p) => p.armType === 'tentacle', mods: { dread: 6, bite: 3, balance: -4 } },
   { id: 'branched', label: 'BRANCH-LIMBED', when: (p) => p.armType === 'branch', mods: { dread: 5, vigor: 3, speed: -3 } },
-  { id: 'hookHanded', label: 'HOOK-HANDED', when: (p) => p.handType === 'hook' && p.armType !== 'none', mods: { bite: 7, dread: 4 } },
-  { id: 'maceFisted', label: 'MACE-FISTED', when: (p) => p.handType === 'spikes' && p.armType !== 'none', mods: { bite: 8, vigor: 3, speed: -3 } },
+  { id: 'hookHanded', label: 'HOOK-HANDED', when: (p) => p.handType === 'hook' && hasArms(p), mods: { bite: 7, dread: 4 } },
+  { id: 'maceFisted', label: 'MACE-FISTED', when: (p) => p.handType === 'spikes' && hasArms(p), mods: { bite: 8, vigor: 3, speed: -3 } },
   { id: 'leaper', label: 'LEAPER', when: (p) => p.legType === 'frog', mods: { speed: 9, balance: -4 } },
   { id: 'pegLegged', label: 'PEG-LEGGED', when: (p) => p.legType === 'peg', mods: { dread: 4, balance: -8, speed: -3 } },
   { id: 'taloned', label: 'TALONED', when: (p) => p.footType === 'claws', mods: { dread: 5, bite: 4 } },
+  {
+    id: 'manyArmed',
+    label: 'MANY-ARMED',
+    when: (p) => (p.armType === 'none' ? 0 : 2) + placedCount(p, 'arm') >= 4,
+    mods: { vigor: 6, dread: 4, balance: -4 },
+  },
 ];
 
 /**
@@ -249,7 +258,7 @@ export function computeStats(p) {
     bite:
       (0.4 * teeth + 0.24 * nk(p, 'toothSize') + 0.22 * nk(p, 'mouthWidth') + 0.14 * nk(p, 'toothJag')) *
       (p.teethTop + p.teethBottom > 0 ? 1 : 0.3) +
-      from(HAND_BITE, p.handType) * (p.armType === 'none' ? 0 : 1) +
+      from(HAND_BITE, p.handType) * (hasArms(p) ? 1 : 0) +
       from(TOOTH_BITE, p.toothType) * (p.teethTop + p.teethBottom > 0 ? 1 : 0),
     speed:
       0.44 * nk(p, 'legLen') +

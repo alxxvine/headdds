@@ -18,6 +18,7 @@ export function toDiff(params) {
   if (params.placed?.length) {
     out.placed = params.placed.map((it) => ({
       k: it.k, x: round(it.x), y: round(it.y), z: round(it.z || 0), s: round(it.s),
+      ...(it.t ? { t: it.t } : {}),
     }));
   }
   return out;

@@ -487,8 +487,14 @@ export const PARAM_BY_KEY = Object.fromEntries(PARAMS.map((p) => [p.key, p]));
 // Parts the player put on the skull by hand (EDIT mode). Not a PARAMS entry —
 // it is a list, not a slider — but it lives in the same parameter set, rides
 // the same share links, and RESET clears it with everything else.
-export const PLACED_KINDS = ['eye', 'horn', 'wart'];
+// An entry may carry its own type `t` (a placed eye can be a compound eye on a
+// face full of balls; a placed arm names which kind of arm it is).
+export const PLACED_KINDS = ['eye', 'horn', 'wart', 'arm'];
 export const PLACED_MAX = 24;
+export const PLACED_TYPES = {
+  eye: () => PARAM_BY_KEY.eyeStyle.options.map((o) => o.value),
+  arm: () => PARAM_BY_KEY.armType.options.map((o) => o.value).filter((v) => v !== 'none'),
+};
 
 export const DEFAULTS = Object.freeze({
   seed: 1337,
@@ -513,12 +519,14 @@ export function sanitize(input) {
     };
     out.placed = input.placed.slice(0, PLACED_MAX).flatMap((it) => {
       if (!it || !PLACED_KINDS.includes(it.k)) return [];
+      const t = typeof it.t === 'string' && PLACED_TYPES[it.k]?.().includes(it.t) ? it.t : undefined;
       return [{
         k: it.k,
         x: num(it.x, 4),
         y: num(it.y, 4),
         z: num(it.z, 4),
         s: Math.min(2.5, Math.max(0.3, num(it.s, 2.5, 1) || 1)),
+        ...(t ? { t } : {}),
       }];
     });
   }

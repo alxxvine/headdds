@@ -2006,7 +2006,9 @@ export function addPlaced(parent, headMesh, p, mats) {
     const rng = makeRng((p.seed >>> 0) ^ 0x706c6163 ^ Math.imul(i + 1, 0x9e3779b9));
     let roots = [];
     if (it.k === 'eye') {
-      const rec = buildEye(parent, headMesh, p, mats, rng, {
+      // a placed eye may wear its own style: a compound eye on a face of balls
+      const pEye = it.t && it.t !== p.eyeStyle ? { ...p, eyeStyle: it.t } : p;
+      const rec = buildEye(parent, headMesh, pEye, mats, rng, {
         x: it.x, y: it.y,
         size: p.eyeSize * S * it.s,
         bulge: p.eyeBulge,
