@@ -703,6 +703,69 @@ button, select, input { touch-action: manipulation; }
   .edit-exit { order: -1; flex: 1 1 100%; text-align: center; padding: 10px; }
 }
 
+/* -------------------------------------------------------------- walk mode */
+
+/* the micro-world takes the whole screen on every device: the panel has
+   nothing to say about walking, and the same overlay trick as mobile EDIT
+   means leaving WALK just drops the overlay — no layout to lose */
+.app.walk-on .viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+}
+
+.walk-toggle { left: 86px; }
+.app.walk-on .walk-toggle {
+  left: 10px;
+  color: var(--accent);
+  border-color: #3c5a45;
+}
+
+.walk-hint {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  padding: 5px 9px;
+  background: #1c1926cc;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.stick {
+  position: absolute;
+  left: 18px;
+  bottom: 26px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: #1c192666;
+  z-index: 5;
+  touch-action: none;
+  display: none;
+}
+
+.stick-knob {
+  position: absolute;
+  left: 36px;
+  top: 36px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #4a416288;
+  border: 1px solid var(--line);
+  pointer-events: none;
+}
+
+/* the stick is for thumbs; a mouse has WASD */
+@media (pointer: coarse) {
+  .stick { display: block; }
+  .walk-hint { display: none; }
+}
+
 .gz-split {
   flex: none;
   width: 100%;

@@ -162,7 +162,7 @@ function Creature({ params, onBuilt, idle, poke, onMood, sound, viewReset }) {
 // divided by 4 would render the creature into just 103 pixels.
 const MIN_BUFFER_WIDTH = 190;
 
-function PixelScale({ pixelSize, pixelate }) {
+export function PixelScale({ pixelSize, pixelate }) {
   const width = useThree((s) => s.size.width);
   const setDpr = useThree((s) => s.setDpr);
 
@@ -183,7 +183,7 @@ function PixelScale({ pixelSize, pixelate }) {
   return null;
 }
 
-function Controls() {
+export function Controls({ minDistance = 0, maxDistance = Infinity, maxPolar = Math.PI - 0.25 }) {
   const { camera, gl, set } = useThree();
   const ref = useRef();
 
@@ -194,14 +194,16 @@ function Controls() {
     c.dampingFactor = 0.12;
     c.rotateSpeed = 0.85;
     c.minPolarAngle = 0.25;
-    c.maxPolarAngle = Math.PI - 0.25;
+    c.maxPolarAngle = maxPolar;
+    c.minDistance = minDistance;
+    c.maxDistance = maxDistance;
     ref.current = c;
     set({ controls: c });
     return () => {
       c.dispose();
       set({ controls: null });
     };
-  }, [camera, gl, set]);
+  }, [camera, gl, set, minDistance, maxDistance, maxPolar]);
 
   useFrame(() => ref.current?.update());
   return null;
