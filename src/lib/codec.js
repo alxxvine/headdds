@@ -13,6 +13,13 @@ export function toDiff(params) {
     if (v === DEFAULTS[p.key]) continue;
     out[p.key] = typeof v === 'number' ? round(v) : v;
   }
+  // hand-placed parts ride the link too; an empty list is the default and
+  // stays out of it, so links from before EDIT mode decode unchanged
+  if (params.placed?.length) {
+    out.placed = params.placed.map((it) => ({
+      k: it.k, x: round(it.x), y: round(it.y), z: round(it.z || 0), s: round(it.s),
+    }));
+  }
   return out;
 }
 

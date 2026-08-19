@@ -20,6 +20,7 @@ export default function App() {
   const [favs, setFavs] = useState(loadFavs);
   const [viewReset, setViewReset] = useState(0);
   const [edit, setEdit] = useState(false);
+  const [placeKind, setPlaceKind] = useState(null);
   // Off until asked for: a browser will not start an AudioContext without a
   // gesture anyway, and a page that greets you with a roar is one you close.
   const sound = useMemo(() => createSound(), []);
@@ -118,11 +119,26 @@ export default function App() {
 
   const onToggleEdit = useCallback(() => {
     sound.ui('tap');
+    setPlaceKind(null);
     setEdit((v) => {
       flash(v ? 'edit mode off' : 'EDIT: drag a part to reshape it, wheel to resize');
       return !v;
     });
   }, [sound, flash]);
+
+  // the placement toolbar: arm a kind, then every click on the skull plants one
+  const onPickPlace = useCallback((kind) => {
+    sound.ui('tap');
+    setPlaceKind((cur) => {
+      const next = cur === kind ? null : kind;
+      flash(next ? `click the head to plant a ${next} — right-click or drag off to remove` : 'planting off');
+      return next;
+    });
+  }, [sound, flash]);
+
+  const onPlaced = useCallback((list) => {
+    setParams((prev) => ({ ...prev, placed: list }));
+  }, []);
 
   // a tile dragged out of the parts catalog and dropped on the creature
   const onDropPart = useCallback((e) => {
@@ -156,6 +172,9 @@ export default function App() {
           edit={edit}
           editParams={params}
           onParam={setParam}
+          onPlaced={onPlaced}
+          placeKind={placeKind}
+          onNote={flash}
         />
         <button
           type="button"
@@ -165,6 +184,31 @@ export default function App() {
         >
           EDIT
         </button>
+        {edit && (
+          <div className="edit-tools">
+            {['eye', 'horn', 'wart'].map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                className={placeKind === kind ? 'edit-tool on' : 'edit-tool'}
+                onClick={() => onPickPlace(kind)}
+                title={`arm, then click the head to plant a ${kind} there`}
+              >
+                + {kind.toUpperCase()}
+              </button>
+            ))}
+            {params.placed?.length > 0 && (
+              <button
+                type="button"
+                className="edit-tool"
+                onClick={() => { onPlaced([]); flash('planted parts cleared'); }}
+                title="take every hand-planted part off"
+              >
+                × ALL ({params.placed.length})
+              </button>
+            )}
+          </div>
+        )}
       </div>
       <Panel
         params={params}
