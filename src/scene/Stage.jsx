@@ -210,7 +210,7 @@ function Controls() {
 export default function Stage({
   params, onBuilt, idle = true, onMood, sound, viewReset = 0,
   edit = false, editParams = null, onParam = null, onPlaced = null, onSculpt = null,
-  placeKind = null, placeRef = null, onNote = null,
+  onSelect = null, placeKind = null, placeRef = null, onNote = null,
 }) {
   const pixelate = params.pixelate !== 'off';
   const poke = useRef(() => {});
@@ -260,6 +260,7 @@ export default function Stage({
           onParam={onParam}
           onPlaced={onPlaced}
           onSculpt={onSculpt}
+          onSelect={onSelect}
           placeKind={placeKind}
           placeRef={placeRef}
           onNote={onNote}

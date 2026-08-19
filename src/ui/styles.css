@@ -585,3 +585,83 @@ input[type='range']::-moz-range-thumb {
   .edit-style { order: 2; flex: 1 1 100%; max-width: none; padding: 8px; }
   .edit-toggle { padding: 8px 16px; }
 }
+
+/* --------------------------------------------------------------- gizmo */
+
+.gizmo {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  background: #15111dee;
+  border: 1px solid #3c5a45;
+  border-radius: 4px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 196px;
+}
+
+.gizmo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.gz-x {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: #f0564a;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+.gz-row { display: flex; align-items: center; gap: 5px; }
+
+.gz-cap {
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  width: 34px;
+  flex: 0 0 auto;
+}
+
+.gz {
+  flex: 1 1 auto;
+  min-width: 34px;
+  padding: 7px 0;
+  background: #1c1926;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.gz:active { border-color: var(--accent); color: var(--accent); }
+
+.gz-hint { color: var(--dim); font-size: 10px; letter-spacing: 0.5px; }
+
+/* EDIT on a phone clears the desk: the panel slides away and the stage takes
+   the whole screen — the gizmo and the toolbar are the only UI left */
+@media (max-width: 720px) {
+  .app.edit-on .panel { display: none; }
+  .app.edit-on .viewport { flex: 1 1 100%; }
+  .gizmo { left: 8px; right: 8px; bottom: 8px; min-width: 0; }
+  .gz { padding: 10px 0; }
+}

@@ -535,6 +535,9 @@ export function sanitize(input) {
     out.placed = input.placed.slice(0, PLACED_MAX).flatMap((it) => {
       if (!it || !PLACED_KINDS.includes(it.k)) return [];
       const t = typeof it.t === 'string' && PLACED_TYPES[it.k]?.().includes(it.t) ? it.t : undefined;
+      // aim tilts, set from the editor's gizmo: a leans the part fore/aft,
+      // b leans it sideways, both about its own seat point
+      const a = num(it.a, 1.3), b = num(it.b, 1.3);
       return [{
         k: it.k,
         x: num(it.x, 4),
@@ -542,6 +545,8 @@ export function sanitize(input) {
         z: num(it.z, 4),
         s: Math.min(2.5, Math.max(0.3, num(it.s, 2.5, 1) || 1)),
         ...(t ? { t } : {}),
+        ...(a ? { a } : {}),
+        ...(b ? { b } : {}),
       }];
     });
   }

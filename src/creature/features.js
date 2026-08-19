@@ -2063,6 +2063,17 @@ export function addPlaced(parent, headMesh, p, mats) {
       if (dir.lengthSq() < 1e-6) dir.set(0, 1, 0);
       roots = [buildWart(parent, headMesh, p, mats, rng, dir.normalize(), it.s)];
     }
+    // The gizmo's aim tilts, about the part's own seat: the pivots all sit at
+    // their hit point, so a rotation leans the part without moving its root.
+    // Only the base of a stalk eye turns (the ball rides inside it), and only
+    // kinds whose pivot is at the seat — a nose group's origin is the skull's
+    // centre, an arm has its own fitted pose.
+    const tiltable = it.k === 'eye' || it.k === 'ear' || it.k === 'hair' || it.k === 'horn' || it.k === 'wart';
+    if (tiltable && (it.a || it.b) && roots.length) {
+      const base = roots[roots.length - 1];
+      base.rotateX(it.a || 0);
+      base.rotateY(it.b || 0);
+    }
     for (const root of roots) {
       root.userData.part = 'placed';
       root.userData.placedIndex = i;
