@@ -5,7 +5,33 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildCreature } from '../creature/build.js';
 import { createAnimator } from './animator.js';
 
-function Creature({ params, onBuilt, idle, poke, onMood, sound }) {
+/**
+ * Point the camera at the creature. `stock` ignores whatever direction the
+ * player has dragged the view to and uses the front-on framing the app opens
+ * with; otherwise the current direction is kept so a slider drag does not
+ * steal the rotation.
+ */
+function aimAt(camera, controls, built, stock) {
+  const h = built.fitSize.y;
+  const target = new THREE.Vector3(0, built.fitCenter.y, 0);
+  const span = Math.max(h, built.fitSize.x * 1.15, built.fitSize.z * 1.15);
+  const dist = (span * 0.5) / Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * 1.45;
+
+  const dir = stock
+    ? new THREE.Vector3(0, 0.12, 1).normalize()
+    : camera.position.clone().sub(controls?.target ?? new THREE.Vector3()).normalize();
+  if (!Number.isFinite(dir.x) || dir.lengthSq() < 0.1) dir.set(0, 0.12, 1).normalize();
+  camera.position.copy(target).addScaledVector(dir, dist);
+  camera.near = dist * 0.02;
+  camera.far = dist * 12;
+  camera.updateProjectionMatrix();
+  if (controls) {
+    controls.target.copy(target);
+    controls.update();
+  }
+}
+
+function Creature({ params, onBuilt, idle, poke, onMood, sound, viewReset }) {
   const { camera, controls } = useThree();
   const lastFit = useRef(0);
   const fitted = useRef(false);
@@ -27,21 +53,20 @@ function Creature({ params, onBuilt, idle, poke, onMood, sound }) {
     fitted.current = true;
     lastFit.current = h;
 
-    const target = new THREE.Vector3(0, built.fitCenter.y, 0);
-    const span = Math.max(h, built.fitSize.x * 1.15, built.fitSize.z * 1.15);
-    const dist = (span * 0.5) / Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * 1.45;
-
-    const dir = camera.position.clone().sub(controls?.target ?? new THREE.Vector3()).normalize();
-    if (!Number.isFinite(dir.x) || dir.lengthSq() < 0.1) dir.set(0, 0.12, 1).normalize();
-    camera.position.copy(target).addScaledVector(dir, dist);
-    camera.near = dist * 0.02;
-    camera.far = dist * 12;
-    camera.updateProjectionMatrix();
-    if (controls) {
-      controls.target.copy(target);
-      controls.update();
-    }
+    aimAt(camera, controls, built, false);
   }, [built, camera, controls, onBuilt]);
+
+  // RESET returns the VIEW to standard as well as the sliders: whatever the
+  // player zoomed and spun, the camera goes back to the stock framing. The
+  // counter only ever increments, so the same button works twice in a row.
+  const lastReset = useRef(viewReset);
+  useEffect(() => {
+    if (viewReset === lastReset.current) return;
+    lastReset.current = viewReset;
+    if (!controls) return;
+    aimAt(camera, controls, built, true);
+    lastFit.current = built.fitSize.y;
+  }, [viewReset, built, camera, controls]);
 
   // The animator lives outside the built creature: buildCreature() throws the
   // whole mesh away on every slider move, and the pose must not restart with it.
@@ -181,7 +206,7 @@ function Controls() {
   return null;
 }
 
-export default function Stage({ params, onBuilt, idle = true, onMood, sound }) {
+export default function Stage({ params, onBuilt, idle = true, onMood, sound, viewReset = 0 }) {
   const pixelate = params.pixelate !== 'off';
   const poke = useRef(() => {});
   const down = useRef({ x: 0, y: 0 });
@@ -209,7 +234,7 @@ export default function Stage({ params, onBuilt, idle = true, onMood, sound }) {
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
       <PixelScale pixelSize={params.pixelSize} pixelate={pixelate} />
       <Controls />
-      <Creature params={params} onBuilt={onBuilt} idle={idle} poke={poke} onMood={onMood} sound={sound} />
+      <Creature params={params} onBuilt={onBuilt} idle={idle} poke={poke} onMood={onMood} sound={sound} viewReset={viewReset} />
     </Canvas>
   );
 }
