@@ -270,6 +270,8 @@ const _fu = new THREE.Vector3();
 const _fv = new THREE.Vector3();
 const _fq = new THREE.Vector3();
 const _fx = new THREE.Vector3();
+const _fp = new THREE.Vector3();
+const _fw = new THREE.Vector3();
 
 const HEAD_R = new WeakMap();
 
@@ -1067,7 +1069,69 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       }
     });
     const cap = headR * 0.32;
-    if (far > cap) pivot.position.addScaledVector(hit.normal, -Math.min(far - cap, size * 1.2));
+    if (far > cap) {
+      pivot.position.addScaledVector(hit.normal, -Math.min(far - cap, size * 1.2));
+      far = cap;
+    }
+
+    // ...and the OPPOSITE failure, which sinking makes worse: a lump of the
+    // skull standing through the ball's front cap. The eye is seated on the
+    // skin at its seat point, and on a lumpy skull the ridge next door stands
+    // higher — high enough to cut a wedge of bare face through the middle of
+    // the eyeball, which is what the art director photographed. A third of
+    // all creatures carried one deeper than a twentieth of a head radius.
+    //
+    // So the front cap of the ball that was BUILT — the part that must be
+    // visible for the thing to read as an eye at all — is measured against
+    // the drawn mesh, radially, and the whole eye is pushed back out along
+    // its seat normal by the worst penetration. Never past the proudness cap
+    // above: the two corrections share one budget, and the cap keeps winning.
+    for (let pass = 0; pass < 3; pass++) {
+      // Within the proudness cap first; the later passes may borrow a little
+      // past it, because a giant eye on a small head has no position that
+      // satisfies both — and a wedge of face through the white is the worse
+      // of the two defects by a distance.
+      const room = cap + (pass ? headR * 0.07 : 0) - far;
+      if (room <= 1e-4) continue;   // no budget THIS pass — the next borrows
+      pivot.updateMatrixWorld(true);
+      _fp.copy(pivot.getWorldPosition(_fw));
+      if (_fp.lengthSq() < 1e-9) break;
+      const pdir = _fp.clone().normalize();
+      let pen = 0;
+      pivot.traverse((o) => {
+        if (!o.isMesh || o.material?.side === THREE.BackSide || !o.material.emissive) return;
+        const pos = o.geometry.attributes.position;
+        const step = Math.max(1, Math.floor(pos.count / 48));
+        for (let k = 0; k < pos.count; k += step) {
+          _fx.fromBufferAttribute(pos, k).applyMatrix4(o.matrixWorld);
+          if (_fx.lengthSq() < 1e-9) continue;
+          // the front cap only: within ~30 degrees of the eye's own radial.
+          // The rim of an embedded ball sits under the skin BY DESIGN.
+          if (_fx.length() < _fp.length()) continue;
+          _fd.copy(_fx).normalize();
+          if (_fd.dot(pdir) < 0.87) continue;
+          surfaceRadial(headMesh, _fx, _thit, p);
+          pen = Math.max(pen, _thit.point.length() - _fx.length());
+        }
+      });
+      if (pen <= 0.012) break;
+      let out = Math.min(pen + 0.01, room);
+      // ...and never past the skull's own OUTLINE. The push runs along the
+      // seat normal, and on a temple that normal leans sideways: a cluster
+      // shoved out there left the silhouette by three of its own radii —
+      // the oldest bug in this file's ledger, reopened by its newest fix.
+      for (let g = 0; g < 6 && out > 1e-4; g++) {
+        const nx = _fp.x + hit.normal.x * out;
+        const ny = _fp.y + hit.normal.y * out;
+        const half = silhouetteAt(p, ny);
+        if (half <= 0 || Math.abs(nx) + size * 0.6 <= half) break;
+        out *= 0.65;
+        if (g === 5) out = 0;
+      }
+      if (out <= 1e-4) break;
+      pivot.position.addScaledVector(hit.normal, out);
+      far += out;
+    }
 
     parent.add(pivot);
     eyes.push({ pivot, stalk, kind: p.eyeStyle, base: pivot.position.clone(), size });
