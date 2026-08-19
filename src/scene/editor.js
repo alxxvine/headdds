@@ -429,8 +429,16 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       // a grab that never travelled is a TAP: it selects the part, and the
       // gizmo takes over from there
       if (d.placedIndex !== undefined && !d.moved && !d.offSkull) onSelect?.({ placed: d.placedIndex });
-      // a tap on a grown part opens its family remote instead of grabbing it
-      if (d.placedIndex === undefined && !d.moved && d.familyPart) onSelect?.({ family: d.familyPart });
+      // a tap on a grown part opens its family remote instead of grabbing it;
+      // detachable families carry a split() the remote can call to hand the
+      // whole family over on the spot
+      if (d.placedIndex === undefined && !d.moved && d.familyPart) {
+        const pd = d.pendingDetach;
+        onSelect?.({
+          family: d.familyPart,
+          split: pd ? () => splitFamily(pd) : undefined,
+        });
+      }
       if (d.placedIndex !== undefined && d.offSkull) {
         // let go off the head: the part comes off in your hand
         const list = placedNow().filter((_, i) => i !== d.placedIndex);
@@ -562,7 +570,24 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
 
     // grown parts whose TAP opens the family remote (counts and sizes) —
     // a drag still hands the family over / drives the mapped params
-    const FAMILY = { tooth: 1, wart: 1, aura: 1, mouth: 1, eye: 1, ear: 1, horn: 1, hair: 1, nose: 1 };
+    const FAMILY = {
+      tooth: 1, wart: 1, aura: 1, mouth: 1, eye: 1, ear: 1, horn: 1, hair: 1, nose: 1,
+      skull: 1, torso: 1, leg: 1, arm: 1,
+    };
+
+    /**
+     * The remote's SPLIT button: hand the family over even without a drag.
+     * Returns the placed index to select — the tapped part when it is still
+     * identifiable, otherwise the family's first new entry — or -1 when
+     * nothing could be handed over (a fur coat past the cap).
+     */
+    const splitFamily = (found) => {
+      const before = placedNow().length;
+      const idx = detachFamily(found);
+      const after = placedNow().length;
+      if (after === before) return -1;
+      return idx >= 0 ? idx : before;
+    };
 
     const onDown = (e) => {
       if (e.button !== undefined && e.button !== 0) return;
