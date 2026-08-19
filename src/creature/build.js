@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { makeRng } from '../lib/noise.js';
 import { makeHeadGeometry, headPoint } from './head.js';
 import { makeMaterials, withOutline } from './materials.js';
-import { addEyes, addMouth, addNose, addGrowths, addScars, headUnit } from './features.js';
+import { addEyes, addMouth, addNose, addGrowths, addScars, pruneWarts, headUnit } from './features.js';
 import { buildBody } from './body.js';
 import { sanitize } from './schema.js';
 import { computeStats } from './stats.js';
@@ -78,6 +78,8 @@ export function buildCreature(rawParams) {
   addNose(head, headMesh, p, mats, rng);
   const eyes = addEyes(head, headMesh, p, mats, rng);
   const { jaw, maw } = addMouth(head, headMesh, p, mats, rng);
+  // now that the eyes and the nose exist, bury the warts that broke into them
+  pruneWarts(head, headMesh, p, eyes);
   addScars(head, headMesh, p, mats, rng, maw);
   // ...and while the head is still in its own coordinates, before it is hung
   // on the neck, so the skin can be asked about directly.

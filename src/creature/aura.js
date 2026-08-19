@@ -38,7 +38,11 @@ const REACH = new WeakMap();
 function crownReach(p, down) {
   let byAngle = REACH.get(p);
   if (!byAngle) { byAngle = new Map(); REACH.set(p, byAngle); }
-  const key = Math.round(down * 1000);
+  // Buckets of ~0.9deg were fine when one kind asked; now every mote of every
+  // kind asks, and at a thousand buckets the cache never hits — ten thousand
+  // headPoint calls per aura, measured as a third of the whole build. A
+  // 1.4deg bucket is well inside the margin the push adds anyway.
+  const key = Math.round(down * 40);
   let r = byAngle.get(key);
   if (r !== undefined) return r;
   r = 0;
@@ -137,14 +141,25 @@ export function addAura(p, mats, rng, S, top) {
       // inside the head, which the animator then spun: motes revolving through
       // a skull. Each one is pushed out until it clears the widest the head gets
       // anywhere round its own latitude, because the spin will take it there.
-      if (_v.lengthSq() > 1e-9) {
-        const need = crownReach(p, Math.acos(Math.max(-1, Math.min(1, _v.y / _v.length())))) * 1.06;
-        if (_v.length() < need) _v.setLength(need);
-      }
     } else {
       // spores: the original drifting cloud above the crown
       const r = Math.sqrt(rng()) * (0.08 + t * 0.75) * S;
       _v.set(Math.cos(a) * r, top + t * S * 0.6, Math.sin(a) * r);
+    }
+
+    // EVERY kind clears the skull, not only the swarm — and by the mote's own
+    // size, not by its centre. A halo shard is a cone almost two mote-sizes
+    // long, and seating its centre on the reach left one in seven of them cut
+    // in half by the crown, which reads as a lump on the head rather than as
+    // something floating over it. The push is along the mote's own radial, so
+    // a ring stays a ring and a cloud stays a cloud, only inflated where the
+    // skull is; and it uses the widest the head gets around that latitude,
+    // because the animator will spin the whole group through it.
+    if (_v.lengthSq() > 1e-9) {
+      const half = kind === 'halo' ? size * 1.7 * scale : size * 1.2 * scale;
+      const down = Math.acos(Math.max(-1, Math.min(1, _v.y / _v.length())));
+      const need = crownReach(p, down) * (kind === 'swarm' ? 1.06 : 1.0) + half;
+      if (_v.length() < need) _v.setLength(need);
     }
 
     _m4.compose(_v, _q, _s);

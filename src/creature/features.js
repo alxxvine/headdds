@@ -919,8 +919,11 @@ export function addEyes(parent, headMesh, p, mats, rng) {
       }
     } else if (p.eyeStyle === 'visor') {
       // one wide band across the face instead of an eye
+      // The widest, flattest patch any eye makes, and the one that kept
+      // leaking: its short axis is so small that the lift cap measured off it
+      // could not clear a lump. A taller offset is the whole cure.
       const band = decalGeometry(headMesh, p, {
-        cx: x, cy: y, rx: size * 2.4, ry: size * 0.62, offset: 0.01, rings: 2, segs: 20,
+        cx: x, cy: y, rx: size * 2.4, ry: size * 0.62, offset: 0.024, rings: 3, segs: 24,
       });
       parent.add(new THREE.Mesh(band, mats.socket));
       orientTo(pivot, hit.point.clone().addScaledVector(hit.normal, seatOut(p, hit, size * 0.12, size)), hit.normal);
@@ -1393,7 +1396,7 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     // buried root costs nothing; a rod past the cheek costs the creature.
     const rest = proud() - outCap;
     if (rest > 0) {
-      frame.position.addScaledVector(hit.normal, -Math.min(rest, len * 0.5));
+      frame.position.addScaledVector(hit.normal, -Math.min(rest, len * 0.75));
       frame.updateMatrix();
     }
     // tagged so tools/face-sweep.mjs can pick the teeth out of a head full of
@@ -1852,6 +1855,62 @@ function randomDir(rng, v = new THREE.Vector3()) {
   return v.set(Math.cos(a) * r, z, Math.sin(a) * r);
 }
 
+/**
+ * Warts are planted before the eyes and the nose exist — moving their builder
+ * after them would shift the rng stream and change every creature — so the
+ * dodge runs the other way round: once the face is on, any wart that broke
+ * into an eyeball or the nose is buried under the skin, where the skull's own
+ * depth hides it. A fifth of wart-carrying creatures had one in an eye.
+ */
+export function pruneWarts(parent, headMesh, p, eyes) {
+  let inst = null;
+  parent.traverse((o) => { if (!inst && o.userData.warts) inst = o; });
+  if (!inst) return;
+  parent.updateMatrixWorld(true);
+
+  // everything a wart may not break into: eyeballs, and the built nose
+  const balls = eyes.map((e) => ({
+    c: e.pivot.getWorldPosition(new THREE.Vector3()),
+    r: e.size * 1.25,
+  }));
+  parent.traverse((o) => {
+    if (!o.isMesh || !o.userData.nose || o.material?.side === THREE.BackSide) return;
+    if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+    const bs = o.geometry.boundingSphere;
+    const sc = o.getWorldScale(_pw);
+    balls.push({
+      c: bs.center.clone().applyMatrix4(o.matrixWorld),
+      r: bs.radius * Math.max(Math.abs(sc.x), Math.abs(sc.y), Math.abs(sc.z)),
+    });
+  });
+  if (!balls.length) return;
+
+  const wartR = p.wartSize * headUnit(p);
+  const m4 = new THREE.Matrix4();
+  const pos = new THREE.Vector3();
+  const q = new THREE.Quaternion();
+  const scl = new THREE.Vector3();
+  let touched = false;
+  for (let i = 0; i < inst.count; i++) {
+    inst.getMatrixAt(i, m4);
+    m4.decompose(pos, q, scl);
+    const r = wartR * Math.max(scl.x, scl.y, scl.z);
+    const bad = balls.some((b) => pos.distanceTo(b.c) < b.r + r * 0.85);
+    if (!bad || pos.lengthSq() < 1e-9) continue;
+    // bury it along its own radial: the skin at that direction, minus the
+    // wart's whole size — gone without renumbering the other thirty-nine
+    surfaceRadial(headMesh, pos, _phit, p);
+    pos.setLength(Math.max(0.05, _phit.point.length() - r * 1.6));
+    m4.compose(pos, q, scl);
+    inst.setMatrixAt(i, m4);
+    touched = true;
+  }
+  if (touched) inst.instanceMatrix.needsUpdate = true;
+}
+
+const _pw = new THREE.Vector3();
+const _phit = { point: new THREE.Vector3(), normal: new THREE.Vector3() };
+
 export function addGrowths(parent, headMesh, p, mats, rng) {
   const S = headUnit(p);
   const dir = new THREE.Vector3();
@@ -1889,6 +1948,8 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
       inst.setMatrixAt(i, m4);
     }
     inst.instanceMatrix.needsUpdate = true;
+    // so pruneWarts can find this mesh once the eyes and the nose exist
+    inst.userData.warts = true;
     parent.add(inst);
   }
 
@@ -1924,6 +1985,31 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
     horn.rotation.x = Math.PI / 2;
     horn.position.set(0, 0, len * 0.42);
     withOutline(frame, horn, geo, p.outline * 0.6 * S, mats.outline);
+    // The aim above deliberately leans the horn away from the skin's normal —
+    // and a leaning cone lifts the far side of its base rim off the skull by
+    // the lean times the rim's radius. Nothing ever looked at the rim: over a
+    // third of horned creatures had daylight under a horn, up to a quarter of
+    // a head radius on the steep flanks where the lean is biggest. So the rim
+    // of what was BUILT is measured against the drawn skull, radially, and the
+    // whole horn is sunk along its own aim until the rim is back under the
+    // skin. Twice, because sinking along the aim closes a radial gap only at
+    // the cosine between them.
+    horn.updateMatrix();
+    const rimY = -len * 0.38;
+    for (let pass = 0; pass < 3; pass++) {
+      frame.updateMatrix();
+      let gap = 0;
+      const hp = geo.attributes.position;
+      for (let k = 0; k < hp.count; k++) {
+        if (hp.getY(k) > rimY) continue;   // only the base rim
+        _fx.fromBufferAttribute(hp, k).applyMatrix4(horn.matrix).applyMatrix4(frame.matrix);
+        if (_fx.lengthSq() < 1e-9) continue;
+        surfaceRadial(headMesh, _fx, _thit, p);
+        gap = Math.max(gap, _fx.length() - _thit.point.length());
+      }
+      if (gap <= 0.005) break;
+      frame.position.addScaledVector(aim, -Math.min(gap * 1.1 + 0.008, len * 0.35));
+    }
     parent.add(frame);
   }
 
