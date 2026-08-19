@@ -26,6 +26,8 @@ export default function App() {
   const [placeKind, setPlaceKind] = useState(null);
   // which style the next planted part of a kind wears; null = same as the face
   const [placeStyles, setPlaceStyles] = useState({ eye: null, arm: 'stick', ear: null, hair: null, nose: null });
+  // which placed part the gizmo is driving; a tap on a part sets it
+  const [selected, setSelected] = useState(null);
   // The editor reads this ref at event time. Props into the Canvas go through
   // react-three-fiber's own scheduler and can lag a frame behind the panel —
   // long enough for a click right after a style pick to plant the OLD style.
@@ -58,6 +60,10 @@ export default function App() {
     const t = setTimeout(() => syncUrl(params), 400);
     return () => clearTimeout(t);
   }, [params]);
+
+  useEffect(() => {
+    if (selected !== null && !(params.placed || [])[selected]) setSelected(null);
+  }, [params.placed, selected]);
 
   const setParam = useCallback((key, value) => {
     // Picking a kind or a colour is a click and gets one; dragging a slider
@@ -138,6 +144,7 @@ export default function App() {
   const onToggleEdit = useCallback(() => {
     sound.ui('tap');
     setPlaceKind(null);
+    setSelected(null);
     setEdit((v) => {
       flash(v ? 'edit mode off' : 'EDIT: drag a part to reshape it, wheel to resize');
       return !v;
@@ -160,6 +167,86 @@ export default function App() {
   const onPlaced = useCallback((list) => {
     setParams((prev) => ({ ...prev, placed: list }));
   }, []);
+
+  // ------------------------------------------------------------- gizmo ---
+  // The selected part's remote control: nudge its seat, size it, aim it.
+  // Everything below rewrites one entry of `placed` — the same road the
+  // editor's drags take, so links and favourites see no difference.
+  const editEntry = useCallback((fn) => {
+    setParams((prev) => {
+      const list = (prev.placed || []).slice();
+      const idx = selectedRef.current;
+      if (idx === null || !list[idx]) return prev;
+      list[idx] = fn({ ...list[idx] });
+      return { ...prev, placed: list };
+    });
+  }, []);
+  const selectedRef = useRef(null);
+  selectedRef.current = selected;
+
+  const gizmoNudge = useCallback((dx, dy) => {
+    editEntry((it) => {
+      if (it.k === 'eye' || it.k === 'nose') {
+        it.x += dx * 0.05;
+        it.y += dy * 0.05;
+      } else if (it.k === 'arm') {
+        if (dy) it.y = Math.min(1, Math.max(0, it.y + dy * 0.06));
+        if (dx) it.x = dx;   // left/right button picks the side
+      } else {
+        // direction kinds: swing the root direction a step at a time
+        const th = 0.1;
+        if (dx) {
+          const c = Math.cos(dx * th), s = Math.sin(dx * th);
+          const nx = it.x * c + it.z * s;
+          it.z = -it.x * s + it.z * c;
+          it.x = nx;
+        }
+        if (dy) {
+          const h = Math.hypot(it.x, it.z) || 1e-6;
+          const ang = Math.min(1.5, Math.max(-1.5, Math.atan2(it.y, h) + dy * th));
+          const nh = Math.cos(ang);
+          it.y = Math.sin(ang);
+          it.x *= nh / h;
+          it.z *= nh / h;
+        }
+      }
+      return it;
+    });
+  }, [editEntry]);
+
+  const gizmoScale = useCallback((dir) => {
+    editEntry((it) => {
+      it.s = Math.min(2.5, Math.max(0.3, it.s * (dir > 0 ? 1.12 : 0.9)));
+      return it;
+    });
+  }, [editEntry]);
+
+  const gizmoTilt = useCallback((axis, dir) => {
+    editEntry((it) => {
+      it[axis] = Math.min(1.3, Math.max(-1.3, (it[axis] || 0) + dir * 0.12));
+      return it;
+    });
+  }, [editEntry]);
+
+  const gizmoRemove = useCallback(() => {
+    const idx = selectedRef.current;
+    setSelected(null);
+    setParams((prev) => ({ ...prev, placed: (prev.placed || []).filter((_, i) => i !== idx) }));
+    flash('part removed');
+  }, [flash]);
+
+  // press-and-hold repeats, so a nudge button behaves like a held key
+  const hold = useCallback((fn) => ({
+    onPointerDown: (e) => {
+      e.preventDefault();
+      fn();
+      const id = setInterval(fn, 130);
+      const stop = () => { clearInterval(id); window.removeEventListener('pointerup', stop); window.removeEventListener('pointercancel', stop); };
+      window.addEventListener('pointerup', stop);
+      window.addEventListener('pointercancel', stop);
+    },
+    onContextMenu: (e) => e.preventDefault(),
+  }), []);
 
   const onSculpt = useCallback((list) => {
     setParams((prev) => ({ ...prev, sculpt: list }));
@@ -186,7 +273,7 @@ export default function App() {
   }, [sound, flash]);
 
   return (
-    <div className="app">
+    <div className={edit ? 'app edit-on' : 'app'}>
       <div className="viewport" onDragOver={(e) => e.preventDefault()} onDrop={onDropPart}>
         <Stage
           params={scene}
@@ -199,6 +286,7 @@ export default function App() {
           onParam={setParam}
           onPlaced={onPlaced}
           onSculpt={onSculpt}
+          onSelect={setSelected}
           placeKind={placeKind}
           placeRef={placeRef}
           onNote={flash}
@@ -211,7 +299,7 @@ export default function App() {
         >
           EDIT
         </button>
-        {edit && (
+        {edit && selected === null && (
           <div className="edit-tools">
             <div className="edit-grid">
               {['eye', 'horn', 'wart', 'arm', 'ear', 'hair', 'nose'].map((kind) => (
@@ -279,6 +367,36 @@ export default function App() {
                 × SCULPT ({params.sculpt.length})
               </button>
             )}
+          </div>
+        )}
+        {edit && selected !== null && params.placed?.[selected] && (
+          <div className="gizmo">
+            <div className="gizmo-head">
+              <span>{params.placed[selected].k}{params.placed[selected].t ? ` · ${params.placed[selected].t}` : ''}</span>
+              <button type="button" className="gz-x" onClick={gizmoRemove} title="take this part off">×</button>
+            </div>
+            <div className="gz-row">
+              <span className="gz-cap">move</span>
+              <button type="button" className="gz" {...hold(() => gizmoNudge(-1, 0))}>◀</button>
+              <button type="button" className="gz" {...hold(() => gizmoNudge(0, 1))}>▲</button>
+              <button type="button" className="gz" {...hold(() => gizmoNudge(0, -1))}>▼</button>
+              <button type="button" className="gz" {...hold(() => gizmoNudge(1, 0))}>▶</button>
+            </div>
+            <div className="gz-row">
+              <span className="gz-cap">size</span>
+              <button type="button" className="gz" {...hold(() => gizmoScale(-1))}>−</button>
+              <button type="button" className="gz" {...hold(() => gizmoScale(1))}>＋</button>
+            </div>
+            {['eye', 'ear', 'hair', 'horn', 'wart'].includes(params.placed[selected].k) && (
+              <div className="gz-row">
+                <span className="gz-cap">aim</span>
+                <button type="button" className="gz" {...hold(() => gizmoTilt('b', -1))}>↰</button>
+                <button type="button" className="gz" {...hold(() => gizmoTilt('a', -1))}>⤴</button>
+                <button type="button" className="gz" {...hold(() => gizmoTilt('a', 1))}>⤵</button>
+                <button type="button" className="gz" {...hold(() => gizmoTilt('b', 1))}>↱</button>
+              </div>
+            )}
+            <div className="gz-hint">tap empty space to finish</div>
           </div>
         )}
       </div>

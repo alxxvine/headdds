@@ -100,7 +100,7 @@ function setHighlight(root, cache, on) {
  * goes out through `onParam`/`onPlaced` — the same road the sliders take.
  * `placeKind` armed means the next click on the skull plants that part there.
  */
-export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onSculpt, placeKind = null, placeRef = null, onNote }) {
+export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onSculpt, onSelect, placeKind = null, placeRef = null, onNote }) {
   const { gl, camera, controls } = useThree();
   const ray = useMemo(() => new THREE.Raycaster(), []);
   const hover = useRef(null);
@@ -353,9 +353,9 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
           pushPlaced(list);
           return;
         }
-        if (d.lpTimer && Math.hypot(e.clientX - (d.sx ?? e.clientX), e.clientY - (d.sy ?? e.clientY)) > 10) {
-          clearTimeout(d.lpTimer);
-          d.lpTimer = 0;
+        if (!d.moved && Math.hypot(e.clientX - (d.sx ?? e.clientX), e.clientY - (d.sy ?? e.clientY)) > 6) {
+          d.moved = true;
+          if (d.lpTimer) { clearTimeout(d.lpTimer); d.lpTimer = 0; }
         }
         const list = placedNow().slice();
         const prev = list[d.placedIndex];
@@ -408,10 +408,14 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       if (!d) return;
       if (d.lpTimer) clearTimeout(d.lpTimer);
       drag.current = null;
+      // a grab that never travelled is a TAP: it selects the part, and the
+      // gizmo takes over from there
+      if (d.placedIndex !== undefined && !d.moved && !d.offSkull) onSelect?.(d.placedIndex);
       if (d.placedIndex !== undefined && d.offSkull) {
         // let go off the head: the part comes off in your hand
         const list = placedNow().filter((_, i) => i !== d.placedIndex);
         pushPlaced(list);
+        onSelect?.(null);
         onNote?.('part removed');
       }
       flush.current();   // the final value lands immediately, not on the timer
@@ -435,6 +439,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
           endDrag();
           pushPlaced(placedNow().filter((_, k) => k !== idx));
           flush.current();
+          onSelect?.(null);
           onNote?.('part removed');
         }, 650);
       }
@@ -543,6 +548,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       if (drag.current) {
         const d = drag.current;
         if (d.placedIndex !== undefined && !d.pinch) {
+          d.moved = true;   // a pinch is not a select-tap
           const list = placedNow();
           const s0 = list[d.placedIndex]?.s ?? 1;
           d.pinch = {
@@ -590,18 +596,21 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
           const local = skullPoint(e);
           if (local) entry = placedEntry(aim.kind, local, 1, aim.style);
         }
-        if (!entry) return;   // missed the body part it roots on — orbit keeps the drag
+        // missed the body part it roots on: deselect (closing the gizmo brings
+        // the toolbar back), and the orbit keeps the drag
+        if (!entry) { onSelect?.(null); return; }
         e.stopPropagation();
         e.preventDefault();
         const list = placedNow().slice(0, PLACED_MAX - 1);
         list.push(entry);
         pushPlaced(list);
         flush.current();
+        onSelect?.(list.length - 1);
         onNote?.(`${aim.kind} planted — drag it to move, wheel to resize`);
         return;
       }
 
-      if (!found) return;   // empty space: the orbit keeps the event
+      if (!found) { onSelect?.(null); return; }   // empty space: deselect, orbit keeps the event
       e.stopPropagation();  // ...but a grabbed part is not a camera drag
       e.preventDefault();
       if (found.part === 'placed') {
@@ -688,6 +697,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       const i = found.root.userData.placedIndex;
       pushPlaced(placedNow().filter((_, k) => k !== i));
       flush.current();
+      onSelect?.(null);
       onNote?.('part removed');
     };
 
@@ -710,7 +720,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       flush.current();
       dom.style.cursor = '';
     };
-  }, [enabled, placeKind, gl, camera, controls, ray, builtRef, paramsRef, placeRef, onNote]);
+  }, [enabled, placeKind, gl, camera, controls, ray, builtRef, paramsRef, placeRef, onNote, onSelect]);
 
   return null;
 }

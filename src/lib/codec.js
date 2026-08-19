@@ -19,6 +19,8 @@ export function toDiff(params) {
     out.placed = params.placed.map((it) => ({
       k: it.k, x: round(it.x), y: round(it.y), z: round(it.z || 0), s: round(it.s),
       ...(it.t ? { t: it.t } : {}),
+      ...(it.a ? { a: round(it.a) } : {}),
+      ...(it.b ? { b: round(it.b) } : {}),
     }));
   }
   // ...and the sculpt dabs, same rule: absent when empty, so old links hold
