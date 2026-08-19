@@ -25,6 +25,9 @@ body {
 .app {
   display: flex;
   height: 100%;
+  /* iOS Safari: 100% of the initial containing block drifts when the URL bar
+     collapses and expands; dvh tracks the real visible viewport */
+  height: 100dvh;
   width: 100%;
 }
 
@@ -502,7 +505,15 @@ input[type='range']::-moz-range-thumb {
 
 /* -------------------------------------------------------------- edit mode */
 
-.viewport { position: relative; }
+.viewport {
+  position: relative;
+  /* A flex child's min-size defaults to its content, and the fullscreen-edit
+     canvas inflates that content to the whole screen — after which the
+     viewport could never shrink back and the panel was crushed to a sliver.
+     THE bug behind "cannot get back to the menu". */
+  min-height: 0;
+  min-width: 0;
+}
 
 .edit-toggle {
   position: absolute;
@@ -657,11 +668,15 @@ input[type='range']::-moz-range-thumb {
 
 .gz-hint { color: var(--dim); font-size: 10px; letter-spacing: 0.5px; }
 
-/* EDIT on a phone clears the desk: the panel slides away and the stage takes
-   the whole screen — the gizmo and the toolbar are the only UI left */
+/* EDIT on a phone clears the desk: the stage rises OVER the panel as a fixed
+   overlay. The panel is never hidden or reflowed — leaving EDIT just drops
+   the overlay, so there is no layout for a phone browser to lose. */
 @media (max-width: 720px) {
-  .app.edit-on .panel { display: none; }
-  .app.edit-on .viewport { flex: 1 1 100%; }
+  .app.edit-on .viewport {
+    position: fixed;
+    inset: 0;
+    z-index: 4;
+  }
   .gizmo { left: 8px; right: 8px; bottom: 8px; min-width: 0; }
   .gz { padding: 10px 0; }
 }

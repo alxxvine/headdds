@@ -181,7 +181,13 @@ export default function App() {
     sound.ui('tap');
   }, [sound]);
 
+  const lastEditToggle = useRef(0);
   const onToggleEdit = useCallback(() => {
+    // iOS fires a late synthetic click after the pointer events; without the
+    // guard one tap on EXIT could toggle EDIT twice and land back inside
+    const now = performance.now();
+    if (now - lastEditToggle.current < 450) return;
+    lastEditToggle.current = now;
     sound.ui('tap');
     setPlaceKind(null);
     setSelected(null);
@@ -189,6 +195,12 @@ export default function App() {
       flash(v ? 'edit mode off' : 'EDIT: drag a part to reshape it, wheel to resize');
       return !v;
     });
+    // when leaving, shove the phone browser back to reality: unscroll and
+    // make every resize observer re-measure the restored layout
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+      window.dispatchEvent(new Event('resize'));
+    }, 60);
   }, [sound, flash]);
 
   // the placement toolbar: arm a kind, then every click on the skull plants one
