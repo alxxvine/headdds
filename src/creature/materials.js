@@ -51,7 +51,20 @@ export function makeMaterials(p) {
     }),
     // hands, feet and ears: the same skin, further into the ink
     trim: toon(shade(p.skinColor, p.trim ?? 0.35)),
-    tooth: toon(new THREE.Color('#f4ecd6')),
+    // A tooth stands in the mouth's own cavity, and that cavity is a decal
+    // pulled four units towards the camera so it can beat the lip. The teeth
+    // sit within a hair of it — their far side is bedded into the gum on
+    // purpose — so with no bias of their own the dark won patches of them and
+    // the row came out chopped: half a tooth here, none of the next one, a
+    // hard horizontal cut across the rest. They win against everything in the
+    // mouth by the same means the mouth wins against the face.
+    tooth: new THREE.MeshToonMaterial({
+      color: new THREE.Color('#f4ecd6'),
+      gradientMap,
+      polygonOffset: true,
+      polygonOffsetFactor: -7,
+      polygonOffsetUnits: -7,
+    }),
     // The lip is a decal on the skin and wins its ordering against the skin on
     // DEPTH, not on height — so its geometric lift can stay small enough that
     // the band does not stand off the cheek and out through the outline. The
