@@ -100,12 +100,18 @@ function setHighlight(root, cache, on) {
  * goes out through `onParam`/`onPlaced` — the same road the sliders take.
  * `placeKind` armed means the next click on the skull plants that part there.
  */
-export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeKind = null, onNote }) {
+export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeKind = null, placeRef = null, onNote }) {
   const { gl, camera, controls } = useThree();
   const ray = useMemo(() => new THREE.Raycaster(), []);
   const hover = useRef(null);
   const drag = useRef(null);
   const cache = useRef(new Map());
+
+  // What the next click plants is read from App's ref at event time, never
+  // from props: props into the Canvas go through react-three-fiber's own
+  // scheduler and can lag a frame — long enough for a click right after a
+  // style pick to plant the PREVIOUS style.
+  const armedNow = () => placeRef?.current ?? { kind: placeKind, style: null };
 
   // Rebuilding on every pixel of a drag is what made EDIT mode stutter: a
   // full rebuild runs 100-300ms and pointermove fires far faster than that.
@@ -180,9 +186,57 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeK
       return built.rig.headMesh.worldToLocal(h.point.clone());
     };
 
-    const placedEntry = (kind, local, s = 1) => (kind === 'eye'
-      ? { k: 'eye', x: local.x, y: local.y, z: 0, s }
-      : { k: kind, ...(() => { const d = local.clone().normalize(); return { x: d.x, y: d.y, z: d.z }; })(), s });
+    const placedEntry = (kind, local, s = 1, t = null) => {
+      const base = kind === 'eye'
+        ? { k: 'eye', x: local.x, y: local.y, z: 0, s }
+        : { k: kind, ...(() => { const d = local.clone().normalize(); return { x: d.x, y: d.y, z: d.z }; })(), s };
+      if (t) base.t = t;
+      return base;
+    };
+
+    /** A world point in the canvas's client pixels. */
+    const toClient = (v) => {
+      const rect = dom.getBoundingClientRect();
+      const pr = v.clone().project(camera);
+      return {
+        x: rect.left + ((pr.x + 1) / 2) * rect.width,
+        y: rect.top + ((1 - pr.y) / 2) * rect.height,
+      };
+    };
+
+    /**
+     * A planted arm roots on the trunk, and the trunk is thin on screen — a
+     * raycast the pointer has to keep hitting would drop the arm the moment
+     * the cursor slid onto the arm itself. So the torso's screen box is taken
+     * once, at grab time, and the drag lives in it: pointer height inside the
+     * box is how high the arm roots, which half it is in is the side.
+     */
+    const torsoFrame = () => {
+      const rig = builtRef.current?.rig;
+      if (!rig?.torso) return null;
+      const box = new THREE.Box3().setFromObject(rig.torso);
+      const c = box.getCenter(new THREE.Vector3());
+      const lo = toClient(new THREE.Vector3(c.x, box.min.y, c.z));
+      const hi = toClient(new THREE.Vector3(c.x, box.max.y, c.z));
+      const w = toClient(new THREE.Vector3(c.x + 0.35, c.y, c.z));
+      return {
+        topY: hi.y,
+        botY: lo.y,
+        centerX: lo.x,
+        // which side of the screen is the creature's +x half right now
+        rightIsPlus: w.x >= lo.x,
+        spanX: Math.abs(w.x - lo.x) * 3,
+      };
+    };
+
+    const armEntryAt = (e, tf, s = 1, t = null) => {
+      const fy = THREE.MathUtils.clamp((tf.botY - e.clientY) / Math.max(1, tf.botY - tf.topY), 0, 1);
+      const onRight = e.clientX >= tf.centerX;
+      const side = tf.rightIsPlus === onRight ? 1 : -1;
+      const entry = { k: 'arm', x: side, y: fy, z: 0, s };
+      if (t) entry.t = t;
+      return entry;
+    };
 
     const unhover = () => {
       if (hover.current) setHighlight(hover.current.root, cache.current, false);
@@ -206,15 +260,31 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeK
       const d = drag.current;
       if (!d) return;
       if (d.placedIndex !== undefined) {
+        const list = (paramsRef.current.placed || []).slice();
+        const prev = list[d.placedIndex];
+        if (!prev) return;
+        if (d.kind === 'arm') {
+          // the drag lives in the torso's screen box (see torsoFrame); far
+          // outside it means the arm is being pulled off
+          const tf = d.torso;
+          if (!tf) return;
+          const far = Math.abs(e.clientX - tf.centerX) > tf.spanX
+            || e.clientY > tf.botY + (tf.botY - tf.topY) * 0.6
+            || e.clientY < tf.topY - (tf.botY - tf.topY) * 0.6;
+          d.offSkull = far;
+          if (far) { dom.style.cursor = 'not-allowed'; return; }
+          dom.style.cursor = 'grabbing';
+          list[d.placedIndex] = armEntryAt(e, tf, prev.s, prev.t || null);
+          pushPlaced(list);
+          return;
+        }
         // a placed part follows the pointer across the skull; off the skull it
         // is marked for removal and dropped if the pointer lets go out there
         const local = skullPoint(e);
         d.offSkull = !local;
         if (!local) { dom.style.cursor = 'not-allowed'; return; }
         dom.style.cursor = 'grabbing';
-        const list = (paramsRef.current.placed || []).slice();
-        if (!list[d.placedIndex]) return;
-        list[d.placedIndex] = { ...placedEntry(d.kind, local, list[d.placedIndex].s) };
+        list[d.placedIndex] = placedEntry(d.kind, local, prev.s, prev.t || null);
         pushPlaced(list);
         return;
       }
@@ -271,18 +341,29 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeK
 
       const found = pick(e);
 
-      // a part kind is armed: a click on the skull plants it there. A click
-      // on an existing placed part still grabs that part instead.
-      if (placeKind && found?.part !== 'placed') {
-        const local = skullPoint(e);
-        if (!local) return;   // missed the head — the orbit keeps the drag
+      // a part kind is armed: a click on the skull (or the trunk, for an arm)
+      // plants it there. A click on an existing placed part still grabs it.
+      const aim = armedNow();
+      if (aim.kind && found?.part !== 'placed') {
+        let entry = null;
+        if (aim.kind === 'arm') {
+          castFrom(e);
+          const rig = builtRef.current?.rig;
+          const onTorso = rig?.torso && ray.intersectObject(rig.torso, false).length > 0;
+          const tf = onTorso && torsoFrame();
+          if (tf) entry = armEntryAt(e, tf, 1, aim.style);
+        } else {
+          const local = skullPoint(e);
+          if (local) entry = placedEntry(aim.kind, local, 1, aim.kind === 'eye' ? aim.style : null);
+        }
+        if (!entry) return;   // missed the body part it roots on — orbit keeps the drag
         e.stopPropagation();
         e.preventDefault();
         const list = (paramsRef.current.placed || []).slice(0, PLACED_MAX - 1);
-        list.push(placedEntry(placeKind, local));
+        list.push(entry);
         queue.current.placed = list;
         flush.current();
-        onNote?.(`${placeKind} planted — drag it to move, wheel to resize`);
+        onNote?.(`${aim.kind} planted — drag it to move, wheel to resize`);
         return;
       }
 
@@ -290,9 +371,12 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeK
       e.stopPropagation();  // ...but a grabbed part is not a camera drag
       e.preventDefault();
       if (found.part === 'placed') {
+        const idx = found.root.userData.placedIndex;
+        const kind = (paramsRef.current.placed || [])[idx]?.k;
         startDrag(e, {
-          placedIndex: found.root.userData.placedIndex,
-          kind: (paramsRef.current.placed || [])[found.root.userData.placedIndex]?.k,
+          placedIndex: idx,
+          kind,
+          torso: kind === 'arm' ? torsoFrame() : null,
           offSkull: false,
         });
         return;
@@ -365,7 +449,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeK
       flush.current();
       dom.style.cursor = '';
     };
-  }, [enabled, placeKind, gl, camera, controls, ray, builtRef, paramsRef, onNote]);
+  }, [enabled, placeKind, gl, camera, controls, ray, builtRef, paramsRef, placeRef, onNote]);
 
   return null;
 }

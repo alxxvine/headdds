@@ -2,7 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import Stage from './scene/Stage.jsx';
 import { createSound } from './scene/sound.js';
 import Panel from './ui/Panel.jsx';
-import { DEFAULTS, PARAM_BY_KEY, randomize, randomSeed } from './creature/schema.js';
+import { DEFAULTS, PARAM_BY_KEY, PLACED_TYPES, randomize, randomSeed } from './creature/schema.js';
 import { readUrlParams, syncUrl, shareUrl, copyText, prettyJson } from './lib/codec.js';
 import { nameOf } from './creature/name.js';
 import { loadFavs, addFav, removeFav, favParams, snapThumb } from './lib/favs.js';
@@ -21,6 +21,17 @@ export default function App() {
   const [viewReset, setViewReset] = useState(0);
   const [edit, setEdit] = useState(false);
   const [placeKind, setPlaceKind] = useState(null);
+  // which style the next planted part of a kind wears; null = same as the face
+  const [placeStyles, setPlaceStyles] = useState({ eye: null, arm: 'stick' });
+  // The editor reads this ref at event time. Props into the Canvas go through
+  // react-three-fiber's own scheduler and can lag a frame behind the panel —
+  // long enough for a click right after a style pick to plant the OLD style.
+  const placeRef = useRef({ kind: null, style: null });
+  placeRef.current = {
+    kind: placeKind,
+    style: placeKind === 'eye' ? (placeStyles.eye ?? params.eyeStyle)
+      : placeKind === 'arm' ? placeStyles.arm : null,
+  };
   // Off until asked for: a browser will not start an AudioContext without a
   // gesture anyway, and a page that greets you with a roar is one you close.
   const sound = useMemo(() => createSound(), []);
@@ -174,6 +185,7 @@ export default function App() {
           onParam={setParam}
           onPlaced={onPlaced}
           placeKind={placeKind}
+          placeRef={placeRef}
           onNote={flash}
         />
         <button
@@ -186,17 +198,46 @@ export default function App() {
         </button>
         {edit && (
           <div className="edit-tools">
-            {['eye', 'horn', 'wart'].map((kind) => (
+            {['eye', 'horn', 'wart', 'arm'].map((kind) => (
               <button
                 key={kind}
                 type="button"
                 className={placeKind === kind ? 'edit-tool on' : 'edit-tool'}
                 onClick={() => onPickPlace(kind)}
-                title={`arm, then click the head to plant a ${kind} there`}
+                title={kind === 'arm'
+                  ? 'arm, then click the trunk to plant an extra arm there'
+                  : `arm, then click the head to plant a ${kind} there`}
               >
                 + {kind.toUpperCase()}
               </button>
             ))}
+            {/* the armed kind may wear its own style, picked here */}
+            {placeKind === 'eye' && (
+              <select
+                className="edit-style"
+                value={placeStyles.eye ?? params.eyeStyle}
+                onChange={(e) => setPlaceStyles((s) => ({ ...s, eye: e.target.value }))}
+                title="which kind of eye the next click plants"
+              >
+                {PARAM_BY_KEY.eyeStyle.options.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            )}
+            {placeKind === 'arm' && (
+              <select
+                className="edit-style"
+                value={placeStyles.arm}
+                onChange={(e) => setPlaceStyles((s) => ({ ...s, arm: e.target.value }))}
+                title="which kind of arm the next click plants"
+              >
+                {PLACED_TYPES.arm().map((v) => (
+                  <option key={v} value={v}>
+                    {PARAM_BY_KEY.armType.options.find((o) => o.value === v)?.label ?? v}
+                  </option>
+                ))}
+              </select>
+            )}
             {params.placed?.length > 0 && (
               <button
                 type="button"

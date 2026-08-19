@@ -343,5 +343,32 @@ export function buildBody(p, mats, headBox, rng) {
     }
   }
 
+  // Arms the player planted on the torso by hand: each entry names its side,
+  // how high on the trunk it roots (a 0..1 fraction) and its own arm type.
+  // Built by the same buildArm as the grown pair, so a planted arm fits the
+  // floor and the midline like any other — and joins the shoulders list, so
+  // the animator swings it too.
+  (p.placed || []).forEach((it, i) => {
+    if (it.k !== 'arm') return;
+    const side = it.x >= 0 ? 1 : -1;
+    const kind = it.t || (p.armType === 'none' ? 'stick' : p.armType);
+    const shoulder = buildArm({ ...p, armType: kind }, mats, rng, {
+      side,
+      shoulderX: shoulderSpread,
+      shoulderY: legH + torsoH * THREE.MathUtils.clamp(it.y, 0.08, 0.95),
+      shoulderZ: torsoW * 0.15,
+      limbR,
+      armLen: armLen * it.s,
+      ink,
+      stance: p.stance,
+    });
+    if (shoulder) {
+      shoulder.userData.part = 'placed';
+      shoulder.userData.placedIndex = i;
+      group.add(shoulder);
+      shoulders.push(shoulder);
+    }
+  });
+
   return { group, bodyH, legH, torsoH, torso, legs, shoulders };
 }

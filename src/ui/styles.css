@@ -550,3 +550,14 @@ input[type='range']::-moz-range-thumb {
 
 .edit-tool:hover { border-color: #4a4162; }
 .edit-tool.on { color: var(--accent); border-color: #3c5a45; background: #14201acc; }
+
+.edit-style {
+  padding: 4px 6px;
+  background: #1c1926cc;
+  color: var(--ink);
+  border: 1px solid #3c5a45;
+  border-radius: 2px;
+  font: inherit;
+  font-size: 10px;
+  max-width: 120px;
+}
