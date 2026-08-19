@@ -209,7 +209,7 @@ function Controls() {
 
 export default function Stage({
   params, onBuilt, idle = true, onMood, sound, viewReset = 0,
-  edit = false, editParams = null, onParam = null,
+  edit = false, editParams = null, onParam = null, onPlaced = null, placeKind = null, onNote = null,
 }) {
   const pixelate = params.pixelate !== 'off';
   const poke = useRef(() => {});
@@ -251,7 +251,17 @@ export default function Stage({
       <Controls />
       {/* the creature holds still while it is being operated on */}
       <Creature params={params} onBuilt={handleBuilt} idle={idle && !edit} poke={poke} onMood={onMood} sound={sound} viewReset={viewReset} />
-      {onParam && <Editor enabled={edit} builtRef={builtRef} paramsRef={paramsRef} onParam={onParam} />}
+      {onParam && (
+        <Editor
+          enabled={edit}
+          builtRef={builtRef}
+          paramsRef={paramsRef}
+          onParam={onParam}
+          onPlaced={onPlaced}
+          placeKind={placeKind}
+          onNote={onNote}
+        />
+      )}
     </Canvas>
   );
 }

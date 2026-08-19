@@ -126,6 +126,13 @@ function nk(p, key) {
 
 const norm = (v, a, b) => clamp01((v - a) / (b - a));
 
+/** How many parts of one kind the player placed by hand (EDIT mode). */
+const placedCount = (p, kind) => {
+  let n = 0;
+  for (const it of p.placed || []) if (it.k === kind) n++;
+  return n;
+};
+
 /** Rough perceived brightness of a #rrggbb colour, 0..1. */
 function luminance(hex) {
   const n = parseInt(String(hex).slice(1), 16);
@@ -138,8 +145,8 @@ function luminance(hex) {
 // modifiers it applies on top of the base stats — that is where "this
 // particular growth does something" lives.
 export const TRAITS = [
-  { id: 'manyEyed', label: 'MANY-EYED', when: (p) => p.eyeCount >= 5, mods: { sight: 10, dread: 4 } },
-  { id: 'blind', label: 'BLIND', when: (p) => p.eyeCount === 0, mods: { sight: -28, dread: 6 } },
+  { id: 'manyEyed', label: 'MANY-EYED', when: (p) => p.eyeCount + placedCount(p, 'eye') >= 5, mods: { sight: 10, dread: 4 } },
+  { id: 'blind', label: 'BLIND', when: (p) => p.eyeCount + placedCount(p, 'eye') === 0, mods: { sight: -28, dread: 6 } },
   { id: 'gapingMaw', label: 'GAPING MAW', when: (p) => p.mouthWidth >= 0.62, mods: { bite: 8, vigor: -4 } },
   {
     id: 'fanged',
@@ -153,10 +160,10 @@ export const TRAITS = [
     when: (p) => p.teethTop + p.teethBottom === 0,
     mods: { bite: -22, dread: -8 },
   },
-  { id: 'horned', label: 'HORNED', when: (p) => p.horns >= 2, mods: { dread: 10, vigor: 4 } },
+  { id: 'horned', label: 'HORNED', when: (p) => p.horns + placedCount(p, 'horn') >= 2, mods: { dread: 10, vigor: 4 } },
   { id: 'tendrilled', label: 'TENDRILLED', when: (p) => p.tendrils >= 6, mods: { sight: 6, speed: -4 } },
   { id: 'sporebearer', label: 'SPOREBEARER', when: (p) => p.spores >= 80, mods: { dread: 8, speed: -6 } },
-  { id: 'warty', label: 'WARTY', when: (p) => p.warts >= 14, mods: { vigor: 8, speed: -4 } },
+  { id: 'warty', label: 'WARTY', when: (p) => p.warts + placedCount(p, 'wart') * 2 >= 14, mods: { vigor: 8, speed: -4 } },
   { id: 'boulder', label: 'BOULDER', when: (p) => p.boxiness >= 0.7, mods: { vigor: 10, speed: -8, balance: 5 } },
   {
     id: 'topHeavy',
@@ -185,12 +192,12 @@ export const TRAITS = [
     when: (p) => p.armType === 'none',
     mods: { speed: 6, vigor: -8, bite: -4 },
   },
-  { id: 'stalkEyed', label: 'STALK-EYED', when: (p) => p.eyeStyle === 'stalk' && p.eyeCount > 0, mods: { sight: 12, vigor: -5 } },
+  { id: 'stalkEyed', label: 'STALK-EYED', when: (p) => p.eyeStyle === 'stalk' && p.eyeCount + placedCount(p, 'eye') > 0, mods: { sight: 12, vigor: -5 } },
   { id: 'crested', label: 'CRESTED', when: (p) => p.hairType === 'crest', mods: { dread: 9, balance: -3 } },
   { id: 'bristled', label: 'BRISTLED', when: (p) => p.hairType === 'bristles' && p.tendrils >= 6, mods: { dread: 6, vigor: 3 } },
   { id: 'pinEyed', label: 'PIN-EYED', when: (p) => p.pupilShape === 'blind', mods: { sight: -14, dread: 8 } },
-  { id: 'compound', label: 'COMPOUND-EYED', when: (p) => p.eyeStyle === 'compound' && p.eyeCount > 0, mods: { sight: 14, dread: 5, balance: -4 } },
-  { id: 'lantern', label: 'LANTERN-EYED', when: (p) => p.eyeStyle === 'lantern' && p.eyeCount > 0, mods: { sight: 8, dread: 7 } },
+  { id: 'compound', label: 'COMPOUND-EYED', when: (p) => p.eyeStyle === 'compound' && p.eyeCount + placedCount(p, 'eye') > 0, mods: { sight: 14, dread: 5, balance: -4 } },
+  { id: 'lantern', label: 'LANTERN-EYED', when: (p) => p.eyeStyle === 'lantern' && p.eyeCount + placedCount(p, 'eye') > 0, mods: { sight: 8, dread: 7 } },
   { id: 'tusked', label: 'TUSKED', when: (p) => p.toothType === 'tusks' && p.teethTop + p.teethBottom >= 4, mods: { bite: 12, dread: 6, speed: -4 } },
   { id: 'needled', label: 'NEEDLE-TOOTHED', when: (p) => p.toothType === 'needles' && p.teethTop + p.teethBottom >= 10, mods: { bite: 9, dread: 5 } },
   { id: 'eared', label: 'BIG-EARED', when: (p) => p.earType !== 'none' && p.earType !== 'holes' && p.earSize > 0.35, mods: { sight: 10, dread: -4 } },
@@ -223,7 +230,10 @@ export const TRAITS = [
 export function computeStats(p) {
   const mass = norm(p.headWidth * p.headHeight * p.headDepth, 0.2, 3.0);
   const teeth = norm(p.teethTop + p.teethBottom, 0, 28);
-  const eyes = norm(p.eyeCount, 0, 8);
+  // hand-placed parts count: an extra eye sees, an extra horn scares
+  const eyes = norm(p.eyeCount + placedCount(p, 'eye'), 0, 8);
+  const horns = norm(p.horns + placedCount(p, 'horn'), 0, 8);
+  const warts = norm(p.warts + placedCount(p, 'wart') * 2, 0, 40);
   const dark = 1 - luminance(p.skinColor);
 
   // Base stats in 0..1, before traits.
@@ -232,7 +242,7 @@ export function computeStats(p) {
       0.42 * mass +
       0.24 * nk(p, 'bodyWidth') +
       0.14 * nk(p, 'boxiness') +
-      0.12 * nk(p, 'warts') +
+      0.12 * warts +
       0.08 * nk(p, 'jaw') +
       0.1 * nk(p, 'belly') +
       0.08 * Math.max(0, p.chestWide),
@@ -258,7 +268,7 @@ export function computeStats(p) {
       from(EAR_SIGHT, p.earType) * (0.5 + nk(p, 'earSize') * 0.8),
     dread:
       0.24 * teeth +
-      0.2 * nk(p, 'horns') +
+      0.2 * horns +
       0.14 * nk(p, 'tendrils') +
       0.14 * nk(p, 'spores') +
       0.14 * nk(p, 'lumps') +

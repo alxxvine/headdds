@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { makeRng } from '../lib/noise.js';
 import { makeHeadGeometry, headPoint } from './head.js';
 import { makeMaterials, withOutline } from './materials.js';
-import { addEyes, addMouth, addNose, addGrowths, addScars, pruneWarts, headUnit } from './features.js';
+import { addEyes, addMouth, addNose, addGrowths, addScars, pruneWarts, addPlaced, headUnit } from './features.js';
 import { buildBody } from './body.js';
 import { sanitize } from './schema.js';
 import { computeStats } from './stats.js';
@@ -79,6 +79,9 @@ export function buildCreature(rawParams) {
   addNose(head, headMesh, p, mats, rng);
   const eyes = addEyes(head, headMesh, p, mats, rng);
   const { jaw, maw } = addMouth(head, headMesh, p, mats, rng);
+  // the parts the player put on by hand — placed eyes join the rig's list so
+  // they blink and look around like the grown ones
+  eyes.push(...addPlaced(head, headMesh, p, mats));
   // now that the eyes and the nose exist, bury the warts that broke into them
   pruneWarts(head, headMesh, p, eyes);
   addScars(head, headMesh, p, mats, rng, maw);
@@ -174,6 +177,9 @@ export function buildCreature(rawParams) {
     maw,
     tendrils: growths.tendrils,
     spores: growths.spores,
+    // the editor drags placed parts across this mesh; its local coordinates
+    // are the face coordinates the placed list is stored in
+    headMesh,
     scale: S,
     neckY: headPivot.position.y,
     seed: p.seed,

@@ -525,3 +525,28 @@ input[type='range']::-moz-range-thumb {
   border-color: #3c5a45;
   background: #14201acc;
 }
+
+.edit-tools {
+  position: absolute;
+  top: 46px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.edit-tool {
+  padding: 5px 10px;
+  background: #1c1926cc;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.edit-tool:hover { border-color: #4a4162; }
+.edit-tool.on { color: var(--accent); border-color: #3c5a45; background: #14201acc; }
