@@ -1,5 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import Stage from './scene/Stage.jsx';
+import WorldStage from './world/WorldStage.jsx';
+import Joystick from './world/Joystick.jsx';
 import { createSound } from './scene/sound.js';
 import Panel from './ui/Panel.jsx';
 import { DEFAULTS, PARAM_BY_KEY, PLACED_TYPES, randomize, randomSeed } from './creature/schema.js';
@@ -47,6 +49,10 @@ export default function App() {
   const [favs, setFavs] = useState(loadFavs);
   const [viewReset, setViewReset] = useState(0);
   const [edit, setEdit] = useState(false);
+  const [walk, setWalk] = useState(false);
+  // what the walk stick / keys are asking for right now; a ref, because the
+  // world reads it every frame and touch events fire far faster than React
+  const walkInput = useRef({ x: 0, y: 0 });
   const [placeKind, setPlaceKind] = useState(null);
   // which style the next planted part of a kind wears; null = same as the face
   const [placeStyles, setPlaceStyles] = useState({ eye: null, arm: 'stick', ear: null, hair: null, nose: null });
@@ -94,7 +100,7 @@ export default function App() {
   // EDIT is on, page zoom is blocked outright (gesturestart is Safari's own
   // pinch event; the touchmove guard covers the rest).
   useEffect(() => {
-    if (!edit) return undefined;
+    if (!edit && !walk) return undefined;
     const block = (e) => e.preventDefault();
     const blockPinch = (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); };
     document.addEventListener('gesturestart', block, { passive: false });
@@ -108,7 +114,33 @@ export default function App() {
       document.removeEventListener('touchmove', blockPinch);
       document.removeEventListener('dblclick', dbl);
     };
-  }, [edit]);
+  }, [edit, walk]);
+
+  // the desktop's legs: WASD and the arrows steer while the world is up
+  useEffect(() => {
+    if (!walk) return undefined;
+    const held = new Set();
+    const apply = () => {
+      const y = (held.has('w') || held.has('arrowup') ? 1 : 0) - (held.has('s') || held.has('arrowdown') ? 1 : 0);
+      const x = (held.has('d') || held.has('arrowright') ? 1 : 0) - (held.has('a') || held.has('arrowleft') ? 1 : 0);
+      walkInput.current = { x, y };
+    };
+    const down = (e) => {
+      const k = e.key.toLowerCase();
+      if (!'wasd'.includes(k) && !k.startsWith('arrow')) return;
+      e.preventDefault();
+      held.add(k);
+      apply();
+    };
+    const up = (e) => { held.delete(e.key.toLowerCase()); apply(); };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      walkInput.current = { x: 0, y: 0 };
+    };
+  }, [walk]);
 
   const setParam = useCallback((key, value) => {
     // Picking a kind or a colour is a click and gets one; dragging a slider
@@ -202,6 +234,26 @@ export default function App() {
     });
     // when leaving, shove the phone browser back to reality: unscroll and
     // make every resize observer re-measure the restored layout
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+      window.dispatchEvent(new Event('resize'));
+    }, 60);
+  }, [sound, flash]);
+
+  const lastWalkToggle = useRef(0);
+  const onToggleWalk = useCallback(() => {
+    // same iOS late-synthetic-click guard as EDIT: one tap must toggle once
+    const now = performance.now();
+    if (now - lastWalkToggle.current < 450) return;
+    lastWalkToggle.current = now;
+    sound.ui('tap');
+    setEdit(false);
+    setPlaceKind(null);
+    setSelected(null);
+    setWalk((v) => {
+      flash(v ? 'back on the pedestal' : 'WALK: WASD / arrows / the stick — go climb the hill');
+      return !v;
+    });
     setTimeout(() => {
       window.scrollTo(0, 0);
       window.dispatchEvent(new Event('resize'));
@@ -342,8 +394,11 @@ export default function App() {
   }, [sound, flash]);
 
   return (
-    <div className={edit ? 'app edit-on' : 'app'}>
+    <div className={edit ? 'app edit-on' : walk ? 'app walk-on' : 'app'}>
       <div className="viewport" onDragOver={(e) => e.preventDefault()} onDrop={onDropPart}>
+        {walk ? (
+          <WorldStage params={scene} inputRef={walkInput} />
+        ) : (
         <Stage
           params={scene}
           idle={idle}
@@ -360,6 +415,8 @@ export default function App() {
           placeRef={placeRef}
           onNote={flash}
         />
+        )}
+        {!walk && (
         <button
           type="button"
           className={edit ? 'edit-toggle on' : 'edit-toggle'}
@@ -368,6 +425,23 @@ export default function App() {
         >
           EDIT
         </button>
+        )}
+        {!edit && (
+          <button
+            type="button"
+            className={walk ? 'edit-toggle walk-toggle on' : 'edit-toggle walk-toggle'}
+            onClick={onToggleWalk}
+            title="drop the freak into the micro-world and take it for a walk"
+          >
+            {walk ? '⏎ EXIT' : 'WALK'}
+          </button>
+        )}
+        {walk && (
+          <>
+            <div className="walk-hint">WASD / arrows{' '}·{' '}drag to look</div>
+            <Joystick inputRef={walkInput} />
+          </>
+        )}
         {edit && selected === null && (
           <div className="edit-tools">
             <button
