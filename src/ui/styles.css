@@ -428,3 +428,74 @@ input[type='range']::-moz-range-thumb {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ---------------------------------------------------------- parts catalog */
+
+.catalog > summary { color: var(--dim); }
+.catalog[open] > summary { color: var(--ink); }
+
+.cat-hint {
+  padding: 0 12px 8px;
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.catalog details { border-top: 1px solid var(--line); }
+
+.cat-count {
+  margin-left: 6px;
+  color: #453c5e;
+  letter-spacing: 0;
+}
+
+.tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px 12px;
+}
+
+.tile {
+  width: 76px;
+  padding: 4px 2px 3px;
+  background: #141020;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--dim);
+}
+
+.tile:hover { border-color: #4a4162; }
+.tile.on { border-color: var(--accent); }
+.tile.on .tile-label { color: var(--accent); }
+
+.tile img {
+  display: block;
+  width: 64px;
+  height: 74px;
+  margin: 0 auto;
+  image-rendering: pixelated;
+}
+
+.tile-wait {
+  display: flex;
+  width: 64px;
+  height: 74px;
+  margin: 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: #453c5e;
+}
+
+.tile-label {
+  display: block;
+  margin-top: 3px;
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
