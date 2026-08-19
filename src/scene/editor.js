@@ -328,6 +328,27 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
     const applyDrag = (e) => {
       const d = drag.current;
       if (!d) return;
+      if (!d.moved && d.sx !== undefined && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > 6) {
+        d.moved = true;
+        if (d.lpTimer) { clearTimeout(d.lpTimer); d.lpTimer = 0; }
+        // A grab of a grown eye/ear/horn/nose/arm/strand hands the family over
+        // the moment it actually MOVES — a mere tap opens the family remote
+        // instead, so the hand-over is deferred to here.
+        if (d.pendingDetach) {
+          const idx = detachFamily(d.pendingDetach);
+          const part = d.pendingDetach.part;
+          d.pendingDetach = null;
+          if (idx >= 0) {
+            d.placedIndex = idx;
+            d.kind = part;
+            d.torso = part === 'arm' ? torsoFrame() : null;
+            d.offSkull = false;
+            onSelect?.(null);
+          }
+          // detach refused (a fur coat past the cap): the fallback map fields
+          // already on the drag keep it working as a plain param drag
+        }
+      }
       if (d.sculptKind) {
         // a stroke: another dab each time the pointer has travelled a bit
         if (Math.hypot(e.clientX - d.lx, e.clientY - d.ly) > 26) {
@@ -353,10 +374,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
           pushPlaced(list);
           return;
         }
-        if (!d.moved && Math.hypot(e.clientX - (d.sx ?? e.clientX), e.clientY - (d.sy ?? e.clientY)) > 6) {
-          d.moved = true;
-          if (d.lpTimer) { clearTimeout(d.lpTimer); d.lpTimer = 0; }
-        }
+
         const list = placedNow().slice();
         const prev = list[d.placedIndex];
         if (!prev) return;
@@ -410,7 +428,9 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       drag.current = null;
       // a grab that never travelled is a TAP: it selects the part, and the
       // gizmo takes over from there
-      if (d.placedIndex !== undefined && !d.moved && !d.offSkull) onSelect?.(d.placedIndex);
+      if (d.placedIndex !== undefined && !d.moved && !d.offSkull) onSelect?.({ placed: d.placedIndex });
+      // a tap on a grown part opens its family remote instead of grabbing it
+      if (d.placedIndex === undefined && !d.moved && d.familyPart) onSelect?.({ family: d.familyPart });
       if (d.placedIndex !== undefined && d.offSkull) {
         // let go off the head: the part comes off in your hand
         const list = placedNow().filter((_, i) => i !== d.placedIndex);
@@ -540,6 +560,10 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
     // which grown kinds hand themselves over when grabbed
     const DETACHABLE = { eye: 1, ear: 1, horn: 1, nose: 1, arm: 1, hair: 1 };
 
+    // grown parts whose TAP opens the family remote (counts and sizes) —
+    // a drag still hands the family over / drives the mapped params
+    const FAMILY = { tooth: 1, wart: 1, aura: 1, mouth: 1, eye: 1, ear: 1, horn: 1, hair: 1, nose: 1 };
+
     const onDown = (e) => {
       if (e.button !== undefined && e.button !== 0) return;
       // A second finger during a placed-part grab starts a PINCH: the part
@@ -605,7 +629,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
         list.push(entry);
         pushPlaced(list);
         flush.current();
-        onSelect?.(list.length - 1);
+        onSelect?.({ placed: list.length - 1 });
         onNote?.(`${aim.kind} planted — drag it to move, wheel to resize`);
         return;
       }
@@ -624,24 +648,16 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
         });
         return;
       }
-      // a grown eye/ear/horn/nose/arm hands itself over on grab and the drag
-      // carries straight on as a placed-part move
-      if (DETACHABLE[found.part]) {
-        const idx = detachFamily(found);
-        if (idx >= 0) {
-          startDrag(e, {
-            placedIndex: idx,
-            kind: found.part,
-            torso: found.part === 'arm' ? torsoFrame() : null,
-            offSkull: false,
-          });
-          return;
-        }
-      }
+      // Grown parts: the drag starts undecided. If the pointer actually moves,
+      // a detachable family hands itself over (see applyDrag) or the mapped
+      // params take the drag; if it never moves, the tap opens the family
+      // remote in endDrag.
       const p = paramsRef.current;
       const base = {};
       for (const def of Object.values(PARAM_BY_KEY)) base[def.key] = p[def.key];
       startDrag(e, {
+        pendingDetach: DETACHABLE[found.part] ? found : null,
+        familyPart: FAMILY[found.part] ? found.part : null,
         map: MAP[found.part],
         base,
         sx: e.clientX,
