@@ -78,16 +78,14 @@ export default function Panel({
   return (
     <aside className="panel">
       <header className="panel-head">
-        <div className="names">
-          <div className="title">HEADDDS</div>
-          <div className="sub">freak builder</div>
+        {/* the creature is the headline, not the app: its name where the
+            title plate used to sit, its seed as the small print */}
+        <div className="names" title="its name — grown from the seed, epithet from its loudest trait">
+          <div className="freak-name">{name}</div>
+          <div className="sub">#{params.seed}</div>
         </div>
         {mood && <div className="mood" data-mood={mood} title={MOOD_HINT}>{mood}</div>}
       </header>
-
-      <div className="freak-name" title="its name — grown from the seed, epithet from its loudest trait">
-        {name}
-      </div>
 
       <div className="actions">
         <button type="button" className="primary" onClick={onRandom}>RANDOM</button>
