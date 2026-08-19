@@ -167,6 +167,7 @@ export function buildBody(p, mats, headBox, rng) {
   const hipFloor = hipTight * fit;
 
   const group = new THREE.Group();
+  group.userData.part = 'torso';   // editor fallback: anything untagged on the body
 
   // ---------------------------------------------------------------- torso ---
   // One surface with its own silhouette, not a primitive picked from a list.
@@ -231,6 +232,7 @@ export function buildBody(p, mats, headBox, rng) {
     // foot to the other; the foot rides along with it
     const hipX = side * hipSpread;
     const legPivot = new THREE.Group();
+    legPivot.userData.part = 'leg';
     legPivot.position.set(hipX, legH, 0);
     legPivot.userData.lean = legLean;
     group.add(legPivot);

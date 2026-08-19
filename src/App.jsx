@@ -19,6 +19,7 @@ export default function App() {
   const [sfx, setSfx] = useState(false);
   const [favs, setFavs] = useState(loadFavs);
   const [viewReset, setViewReset] = useState(0);
+  const [edit, setEdit] = useState(false);
   // Off until asked for: a browser will not start an AudioContext without a
   // gesture anyway, and a page that greets you with a roar is one you close.
   const sound = useMemo(() => createSound(), []);
@@ -115,6 +116,25 @@ export default function App() {
     sound.ui('tap');
   }, [sound]);
 
+  const onToggleEdit = useCallback(() => {
+    sound.ui('tap');
+    setEdit((v) => {
+      flash(v ? 'edit mode off' : 'EDIT: drag a part to reshape it, wheel to resize');
+      return !v;
+    });
+  }, [sound, flash]);
+
+  // a tile dragged out of the parts catalog and dropped on the creature
+  const onDropPart = useCallback((e) => {
+    const data = e.dataTransfer?.getData('text/plain') || '';
+    const [key, value] = data.split(':');
+    if (!key || value === undefined || PARAM_BY_KEY[key]?.type !== 'select') return;
+    if (!PARAM_BY_KEY[key].options.some((o) => o.value === value)) return;
+    e.preventDefault();
+    setParam(key, value);
+    flash(`${value} grafted on`);
+  }, [setParam, flash]);
+
   const onToggleSound = useCallback(() => {
     const state = sound.toggle();
     if (state === null) { flash('no audio in this browser'); return; }
@@ -126,8 +146,25 @@ export default function App() {
 
   return (
     <div className="app">
-      <div className="viewport">
-        <Stage params={scene} idle={idle} onMood={setMood} sound={sound} viewReset={viewReset} />
+      <div className="viewport" onDragOver={(e) => e.preventDefault()} onDrop={onDropPart}>
+        <Stage
+          params={scene}
+          idle={idle}
+          onMood={setMood}
+          sound={sound}
+          viewReset={viewReset}
+          edit={edit}
+          editParams={params}
+          onParam={setParam}
+        />
+        <button
+          type="button"
+          className={edit ? 'edit-toggle on' : 'edit-toggle'}
+          onClick={onToggleEdit}
+          title="grab the creature itself: drag a part to reshape it, wheel over it to resize"
+        >
+          EDIT
+        </button>
       </div>
       <Panel
         params={params}

@@ -401,6 +401,7 @@ export function buildArm(p, mats, rng, opts) {
   const len = Math.max(limbR * 2.5, armLen * (1 + wonk * 0.5));
 
   const shoulder = new THREE.Group();
+  shoulder.userData.part = 'arm';
   shoulder.position.set(side * shoulderX, shoulderY, shoulderZ);
   const { tip, dir } = addSegments(shoulder, p, mats, { limbR, ink, len, side });
   addHand(shoulder, p, mats, rng, { limbR, ink, tip, dir });
