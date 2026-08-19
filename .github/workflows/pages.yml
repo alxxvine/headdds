@@ -2,7 +2,13 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main, claude/3d-character-browser-lm9sp6]
+    # main ONLY. With the work branch in this list, the post-merge ritual —
+    # squash-merge, then immediately force-push the rebased branch — raced
+    # itself: the branch push landed seconds after the merge, the shared
+    # `pages` concurrency group cancelled the in-flight main deploy, and the
+    # branch's own deploy failed on the environment rule that only main may
+    # publish. Three merged fixes in a row never reached the site.
+    branches: [main]
   workflow_dispatch:
 
 permissions:
