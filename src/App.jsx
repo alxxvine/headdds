@@ -4,6 +4,8 @@ import { createSound } from './scene/sound.js';
 import Panel from './ui/Panel.jsx';
 import { DEFAULTS, PARAM_BY_KEY, randomize, randomSeed } from './creature/schema.js';
 import { readUrlParams, syncUrl, shareUrl, copyText, prettyJson } from './lib/codec.js';
+import { nameOf } from './creature/name.js';
+import { loadFavs, addFav, removeFav, favParams, snapThumb } from './lib/favs.js';
 
 // Someone who asked the system for less motion should not be met by a
 // twitching freak; they can still switch it on with the IDLE button.
@@ -15,6 +17,7 @@ export default function App() {
   const [idle, setIdle] = useState(WANTS_MOTION);
   const [mood, setMood] = useState(null);
   const [sfx, setSfx] = useState(false);
+  const [favs, setFavs] = useState(loadFavs);
   // Off until asked for: a browser will not start an AudioContext without a
   // gesture anyway, and a page that greets you with a roar is one you close.
   const sound = useMemo(() => createSound(), []);
@@ -48,8 +51,9 @@ export default function App() {
   // would only step on it.
   const onRandom = useCallback(() => {
     const seed = randomSeed();
-    setParams(randomize(seed));
-    flash(`new freak #${seed}`);
+    const next = randomize(seed);
+    setParams(next);
+    flash(`${nameOf(next)} · #${seed}`);
   }, [flash]);
 
   const onSeed = useCallback((seed) => setParams(randomize(seed)), []);
@@ -84,6 +88,29 @@ export default function App() {
     });
   }, [sound, flash]);
 
+  const onSaveFav = useCallback(() => {
+    // The thumbnail comes off the live canvas — whatever pose and angle the
+    // player is looking at is the one the collection remembers.
+    const canvas = document.querySelector('.viewport canvas');
+    const next = addFav(favs, params, nameOf(params), snapThumb(canvas));
+    if (!next) { flash('already in the collection'); return; }
+    setFavs(next);
+    sound.ui('ok');
+    flash('saved to the collection');
+  }, [favs, params, sound, flash]);
+
+  const onPickFav = useCallback((fav) => {
+    const p = favParams(fav);
+    if (!p) { flash('this one is corrupted'); return; }
+    setParams(p);
+    flash(`${fav.name} · #${fav.seed}`);
+  }, [flash]);
+
+  const onRemoveFav = useCallback((fav) => {
+    setFavs((list) => removeFav(list, fav.code));
+    sound.ui('tap');
+  }, [sound]);
+
   const onToggleSound = useCallback(() => {
     const state = sound.toggle();
     if (state === null) { flash('no audio in this browser'); return; }
@@ -112,6 +139,10 @@ export default function App() {
         onCopyLink={onCopyLink}
         onToggleIdle={onToggleIdle}
         onToggleSound={onToggleSound}
+        favs={favs}
+        onSaveFav={onSaveFav}
+        onPickFav={onPickFav}
+        onRemoveFav={onRemoveFav}
       />
     </div>
   );

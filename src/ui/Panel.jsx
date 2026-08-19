@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { GROUPS, PARAMS } from '../creature/schema.js';
 import { STATS, computeStats, describeMods } from '../creature/stats.js';
+import { nameOf } from '../creature/name.js';
 import Control from './Control.jsx';
 
 const TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
@@ -41,10 +42,39 @@ function Stats({ params }) {
 const MOOD_HINT = 'how it feels about you right now: it warms up when you hover '
   + 'and spin the camera, gets angry if you keep poking it, and tires out';
 
+function Collection({ favs, onPick, onRemove }) {
+  if (!favs.length) return null;
+  return (
+    <div className="favs">
+      {favs.map((f) => (
+        <figure className="fav" key={f.code} title={`${f.name} · #${f.seed}`}>
+          {/* the button is the picture: tap anywhere on the freak to load it */}
+          <button type="button" className="fav-pick" onClick={() => onPick(f)}>
+            {f.thumb
+              ? <img src={f.thumb} alt={f.name} draggable={false} />
+              : <span className="fav-blank">#{f.seed}</span>}
+          </button>
+          <button
+            type="button"
+            className="fav-del"
+            aria-label={`forget ${f.name}`}
+            onClick={() => onRemove(f)}
+          >
+            ×
+          </button>
+          <figcaption>{f.name}</figcaption>
+        </figure>
+      ))}
+    </div>
+  );
+}
+
 export default function Panel({
   params, note, idle, mood, sfx,
   onChange, onRandom, onSeed, onReset, onCopyJson, onCopyLink, onToggleIdle, onToggleSound,
+  favs = [], onSaveFav, onPickFav, onRemoveFav,
 }) {
+  const name = useMemo(() => nameOf(params), [params]);
   return (
     <aside className="panel">
       <header className="panel-head">
@@ -55,8 +85,21 @@ export default function Panel({
         {mood && <div className="mood" data-mood={mood} title={MOOD_HINT}>{mood}</div>}
       </header>
 
+      <div className="freak-name" title="its name — grown from the seed, epithet from its loudest trait">
+        {name}
+      </div>
+
       <div className="actions">
         <button type="button" className="primary" onClick={onRandom}>RANDOM</button>
+        <button
+          type="button"
+          className="star"
+          onClick={onSaveFav}
+          title="save this freak to the collection"
+          aria-label="save to collection"
+        >
+          ★
+        </button>
         <label className="seed">
           seed
           <input
@@ -91,6 +134,8 @@ export default function Panel({
         </button>
       </div>
       <div className="note">{note || HINT}</div>
+
+      <Collection favs={favs} onPick={onPickFav} onRemove={onRemoveFav} />
 
       <Stats params={params} />
 
