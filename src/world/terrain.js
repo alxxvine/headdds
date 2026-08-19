@@ -92,7 +92,7 @@ function seat(obj, x, z) {
   obj.position.set(x, groundHeight(x, z), z);
 }
 
-function addProps(group, rng) {
+function addProps(group, rng, colliders) {
   const rockGeo = new THREE.DodecahedronGeometry(1, 0);
   const rockMat = new THREE.MeshLambertMaterial({ color: '#6a6377', flatShading: true });
   const trunkGeo = new THREE.CylinderGeometry(0.22, 0.3, 1.6, 6);
@@ -115,6 +115,7 @@ function addProps(group, rng) {
       seat(rock, x, z);
       rock.position.y += s * 0.1;
       group.add(rock);
+      colliders.push({ x, z, r: s * 0.9 });
     } else {
       const tree = new THREE.Group();
       const s = 0.8 + rng() * 0.9;
@@ -128,6 +129,7 @@ function addProps(group, rng) {
       tree.rotation.y = rng() * Math.PI;
       seat(tree, x, z);
       group.add(tree);
+      colliders.push({ x, z, r: 0.5 * s });
     }
     placed++;
   }
@@ -165,7 +167,10 @@ export function buildTerrain() {
   const group = new THREE.Group();
   const ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   group.add(ground);
-  addProps(group, makeRng(0x5eed7ee5));
+  // the props the walker may not pass through: flat circles, because every
+  // prop here is a trunk or a boulder seen from above
+  const colliders = [];
+  addProps(group, makeRng(0x5eed7ee5), colliders);
 
   const dispose = () => {
     const geos = new Set();
@@ -178,5 +183,5 @@ export function buildTerrain() {
     mats.forEach((m) => m.dispose());
   };
 
-  return { group, dispose };
+  return { group, colliders, dispose };
 }

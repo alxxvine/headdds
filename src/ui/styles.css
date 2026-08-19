@@ -760,9 +760,37 @@ button, select, input { touch-action: manipulation; }
   pointer-events: none;
 }
 
-/* the stick is for thumbs; a mouse has WASD */
+/* the right stick swings the camera; a touch smaller than the walk stick */
+.stick-right {
+  left: auto;
+  right: 18px;
+  width: 104px;
+  height: 104px;
+}
+.stick-right .stick-knob { left: 28px; top: 28px; }
+
+.jump-btn {
+  position: absolute;
+  right: 40px;
+  bottom: 152px;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  border: 1px solid #3c5a45;
+  background: #14201acc;
+  color: var(--accent);
+  font: inherit;
+  font-size: 22px;
+  z-index: 5;
+  touch-action: none;
+  display: none;
+}
+.jump-btn:active { background: #1d3325cc; }
+
+/* the sticks are for thumbs; a mouse has WASD and space */
 @media (pointer: coarse) {
   .stick { display: block; }
+  .jump-btn { display: block; }
   .walk-hint { display: none; }
 }
 
