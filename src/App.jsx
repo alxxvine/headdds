@@ -18,6 +18,7 @@ export default function App() {
   const [mood, setMood] = useState(null);
   const [sfx, setSfx] = useState(false);
   const [favs, setFavs] = useState(loadFavs);
+  const [viewReset, setViewReset] = useState(0);
   // Off until asked for: a browser will not start an AudioContext without a
   // gesture anyway, and a page that greets you with a roar is one you close.
   const sound = useMemo(() => createSound(), []);
@@ -60,8 +61,11 @@ export default function App() {
 
   const onReset = useCallback(() => {
     setParams({ ...DEFAULTS });
+    // ...and the view goes back to stock with them: a reset that keeps the
+    // player's zoom and spin reads as a reset that did not work
+    setViewReset((n) => n + 1);
     sound.ui('reset');
-    flash('parameters reset');
+    flash('everything back to standard');
   }, [sound, flash]);
 
   const onCopyJson = useCallback(async () => {
@@ -123,7 +127,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="viewport">
-        <Stage params={scene} idle={idle} onMood={setMood} sound={sound} />
+        <Stage params={scene} idle={idle} onMood={setMood} sound={sound} viewReset={viewReset} />
       </div>
       <Panel
         params={params}
