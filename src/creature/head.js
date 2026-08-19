@@ -99,6 +99,27 @@ function flareNorm(p, dy) {
 /**
  * The point of skin along direction d (a unit vector), written into out.
  */
+/**
+ * The player's sculpt dabs, as a radial multiplier along direction d. Each dab
+ * is a gaussian of angular radius r; positive amplitudes swell the skin,
+ * negative ones dent it. Lives here — inside the analytic surface — so the
+ * drawn mesh, the raycasts and every part that seats on the skin all agree
+ * about where the sculpted skin is.
+ */
+export function sculptTerm(p, part, dx, dy, dz) {
+  const list = p.sculpt;
+  if (!list || !list.length) return 1;
+  let k = 1;
+  for (const s of list) {
+    if (s.part !== part) continue;
+    const dot = dx * s.x + dy * s.y + dz * s.z;
+    if (dot <= 0) continue;               // the far side of the surface
+    const ang = Math.acos(Math.min(1, dot));
+    k += s.a * Math.exp(-(ang * ang) / (2 * s.r * s.r));
+  }
+  return Math.max(0.3, k);
+}
+
 export function headPoint(p, d, out = new THREE.Vector3()) {
   const dx = d.x, dy = d.y, dz = d.z;
 
@@ -146,6 +167,10 @@ export function headPoint(p, d, out = new THREE.Vector3()) {
 
   // 5. profile lean: forehead forward (+) or jaw forward (-)
   z *= 1 + p.profile * dy;
+
+  // 6. the player's own thumbprints: sculpt dabs pressed in by hand
+  const sc = sculptTerm(p, 'head', dx, dy, dz);
+  if (sc !== 1) { x *= sc; y *= sc; z *= sc; }
 
   out.set(x * p.headWidth, y * p.headHeight, z * p.headDepth);
   return out;

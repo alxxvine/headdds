@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { fbm3 } from '../lib/noise.js';
+import { sculptTerm } from './head.js';
 
 // The torso used to be whichever primitive its kind named — a squashed sphere,
 // a cylinder, a box — and next to a skull that is a star-shaped surface with a
@@ -57,6 +58,10 @@ export function bodyPoint(p, d, out = new THREE.Vector3()) {
   const lump = fbm3(dx * 2.6 + 31.7, dy * 2.6 + 8.3, dz * 2.6 + 19.1, 5, 3) - 0.5;
   const r = 1 + lump * p.bodyLumps * 2.4;
   x *= r; y *= r; z *= r;
+
+  // 5. the player's sculpt dabs, same mechanism as the skull's
+  const sc = sculptTerm(p, 'body', dx, dy, dz);
+  if (sc !== 1) { x *= sc; y *= sc; z *= sc; }
 
   out.set(x, y, z);
   return out;

@@ -28,6 +28,20 @@ export function addEars(parent, headMesh, p, mats, S, rng) {
     // out and a little up: on a skull this round, straight out of the side sits
     // too low to read as an ear
     const hit = surfaceByDir(p, side * 1, p.earY * 0.9, -0.15);
+    pivots.push(buildEar(parent, headMesh, p, mats, S, rng, kind, hit, size, side));
+  }
+
+  seatEars(parent, headMesh, pivots, S);
+  return pivots;
+}
+
+/**
+ * One ear of a given kind at a given root. Split out of addEars so a
+ * hand-placed ear (EDIT mode) is built by the same code as a grown one; call
+ * seatEars afterwards to push it under the skin.
+ */
+export function buildEar(parent, headMesh, p, mats, S, rng, kind, hit, size, side) {
+  {
     const pivot = new THREE.Group();
     orientTo(pivot, hit.point, hit.normal);
     parent.add(pivot);
@@ -40,8 +54,7 @@ export function addEars(parent, headMesh, p, mats, S, rng) {
       const pit = new THREE.Mesh(new THREE.SphereGeometry(size * 0.42, 8, 6), mats.cavity);
       pit.position.z = -size * 0.16;
       pivot.add(pit);
-      pivots.push({ pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0 });
-      continue;
+      return { pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0 };
     }
 
     // orientTo gives this pivot a useful basis: +Z points out of the skull,
@@ -110,8 +123,7 @@ export function addEars(parent, headMesh, p, mats, S, rng) {
         m.position.set(0, -i * size * 0.55 - size * 0.3, size * (0.55 - i * 0.08));
         withOutline(pivot, m, g, p.outline * 0.4 * S, mats.outline);
       }
-      pivots.push({ pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0.45 });
-      continue;
+      return { pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0.45 };
     } else if (kind === 'spines') {
       // a cluster of small spikes where an ear would be
       for (let i = 0; i < 4; i++) {
@@ -123,8 +135,7 @@ export function addEars(parent, headMesh, p, mats, S, rng) {
         m.position.set(0, (i - 1.5) * size * 0.22, size * 0.5);
         withOutline(pivot, m, g, p.outline * 0.4 * S, mats.outline);
       }
-      pivots.push({ pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0.05 });
-      continue;
+      return { pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0.05 };
     } else if (kind === 'curl') {
       // a ram's curl, three segments tightening as they go
       for (let i = 0; i < 3; i++) {
@@ -135,8 +146,7 @@ export function addEars(parent, headMesh, p, mats, S, rng) {
         m.position.set(0, Math.sin(a) * size * 0.75, size * (0.4 + Math.cos(a) * 0.7));
         withOutline(pivot, m, g, p.outline * 0.4 * S, mats.outline);
       }
-      pivots.push({ pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0.05 });
-      continue;
+      return { pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0.05 };
     } else if (kind === 'fan') {
       // a pleated fan standing off the skull, three blades from one root
       for (let i = 0; i < 3; i++) {
@@ -148,8 +158,7 @@ export function addEars(parent, headMesh, p, mats, S, rng) {
         m.position.set(0, size * 1.0, size * 0.5);
         withOutline(pivot, m, g, p.outline * 0.4 * S, mats.outline);
       }
-      pivots.push({ pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0.35 });
-      continue;
+      return { pivot, len: size, phase: side > 0 ? 0 : 1.6, stiffness: 0.35 };
     } else if (kind === 'flaps') {
       // broad and hanging: down and a little out, tapering to a point
       geo = warpGeometry(new THREE.SphereGeometry(1, 11, 9), rng(), warpRoll(p, rng));
@@ -194,14 +203,20 @@ export function addEars(parent, headMesh, p, mats, S, rng) {
 
     withOutline(pivot, mesh, geo, p.outline * 0.5 * S, mats.outline);
     // flaps are heavy and swing; a fin is bone and barely moves
-    pivots.push({
+    return {
       pivot,
       len: size,
       phase: side > 0 ? 0 : 1.6,
       stiffness: kind === 'flaps' ? 0.7 : kind === 'trumpets' ? 0.25 : 0.1,
-    });
+    };
   }
+}
 
+/**
+ * Push each ear in along its own radial until a decent share of it is behind
+ * the skin. Split out so placed ears get the same seating.
+ */
+export function seatEars(parent, headMesh, pivots, S) {
   // Every ear is rooted ON the skin, and that is all the contact some of them
   // get. `bat` is the clearest case: a tall blade whose middle sits a size and
   // a half ABOVE its root and a third of a size out from it, on a skull that
@@ -245,6 +260,4 @@ export function addEars(parent, headMesh, p, mats, S, rng) {
       st.pivot.position.addScaledVector(_ed, -Math.min(inner + want, st.len * 0.45, across * 0.16));
     }
   }
-
-  return pivots;
 }

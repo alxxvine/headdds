@@ -561,3 +561,9 @@ input[type='range']::-moz-range-thumb {
   font-size: 10px;
   max-width: 120px;
 }
+
+.edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}

@@ -11,6 +11,9 @@ import { loadFavs, addFav, removeFav, favParams, snapThumb } from './lib/favs.js
 // twitching freak; they can still switch it on with the IDLE button.
 const WANTS_MOTION = !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
 
+// which schema select each placeable kind draws its styles from
+const TYPE_SOURCE = { eye: 'eyeStyle', arm: 'armType', ear: 'earType', hair: 'hairType', nose: 'noseType' };
+
 export default function App() {
   const [params, setParams] = useState(() => readUrlParams() || { ...DEFAULTS });
   const [note, setNote] = useState('');
@@ -22,7 +25,7 @@ export default function App() {
   const [edit, setEdit] = useState(false);
   const [placeKind, setPlaceKind] = useState(null);
   // which style the next planted part of a kind wears; null = same as the face
-  const [placeStyles, setPlaceStyles] = useState({ eye: null, arm: 'stick' });
+  const [placeStyles, setPlaceStyles] = useState({ eye: null, arm: 'stick', ear: null, hair: null, nose: null });
   // The editor reads this ref at event time. Props into the Canvas go through
   // react-three-fiber's own scheduler and can lag a frame behind the panel —
   // long enough for a click right after a style pick to plant the OLD style.
@@ -30,7 +33,11 @@ export default function App() {
   placeRef.current = {
     kind: placeKind,
     style: placeKind === 'eye' ? (placeStyles.eye ?? params.eyeStyle)
-      : placeKind === 'arm' ? placeStyles.arm : null,
+      : placeKind === 'arm' ? placeStyles.arm
+      : placeKind === 'ear' ? (placeStyles.ear ?? (params.earType !== 'none' ? params.earType : 'flaps'))
+      : placeKind === 'hair' ? (placeStyles.hair ?? (params.hairType !== 'none' && params.hairType !== 'crest' ? params.hairType : 'tendrils'))
+      : placeKind === 'nose' ? (placeStyles.nose ?? (params.noseType !== 'none' ? params.noseType : 'bump'))
+      : null,
   };
   // Off until asked for: a browser will not start an AudioContext without a
   // gesture anyway, and a page that greets you with a roar is one you close.
@@ -142,13 +149,20 @@ export default function App() {
     sound.ui('tap');
     setPlaceKind((cur) => {
       const next = cur === kind ? null : kind;
-      flash(next ? `click the head to plant a ${next} — right-click or drag off to remove` : 'planting off');
+      if (!next) flash('tool off');
+      else if (kind === 'bump' || kind === 'dent') flash(`${next}: click or stroke the head or the trunk`);
+      else if (kind === 'smooth') flash('smooth: click a bump or dent to take it back out');
+      else flash(`click the ${next === 'arm' ? 'trunk' : 'head'} to plant a ${next} — right-click or drag off to remove`);
       return next;
     });
   }, [sound, flash]);
 
   const onPlaced = useCallback((list) => {
     setParams((prev) => ({ ...prev, placed: list }));
+  }, []);
+
+  const onSculpt = useCallback((list) => {
+    setParams((prev) => ({ ...prev, sculpt: list }));
   }, []);
 
   // a tile dragged out of the parts catalog and dropped on the creature
@@ -184,6 +198,7 @@ export default function App() {
           editParams={params}
           onParam={setParam}
           onPlaced={onPlaced}
+          onSculpt={onSculpt}
           placeKind={placeKind}
           placeRef={placeRef}
           onNote={flash}
@@ -198,46 +213,52 @@ export default function App() {
         </button>
         {edit && (
           <div className="edit-tools">
-            {['eye', 'horn', 'wart', 'arm'].map((kind) => (
-              <button
-                key={kind}
-                type="button"
-                className={placeKind === kind ? 'edit-tool on' : 'edit-tool'}
-                onClick={() => onPickPlace(kind)}
-                title={kind === 'arm'
-                  ? 'arm, then click the trunk to plant an extra arm there'
-                  : `arm, then click the head to plant a ${kind} there`}
-              >
-                + {kind.toUpperCase()}
-              </button>
-            ))}
+            <div className="edit-grid">
+              {['eye', 'horn', 'wart', 'arm', 'ear', 'hair', 'nose'].map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className={placeKind === kind ? 'edit-tool on' : 'edit-tool'}
+                  onClick={() => onPickPlace(kind)}
+                  title={kind === 'arm'
+                    ? 'arm, then click the trunk to plant an extra arm there'
+                    : `arm, then click the head to plant a ${kind} there`}
+                >
+                  + {kind.toUpperCase()}
+                </button>
+              ))}
+            </div>
             {/* the armed kind may wear its own style, picked here */}
-            {placeKind === 'eye' && (
+            {placeKind && TYPE_SOURCE[placeKind] && (
               <select
                 className="edit-style"
-                value={placeStyles.eye ?? params.eyeStyle}
-                onChange={(e) => setPlaceStyles((s) => ({ ...s, eye: e.target.value }))}
-                title="which kind of eye the next click plants"
+                value={placeRef.current.style ?? ''}
+                onChange={(e) => setPlaceStyles((s) => ({ ...s, [placeKind]: e.target.value }))}
+                title={`which kind of ${placeKind} the next click plants`}
               >
-                {PARAM_BY_KEY.eyeStyle.options.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            )}
-            {placeKind === 'arm' && (
-              <select
-                className="edit-style"
-                value={placeStyles.arm}
-                onChange={(e) => setPlaceStyles((s) => ({ ...s, arm: e.target.value }))}
-                title="which kind of arm the next click plants"
-              >
-                {PLACED_TYPES.arm().map((v) => (
+                {PLACED_TYPES[placeKind]().map((v) => (
                   <option key={v} value={v}>
-                    {PARAM_BY_KEY.armType.options.find((o) => o.value === v)?.label ?? v}
+                    {PARAM_BY_KEY[TYPE_SOURCE[placeKind]].options.find((o) => o.value === v)?.label ?? v}
                   </option>
                 ))}
               </select>
             )}
+            {/* the clay: bumps and dents pressed straight into the skin */}
+            <div className="edit-grid">
+              {['bump', 'dent', 'smooth'].map((tool) => (
+                <button
+                  key={tool}
+                  type="button"
+                  className={placeKind === tool ? 'edit-tool on' : 'edit-tool'}
+                  onClick={() => onPickPlace(tool)}
+                  title={tool === 'smooth'
+                    ? 'arm, then click a dab to take it back out'
+                    : `arm, then click or stroke the head or the trunk to ${tool} it`}
+                >
+                  {tool.toUpperCase()}
+                </button>
+              ))}
+            </div>
             {params.placed?.length > 0 && (
               <button
                 type="button"
@@ -245,7 +266,17 @@ export default function App() {
                 onClick={() => { onPlaced([]); flash('planted parts cleared'); }}
                 title="take every hand-planted part off"
               >
-                × ALL ({params.placed.length})
+                × PARTS ({params.placed.length})
+              </button>
+            )}
+            {params.sculpt?.length > 0 && (
+              <button
+                type="button"
+                className="edit-tool"
+                onClick={() => { onSculpt([]); flash('sculpt cleared'); }}
+                title="flatten every bump and dent"
+              >
+                × SCULPT ({params.sculpt.length})
               </button>
             )}
           </div>

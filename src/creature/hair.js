@@ -43,6 +43,56 @@ function strandTube(hit, len, bend, radius, segments = 6, radial = 4) {
   return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), segments, radius, radial, false);
 }
 
+// A growth swept back or down is aimed in WORLD space, and a root on the
+// forehead has a normal pointing at the camera — so "back" for that strand
+// meant straight into the skull. Whatever the aim, it keeps a component along
+// the strand's own normal, so it stays on the outside of the head.
+const outward = (normal, want, floor = 0.4) => {
+  const v = want.clone().normalize();
+  const d = v.dot(normal);
+  if (d < floor) v.addScaledVector(normal, floor - d).normalize();
+  return v;
+};
+
+/**
+ * One strand of a given kind rooted along `dir`, sunk onto the real skin.
+ * Split out of addHair so a hand-placed strand (EDIT mode) is built by the
+ * same code as a grown one.
+ */
+export function buildStrand(parent, p, mats, rng, S, kind, dir, lenScale = 1) {
+  const hit = surfaceByDir(p, dir.x, dir.y, dir.z);
+  const len = p.tendrilLen * S * (0.6 + rng() * 0.8) * lenScale;
+  const pivot = new THREE.Group();
+  pivot.position.copy(hit.point);
+  const strand = growStrand(pivot, p, mats, rng, S, kind, hit, len);
+  parent.add(pivot);
+  sinkStrand(p, strand);
+  return strand;
+}
+
+/** Push one strand in until its lowest point is under the skin. */
+function sinkStrand(p, st) {
+  let gap = Infinity;
+  st.pivot.updateMatrixWorld(true);
+  st.pivot.traverse((o) => {
+    if (!o.isMesh || o.material?.side === THREE.BackSide) return;
+    const pos = o.geometry.attributes.position;
+    if (!pos) return;
+    const step = Math.max(1, Math.floor(pos.count / 24));
+    for (let k = 0; k < pos.count; k += step) {
+      _hv.fromBufferAttribute(pos, k).applyMatrix4(o.matrixWorld);
+      if (_hv.lengthSq() < 1e-9) { gap = 0; continue; }
+      _hd.copy(_hv).normalize();
+      headPoint(p, _hd, _hs);
+      gap = Math.min(gap, _hv.length() - _hs.length());
+    }
+  });
+  if (gap > 0 && gap < Infinity) {
+    _hd.copy(st.pivot.position).normalize();
+    st.pivot.position.addScaledVector(_hd, -gap * 1.05);
+  }
+}
+
 export function addHair(parent, p, mats, rng, S) {
   const kind = p.hairType;
   const strands = [];
@@ -81,18 +131,6 @@ export function addHair(parent, p, mats, rng, S) {
     return strands;
   }
 
-  // A growth swept back or down is aimed in WORLD space, and a root on the
-  // forehead has a normal pointing at the camera — so "back" for that strand
-  // meant straight into the skull, and the far end came out somewhere across
-  // the face as a rod with no root. Whatever the aim, it keeps a component
-  // along the strand's own normal, so it stays on the outside of the head.
-  const outward = (normal, want, floor = 0.4) => {
-    const v = want.clone().normalize();
-    const d = v.dot(normal);
-    if (d < floor) v.addScaledVector(normal, floor - d).normalize();
-    return v;
-  };
-
   // fur is a coat, not a hairdo: many more tufts, spread over the whole skull
   const total = kind === 'fur' ? count * 3 + 6 : count;
 
@@ -100,11 +138,21 @@ export function addHair(parent, p, mats, rng, S) {
     const dir = kind === 'fur' ? PELT(i, total, rng)
       : kind === 'quills' ? CROWN(i, total, rng, 0.75)
       : CROWN(i, total, rng);
-    const hit = surfaceByDir(p, dir.x, dir.y, dir.z);
-    const len = p.tendrilLen * S * (0.6 + rng() * 0.8);
-    const pivot = new THREE.Group();
-    pivot.position.copy(hit.point);
+    strands.push(buildStrand(parent, p, mats, rng, S, kind, dir));
+  }
 
+  return strands;
+}
+
+/**
+ * The per-kind geometry of a single strand. Everything is built into `pivot`
+ * (already sitting at the root); returns the animator's strand record.
+ */
+function growStrand(pivot, p, mats, rng, S, kind, hit, len) {
+  const strands = [];
+  // the direction the root sits along, for the kinds that lie against it
+  const dir = hit.point.clone().normalize();
+  {
     // ----------------------------------------------------------------- fur ---
     if (kind === 'fur') {
       // short, blunt and lying against the skull rather than standing off it
@@ -297,40 +345,6 @@ export function addHair(parent, p, mats, rng, S) {
       strands.push({ pivot, len, phase: rng() * Math.PI * 2, stiffness: 1 });
     }
 
-    parent.add(pivot);
   }
-
-  // Every strand is rooted on the real skin — and then its geometry is placed
-  // relative to that root along whatever direction the kind sweeps in, which
-  // for the ones that lie back or hang down is not the normal at all. Over the
-  // length of a base that leans sideways, the skull curves away underneath it,
-  // and the strand's own bottom edge comes off the scalp. It reads as a plate
-  // floating beside the head.
-  //
-  // Rather than a different sinking rule in each of fifteen branches, measure
-  // the thing that was built and push it in until its lowest point is under the
-  // skin. The head is star-shaped, so "in" is towards the origin.
-  parent.updateMatrixWorld(true);
-  for (const st of strands) {
-    let gap = Infinity;
-    st.pivot.traverse((o) => {
-      if (!o.isMesh || o.material?.side === THREE.BackSide) return;
-      const pos = o.geometry.attributes.position;
-      if (!pos) return;
-      const step = Math.max(1, Math.floor(pos.count / 24));
-      for (let k = 0; k < pos.count; k += step) {
-        _hv.fromBufferAttribute(pos, k).applyMatrix4(o.matrixWorld);
-        if (_hv.lengthSq() < 1e-9) { gap = 0; continue; }
-        _hd.copy(_hv).normalize();
-        headPoint(p, _hd, _hs);
-        gap = Math.min(gap, _hv.length() - _hs.length());
-      }
-    });
-    if (gap > 0 && gap < Infinity) {
-      _hd.copy(st.pivot.position).normalize();
-      st.pivot.position.addScaledVector(_hd, -gap * 1.05);
-    }
-  }
-
-  return strands;
+  return strands[0];
 }

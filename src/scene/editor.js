@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
-import { PARAM_BY_KEY, PLACED_MAX } from '../creature/schema.js';
+import { PARAM_BY_KEY, PLACED_MAX, SCULPT_MAX } from '../creature/schema.js';
 
 // EDIT mode: grab the creature instead of the sliders. Every mesh in the
 // build carries a `userData.part` tag; the raycast walks up from whatever it
@@ -100,7 +100,7 @@ function setHighlight(root, cache, on) {
  * goes out through `onParam`/`onPlaced` — the same road the sliders take.
  * `placeKind` armed means the next click on the skull plants that part there.
  */
-export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeKind = null, placeRef = null, onNote }) {
+export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onSculpt, placeKind = null, placeRef = null, onNote }) {
   const { gl, camera, controls } = useThree();
   const ray = useMemo(() => new THREE.Raycaster(), []);
   const hover = useRef(null);
@@ -118,7 +118,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeK
   // Changes are accumulated and flushed on a timer instead — the last value
   // wins — so a drag rebuilds at most ~8 times a second and the final value
   // always lands.
-  const queue = useRef({ params: new Map(), placed: null, timer: 0 });
+  const queue = useRef({ params: new Map(), placed: null, sculpt: null, timer: 0 });
   const flush = useRef(() => {});
   useEffect(() => {
     flush.current = () => {
@@ -128,8 +128,9 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeK
       for (const [k, v] of q.params) onParam(k, v);
       q.params.clear();
       if (q.placed) { onPlaced?.(q.placed); q.placed = null; }
+      if (q.sculpt) { onSculpt?.(q.sculpt); q.sculpt = null; }
     };
-  }, [onParam, onPlaced]);
+  }, [onParam, onPlaced, onSculpt]);
   const arm = () => {
     const q = queue.current;
     if (!q.timer) q.timer = setTimeout(() => flush.current(), 120);
@@ -187,8 +188,8 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeK
     };
 
     const placedEntry = (kind, local, s = 1, t = null) => {
-      const base = kind === 'eye'
-        ? { k: 'eye', x: local.x, y: local.y, z: 0, s }
+      const base = kind === 'eye' || kind === 'nose'
+        ? { k: kind, x: local.x, y: local.y, z: 0, s }
         : { k: kind, ...(() => { const d = local.clone().normalize(); return { x: d.x, y: d.y, z: d.z }; })(), s };
       if (t) base.t = t;
       return base;
@@ -238,6 +239,59 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeK
       return entry;
     };
 
+    // ------------------------------------------------------------- sculpt ---
+    // A dab is a gaussian pressed into the skin. BUMP swells, DENT hollows,
+    // SMOOTH removes the nearest dab. A drag is a stroke of dabs.
+    const SCULPT_A = { bump: 0.16, dent: -0.14, smooth: 0 };
+
+    const sculptTarget = (e) => {
+      const rig = builtRef.current?.rig;
+      if (!rig) return null;
+      castFrom(e);
+      const hh = rig.headMesh ? ray.intersectObject(rig.headMesh, false)[0] : null;
+      const th = rig.torso ? ray.intersectObject(rig.torso, false)[0] : null;
+      const h = hh && th ? (hh.distance <= th.distance ? hh : th) : hh || th;
+      if (!h) return null;
+      return {
+        part: th && h === th ? 'body' : 'head',
+        dir: h.object.worldToLocal(h.point.clone()).normalize(),
+      };
+    };
+
+    const dabAt = (e, kind) => {
+      const t = sculptTarget(e);
+      if (!t) return false;
+      const list = (paramsRef.current.sculpt || []).slice();
+      if (kind === 'smooth') {
+        let best = -1;
+        let bestDot = 0.5;
+        list.forEach((s, i) => {
+          if (s.part !== t.part) return;
+          const d = s.x * t.dir.x + s.y * t.dir.y + s.z * t.dir.z;
+          if (d > bestDot) { bestDot = d; best = i; }
+        });
+        if (best < 0) return false;
+        list.splice(best, 1);
+      } else {
+        const a = SCULPT_A[kind];
+        // a dab close to an existing same-sign dab deepens it instead of
+        // stacking a new entry, so a stroke stays inside the cap
+        const near = list.findIndex((s) => s.part === t.part
+          && Math.sign(s.a) === Math.sign(a)
+          && (s.x * t.dir.x + s.y * t.dir.y + s.z * t.dir.z) > 0.965);
+        if (near >= 0) {
+          const s = list[near];
+          list[near] = { ...s, a: Math.min(0.6, Math.max(-0.5, s.a + a * 0.5)) };
+        } else {
+          if (list.length >= SCULPT_MAX) { onNote?.('sculpt is full — SMOOTH some of it away'); return false; }
+          list.push({ part: t.part, x: t.dir.x, y: t.dir.y, z: t.dir.z, r: 0.45, a });
+        }
+      }
+      queue.current.sculpt = list;
+      arm();
+      return true;
+    };
+
     const unhover = () => {
       if (hover.current) setHighlight(hover.current.root, cache.current, false);
       hover.current = null;
@@ -259,6 +313,15 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeK
     const applyDrag = (e) => {
       const d = drag.current;
       if (!d) return;
+      if (d.sculptKind) {
+        // a stroke: another dab each time the pointer has travelled a bit
+        if (Math.hypot(e.clientX - d.lx, e.clientY - d.ly) > 26) {
+          d.lx = e.clientX;
+          d.ly = e.clientY;
+          dabAt(e, d.sculptKind);
+        }
+        return;
+      }
       if (d.placedIndex !== undefined) {
         const list = (paramsRef.current.placed || []).slice();
         const prev = list[d.placedIndex];
@@ -339,11 +402,23 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeK
       // fresh grab (it would overwrite the live one) and not to the orbit
       if (drag.current) { e.stopPropagation(); e.preventDefault(); return; }
 
+      const aim = armedNow();
+
+      // an armed sculpt tool dabs whatever skin the click lands on — the
+      // raycast goes to the skull and the trunk themselves, so a dab lands
+      // under a part rather than on it
+      if (SCULPT_A[aim.kind] !== undefined) {
+        if (!dabAt(e, aim.kind)) return;   // missed the skin — orbit keeps it
+        e.stopPropagation();
+        e.preventDefault();
+        startDrag(e, { sculptKind: aim.kind, lx: e.clientX, ly: e.clientY });
+        return;
+      }
+
       const found = pick(e);
 
       // a part kind is armed: a click on the skull (or the trunk, for an arm)
       // plants it there. A click on an existing placed part still grabs it.
-      const aim = armedNow();
       if (aim.kind && found?.part !== 'placed') {
         let entry = null;
         if (aim.kind === 'arm') {
@@ -354,7 +429,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, placeK
           if (tf) entry = armEntryAt(e, tf, 1, aim.style);
         } else {
           const local = skullPoint(e);
-          if (local) entry = placedEntry(aim.kind, local, 1, aim.kind === 'eye' ? aim.style : null);
+          if (local) entry = placedEntry(aim.kind, local, 1, aim.style);
         }
         if (!entry) return;   // missed the body part it roots on — orbit keeps the drag
         e.stopPropagation();
