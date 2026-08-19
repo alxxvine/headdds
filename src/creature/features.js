@@ -1367,19 +1367,34 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     // to draw over the cavity at all, and a little for the bite. Everything
     // above that is a rod hanging in the air from three quarters on.
     const outCap = clear + headR * 0.015;
-    for (let k = 0; k < 6; k++) {
+    // How far a tooth may be tipped towards the throat. The solver used to
+    // pitch as far as it liked — 69 degrees at the stop — and past thirty a
+    // tooth stops reading as standing in a jaw and starts reading as lying on
+    // its back inside the mouth, which the art director saw: "зубы во внутрь
+    // идут". Past the cap the correction comes out of the LENGTH instead; a
+    // short upright tooth is a tooth, a long flat one is debris.
+    const PITCH_CAP = 0.52;
+    for (let k = 0; k < 7; k++) {
       const out = proud();
       if (out <= outCap) break;
-      if (k < 3) {
+      if (k < 3 && pitch < PITCH_CAP) {
         // the far end swings in by len*sin(dθ), so this is the angle that
         // would land it, damped because the near end swings the other way
-        pitch = Math.min(1.2, pitch + Math.asin(Math.min(0.9, (out - outCap) / Math.max(len, 1e-3))) * 0.7 + 0.04);
+        pitch = Math.min(PITCH_CAP, pitch + Math.asin(Math.min(0.9, (out - outCap) / Math.max(len, 1e-3))) * 0.7 + 0.04);
         pose();
       } else {
         const f = Math.max(0.45, 1 - (out - outCap) / Math.max(len, 1e-3));
         tooth.scale.y *= f;
         tooth.position.y *= f;
       }
+    }
+    // What neither the pitch cap nor the length floor could reach is SUNK:
+    // the root goes into the gum, where the skull's own depth hides it. A
+    // buried root costs nothing; a rod past the cheek costs the creature.
+    const rest = proud() - outCap;
+    if (rest > 0) {
+      frame.position.addScaledVector(hit.normal, -Math.min(rest, len * 0.5));
+      frame.updateMatrix();
     }
     // tagged so tools/face-sweep.mjs can pick the teeth out of a head full of
     // horns and warts built from the same primitives
