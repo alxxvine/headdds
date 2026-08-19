@@ -84,6 +84,27 @@ export default function App() {
     if (selected?.placed !== undefined && !(params.placed || [])[selected.placed]) setSelected(null);
   }, [params.placed, selected]);
 
+  // iOS Safari ignores user-scalable=no: a pinch during editing zooms the
+  // PAGE, the EDIT button sails off-screen, and there is no way back. While
+  // EDIT is on, page zoom is blocked outright (gesturestart is Safari's own
+  // pinch event; the touchmove guard covers the rest).
+  useEffect(() => {
+    if (!edit) return undefined;
+    const block = (e) => e.preventDefault();
+    const blockPinch = (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); };
+    document.addEventListener('gesturestart', block, { passive: false });
+    document.addEventListener('gesturechange', block, { passive: false });
+    document.addEventListener('touchmove', blockPinch, { passive: false });
+    const dbl = (e) => e.preventDefault();   // double-tap zoom
+    document.addEventListener('dblclick', dbl, { passive: false });
+    return () => {
+      document.removeEventListener('gesturestart', block);
+      document.removeEventListener('gesturechange', block);
+      document.removeEventListener('touchmove', blockPinch);
+      document.removeEventListener('dblclick', dbl);
+    };
+  }, [edit]);
+
   const setParam = useCallback((key, value) => {
     // Picking a kind or a colour is a click and gets one; dragging a slider
     // fires on every pixel of travel and would turn the panel into a rattle.
@@ -332,6 +353,14 @@ export default function App() {
         </button>
         {edit && selected === null && (
           <div className="edit-tools">
+            <button
+              type="button"
+              className="edit-tool edit-exit"
+              onClick={onToggleEdit}
+              title="leave edit mode"
+            >
+              ⏎ EXIT
+            </button>
             <div className="edit-grid">
               {['eye', 'horn', 'wart', 'arm', 'ear', 'hair', 'nose'].map((kind) => (
                 <button
