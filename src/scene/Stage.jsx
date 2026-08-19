@@ -255,6 +255,7 @@ export default function Stage({
       {onParam && (
         <Editor
           enabled={edit}
+          quick={!edit}
           builtRef={builtRef}
           paramsRef={paramsRef}
           onParam={onParam}
