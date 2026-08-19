@@ -14,6 +14,25 @@ const WANTS_MOTION = !(typeof matchMedia === 'function' && matchMedia('(prefers-
 // which schema select each placeable kind draws its styles from
 const TYPE_SOURCE = { eye: 'eyeStyle', arm: 'armType', ear: 'earType', hair: 'hairType', nose: 'noseType' };
 
+// The family remote: tap a GROWN part and get its whole family's dials —
+// counts first, so nobody has to plant teeth one by one. Each row is
+// [caption, schema key]; steps come from the schema (ints move by 1).
+const FAMILY_ROWS = {
+  tooth: [['top', 'teethTop'], ['low', 'teethBottom'], ['size', 'toothSize']],
+  mouth: [['width', 'mouthWidth'], ['open', 'mouthOpen'], ['top', 'teethTop'], ['low', 'teethBottom']],
+  hair: [['count', 'tendrils'], ['length', 'tendrilLen']],
+  wart: [['count', 'warts'], ['size', 'wartSize']],
+  horn: [['count', 'horns'], ['length', 'hornLen']],
+  eye: [['count', 'eyeCount'], ['size', 'eyeSize']],
+  ear: [['size', 'earSize'], ['height', 'earY']],
+  nose: [['size', 'noseSize'], ['height', 'noseY']],
+  aura: [['count', 'spores'], ['size', 'auraSize']],
+};
+const FAMILY_LABEL = {
+  tooth: 'teeth', mouth: 'maw', hair: 'hair', wart: 'warts', horn: 'horns',
+  eye: 'eyes', ear: 'ears', nose: 'nose', aura: 'aura',
+};
+
 export default function App() {
   const [params, setParams] = useState(() => readUrlParams() || { ...DEFAULTS });
   const [note, setNote] = useState('');
@@ -62,7 +81,7 @@ export default function App() {
   }, [params]);
 
   useEffect(() => {
-    if (selected !== null && !(params.placed || [])[selected]) setSelected(null);
+    if (selected?.placed !== undefined && !(params.placed || [])[selected.placed]) setSelected(null);
   }, [params.placed, selected]);
 
   const setParam = useCallback((key, value) => {
@@ -175,8 +194,8 @@ export default function App() {
   const editEntry = useCallback((fn) => {
     setParams((prev) => {
       const list = (prev.placed || []).slice();
-      const idx = selectedRef.current;
-      if (idx === null || !list[idx]) return prev;
+      const idx = selectedRef.current?.placed;
+      if (idx === undefined || !list[idx]) return prev;
       list[idx] = fn({ ...list[idx] });
       return { ...prev, placed: list };
     });
@@ -229,11 +248,23 @@ export default function App() {
   }, [editEntry]);
 
   const gizmoRemove = useCallback(() => {
-    const idx = selectedRef.current;
+    const idx = selectedRef.current?.placed;
     setSelected(null);
     setParams((prev) => ({ ...prev, placed: (prev.placed || []).filter((_, i) => i !== idx) }));
     flash('part removed');
   }, [flash]);
+
+  // the family remote turns one schema dial a notch at a time
+  const familyStep = useCallback((key, dir) => {
+    const def = PARAM_BY_KEY[key];
+    if (!def) return;
+    const step = def.type === 'int' ? 1 : (def.max - def.min) / 12;
+    setParams((prev) => {
+      let v = Math.min(def.max, Math.max(def.min, (prev[key] ?? def.def) + dir * step));
+      if (def.type === 'int') v = Math.round(v);
+      return { ...prev, [key]: v };
+    });
+  }, []);
 
   // press-and-hold repeats, so a nudge button behaves like a held key
   const hold = useCallback((fn) => ({
@@ -369,10 +400,31 @@ export default function App() {
             )}
           </div>
         )}
-        {edit && selected !== null && params.placed?.[selected] && (
+        {edit && selected?.family && FAMILY_ROWS[selected.family] && (
           <div className="gizmo">
             <div className="gizmo-head">
-              <span>{params.placed[selected].k}{params.placed[selected].t ? ` · ${params.placed[selected].t}` : ''}</span>
+              <span>{FAMILY_LABEL[selected.family]}</span>
+              <button type="button" className="gz-x gz-ok" onClick={() => setSelected(null)} title="done">ok</button>
+            </div>
+            {FAMILY_ROWS[selected.family].map(([cap, key]) => {
+              const def = PARAM_BY_KEY[key];
+              const v = params[key];
+              return (
+                <div className="gz-row" key={key}>
+                  <span className="gz-cap">{cap}</span>
+                  <button type="button" className="gz" {...hold(() => familyStep(key, -1))}>−</button>
+                  <span className="gz-val">{def.type === 'int' ? v : Number(v).toFixed(2)}</span>
+                  <button type="button" className="gz" {...hold(() => familyStep(key, 1))}>＋</button>
+                </div>
+              );
+            })}
+            <div className="gz-hint">drag the part itself to take it in hand</div>
+          </div>
+        )}
+        {edit && selected?.placed !== undefined && params.placed?.[selected.placed] && (
+          <div className="gizmo">
+            <div className="gizmo-head">
+              <span>{params.placed[selected.placed].k}{params.placed[selected.placed].t ? ` · ${params.placed[selected.placed].t}` : ''}</span>
               <button type="button" className="gz-x" onClick={gizmoRemove} title="take this part off">×</button>
             </div>
             <div className="gz-row">
@@ -387,7 +439,7 @@ export default function App() {
               <button type="button" className="gz" {...hold(() => gizmoScale(-1))}>−</button>
               <button type="button" className="gz" {...hold(() => gizmoScale(1))}>＋</button>
             </div>
-            {['eye', 'ear', 'hair', 'horn', 'wart'].includes(params.placed[selected].k) && (
+            {['eye', 'ear', 'hair', 'horn', 'wart'].includes(params.placed[selected.placed].k) && (
               <div className="gz-row">
                 <span className="gz-cap">aim</span>
                 <button type="button" className="gz" {...hold(() => gizmoTilt('b', -1))}>↰</button>

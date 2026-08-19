@@ -665,3 +665,14 @@ input[type='range']::-moz-range-thumb {
   .gizmo { left: 8px; right: 8px; bottom: 8px; min-width: 0; }
   .gz { padding: 10px 0; }
 }
+
+.gz-val {
+  flex: 0 0 auto;
+  min-width: 46px;
+  text-align: center;
+  color: var(--accent);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gz-ok { color: var(--accent); border-color: #3c5a45; font-size: 11px; letter-spacing: 1px; }
