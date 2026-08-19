@@ -100,7 +100,7 @@ function setHighlight(root, cache, on) {
  * goes out through `onParam`/`onPlaced` — the same road the sliders take.
  * `placeKind` armed means the next click on the skull plants that part there.
  */
-export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onSculpt, onSelect, placeKind = null, placeRef = null, onNote }) {
+export function Editor({ enabled, quick = false, builtRef, paramsRef, onParam, onPlaced, onSculpt, onSelect, placeKind = null, placeRef = null, onNote }) {
   const { gl, camera, controls } = useThree();
   const ray = useMemo(() => new THREE.Raycaster(), []);
   const hover = useRef(null);
@@ -168,8 +168,13 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
     return () => clearInterval(id);
   }, [builtRef]);
 
+  // QUICK mode: EDIT is off, but on a desktop the creature still answers the
+  // mouse directly — hover brightens a part, press-and-drag drives the same
+  // mapped params (or moves a hand-placed part), a plain click stays a poke
+  // and empty space stays the orbit. Nothing destructive lives here: no
+  // family hand-over, no removal, no gizmos — that is EDIT's business.
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!enabled && !quick) return undefined;
     const dom = gl.domElement;
     const holder = dom.parentElement ?? dom;
 
@@ -314,6 +319,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
     };
 
     const onMove = (e) => {
+      if (quick && e.pointerType === 'touch') return;   // phones keep tap/orbit
       if (drag.current) return;
       const found = pick(e);
       if (found?.root === hover.current?.root) return;
@@ -428,7 +434,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       drag.current = null;
       // a grab that never travelled is a TAP: it selects the part, and the
       // gizmo takes over from there
-      if (d.placedIndex !== undefined && !d.moved && !d.offSkull) onSelect?.({ placed: d.placedIndex });
+      if (!quick && d.placedIndex !== undefined && !d.moved && !d.offSkull) onSelect?.({ placed: d.placedIndex });
       // a tap on a grown part opens its family remote instead of grabbing it;
       // detachable families carry a split() the remote can call to hand the
       // whole family over on the spot
@@ -439,7 +445,9 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
           split: pd ? () => splitFamily(pd) : undefined,
         });
       }
-      if (d.placedIndex !== undefined && d.offSkull) {
+      // in QUICK mode letting go off the head just leaves the part where it
+      // last sat — removal is EDIT's deliberate gesture
+      if (!quick && d.placedIndex !== undefined && d.offSkull) {
         // let go off the head: the part comes off in your hand
         const list = placedNow().filter((_, i) => i !== d.placedIndex);
         pushPlaced(list);
@@ -591,6 +599,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
 
     const onDown = (e) => {
       if (e.button !== undefined && e.button !== 0) return;
+      if (quick && e.pointerType === 'touch') return;
       // A second finger during a placed-part grab starts a PINCH: the part
       // scales with the spread of the two fingers — the phone's wheel. During
       // any other grab the extra finger still belongs to nobody.
@@ -616,7 +625,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
         return;
       }
 
-      const aim = armedNow();
+      const aim = quick ? { kind: null, style: null } : armedNow();
 
       // an armed sculpt tool dabs whatever skin the click lands on — the
       // raycast goes to the skull and the trunk themselves, so a dab lands
@@ -659,9 +668,14 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
         return;
       }
 
-      if (!found) { onSelect?.(null); return; }   // empty space: deselect, orbit keeps the event
-      e.stopPropagation();  // ...but a grabbed part is not a camera drag
-      e.preventDefault();
+      if (!found) { if (!quick) onSelect?.(null); return; }   // empty space: deselect, orbit keeps the event
+      // In QUICK mode the event is left alone: startDrag() already parked the
+      // orbit, and the click must still reach the canvas so a motionless tap
+      // stays a poke. In EDIT the tap belongs to the gizmos instead.
+      if (!quick) {
+        e.stopPropagation();  // ...but a grabbed part is not a camera drag
+        e.preventDefault();
+      }
       if (found.part === 'placed') {
         const idx = found.root.userData.placedIndex;
         const kind = placedNow()[idx]?.k;
@@ -681,8 +695,8 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       const base = {};
       for (const def of Object.values(PARAM_BY_KEY)) base[def.key] = p[def.key];
       startDrag(e, {
-        pendingDetach: DETACHABLE[found.part] ? found : null,
-        familyPart: FAMILY[found.part] ? found.part : null,
+        pendingDetach: !quick && DETACHABLE[found.part] ? found : null,
+        familyPart: !quick && FAMILY[found.part] ? found.part : null,
         map: MAP[found.part],
         base,
         sx: e.clientX,
@@ -695,6 +709,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
     };
 
     const onWheel = (e) => {
+      if (quick) return;   // outside EDIT the wheel is the zoom, everywhere
       const found = pick(e);
       if (!found) return;   // empty space: the zoom keeps the wheel
       e.stopPropagation();
@@ -731,6 +746,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
 
     // right-click takes a placed part off
     const onMenu = (e) => {
+      if (quick) return;   // no right-click removal outside EDIT
       const found = pick(e);
       if (found?.part !== 'placed') return;
       e.stopPropagation();
@@ -761,7 +777,7 @@ export function Editor({ enabled, builtRef, paramsRef, onParam, onPlaced, onScul
       flush.current();
       dom.style.cursor = '';
     };
-  }, [enabled, placeKind, gl, camera, controls, ray, builtRef, paramsRef, placeRef, onNote, onSelect]);
+  }, [enabled, quick, placeKind, gl, camera, controls, ray, builtRef, paramsRef, placeRef, onNote, onSelect]);
 
   return null;
 }
