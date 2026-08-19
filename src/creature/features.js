@@ -792,6 +792,7 @@ export function addEyes(parent, headMesh, p, mats, rng) {
     const q = { ...p, eyeBulge: bulge, pupilSize: e.pupilSize };
     const hit = surfaceAt(headMesh, p, x, y);
     const pivot = new THREE.Group();
+    pivot.userData.part = 'eye';   // what the editor's raycast reports grabbing
     // where settleEyes decided this eye goes, kept so tools/face-sweep.mjs can
     // tell a layout that could not be settled from a style that moved the ball
     // afterwards
@@ -837,6 +838,7 @@ export function addEyes(parent, headMesh, p, mats, rng) {
         len *= 0.72;
       }
       stalk = new THREE.Group();
+      stalk.userData.part = 'eye';
       orientTo(stalk, hit.point, grow);
       parent.add(stalk);
 
@@ -1339,6 +1341,7 @@ function addTeeth(parent, headMesh, p, mats, rng, { mw, mh, my, mx = 0, side, co
     // lean it sideways is the splay below, which is symmetric about the middle
     // of the row the way a jaw is.
     const frame = new THREE.Group();
+    frame.userData.part = 'tooth';
     // A tooth planted on the rim grows along the TANGENT plane there, and a
     // tangent line leaves a curved skull the instant it starts: the far end of
     // a straight tooth stands out of the face by about its own length squared
@@ -1558,6 +1561,7 @@ export function addMouth(parent, headMesh, p, mats, rng) {
     });
     const lipMesh = new THREE.Mesh(lips, mats.lip);
     lipMesh.userData.maw = true;
+    lipMesh.userData.part = 'mouth';
     // The three things in a mouth are drawn in a fixed order — lip, then the
     // dark, then the teeth — and the two decals do not write depth, so that
     // order is the whole of the answer. Left to a depth bias it changed as the
@@ -1587,6 +1591,7 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   });
   const cavityMesh = new THREE.Mesh(cavity, mats.maw);
   cavityMesh.userData.maw = true;
+  cavityMesh.userData.part = 'mouth';
   cavityMesh.renderOrder = 2;
   parent.add(cavityMesh);
 
@@ -1594,6 +1599,7 @@ export function addMouth(parent, headMesh, p, mats, rng) {
   // peel them off. Only the lower row of teeth swings, on a hinge sitting
   // behind and below the maw.
   const jaw = new THREE.Group();
+  jaw.userData.part = 'mouth';
   jaw.position.set(mx, my - mh * 0.2, -p.headDepth * 0.35);
   parent.add(jaw);
 
@@ -1622,6 +1628,7 @@ export function addMouth(parent, headMesh, p, mats, rng) {
  */
 export function addNose(parent, headMesh, p, mats, rng) {
   const nose = new THREE.Group();
+  nose.userData.part = 'nose';
   buildNose(nose, headMesh, p, mats, rng);
   nose.traverse((o) => {
     if (o.isMesh && o.material?.side !== THREE.BackSide) o.userData.nose = true;
@@ -2014,6 +2021,7 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
     inst.instanceMatrix.needsUpdate = true;
     // so pruneWarts can find this mesh once the eyes and the nose exist
     inst.userData.warts = true;
+    inst.userData.part = 'wart';
     parent.add(inst);
   }
 
@@ -2044,6 +2052,7 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
       : new THREE.ConeGeometry(S * 0.085, len, 6, 4),
     rng(), warpRoll(p, rng, 0.9));
     const frame = new THREE.Group();
+    frame.userData.part = 'horn';
     orientTo(frame, hit.point, aim);
     const horn = new THREE.Mesh(geo, mats.growth);
     horn.rotation.x = Math.PI / 2;
@@ -2079,7 +2088,11 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
 
   // hair of whatever kind lives in hair.js
   // Ears sway with the hair, so they join the same list the animator drives.
-  const tendrils = addHair(parent, p, mats, rng, S).concat(addEars(parent, headMesh, p, mats, S, rng));
+  const hairStrands = addHair(parent, p, mats, rng, S);
+  for (const t of hairStrands) t.pivot.userData.part = 'hair';
+  const earStrands = addEars(parent, headMesh, p, mats, S, rng);
+  for (const t of earStrands) t.pivot.userData.part = 'ear';
+  const tendrils = hairStrands.concat(earStrands);
 
   // spore cloud above the skull, in a group of its own so it can drift
   // whatever floats around this one, hung on the head so it travels with it
@@ -2089,7 +2102,7 @@ export function addGrowths(parent, headMesh, p, mats, rng) {
   // gap above the head it was meant to sit on.
   headMesh.geometry.computeBoundingBox();
   const spores = addAura(p, mats, rng, S, headMesh.geometry.boundingBox.max.y * 0.98);
-  if (spores) parent.add(spores);
+  if (spores) { spores.userData.part = 'aura'; parent.add(spores); }
 
   return { tendrils, spores };
 }

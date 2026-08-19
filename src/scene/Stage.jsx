@@ -4,6 +4,7 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildCreature } from '../creature/build.js';
 import { createAnimator } from './animator.js';
+import { Editor } from './editor.js';
 
 /**
  * Point the camera at the creature. `stock` ignores whatever direction the
@@ -206,16 +207,30 @@ function Controls() {
   return null;
 }
 
-export default function Stage({ params, onBuilt, idle = true, onMood, sound, viewReset = 0 }) {
+export default function Stage({
+  params, onBuilt, idle = true, onMood, sound, viewReset = 0,
+  edit = false, editParams = null, onParam = null,
+}) {
   const pixelate = params.pixelate !== 'off';
   const poke = useRef(() => {});
   const down = useRef({ x: 0, y: 0 });
+  // the editor raycasts against whatever build is current; a ref, because a
+  // slider drag replaces the build several times a second
+  const builtRef = useRef(null);
+  const paramsRef = useRef(editParams ?? params);
+  paramsRef.current = editParams ?? params;
 
   // A click pokes the creature, a drag orbits the camera — tell them apart by
   // how far the pointer travelled.
   const onDown = (e) => { down.current = { x: e.clientX, y: e.clientY }; };
   const onUp = (e) => {
+    if (edit) return;   // in EDIT mode a tap is a grab, not a poke
     if (Math.hypot(e.clientX - down.current.x, e.clientY - down.current.y) < 5) poke.current();
+  };
+
+  const handleBuilt = (b) => {
+    builtRef.current = b;
+    onBuilt?.(b);
   };
 
   return (
@@ -234,7 +249,9 @@ export default function Stage({ params, onBuilt, idle = true, onMood, sound, vie
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
       <PixelScale pixelSize={params.pixelSize} pixelate={pixelate} />
       <Controls />
-      <Creature params={params} onBuilt={onBuilt} idle={idle} poke={poke} onMood={onMood} sound={sound} viewReset={viewReset} />
+      {/* the creature holds still while it is being operated on */}
+      <Creature params={params} onBuilt={handleBuilt} idle={idle && !edit} poke={poke} onMood={onMood} sound={sound} viewReset={viewReset} />
+      {onParam && <Editor enabled={edit} builtRef={builtRef} paramsRef={paramsRef} onParam={onParam} />}
     </Canvas>
   );
 }

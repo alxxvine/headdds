@@ -73,6 +73,7 @@ export function buildCreature(rawParams) {
   headMesh.updateMatrixWorld(true);
 
   const head = new THREE.Group();
+  head.userData.part = 'skull';   // editor fallback: the bare skull and its decals
   withOutline(head, headMesh, headGeo, p.outline * S, mats.outline);
   const growths = addGrowths(head, headMesh, p, mats, rng);
   addNose(head, headMesh, p, mats, rng);

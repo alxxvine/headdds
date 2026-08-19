@@ -499,3 +499,29 @@ input[type='range']::-moz-range-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* -------------------------------------------------------------- edit mode */
+
+.viewport { position: relative; }
+
+.edit-toggle {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 6px 14px;
+  background: #1c1926cc;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font: inherit;
+  letter-spacing: 2px;
+  cursor: pointer;
+}
+
+.edit-toggle:hover { border-color: #4a4162; }
+
+.edit-toggle.on {
+  color: var(--accent);
+  border-color: #3c5a45;
+  background: #14201acc;
+}

@@ -32,7 +32,9 @@ function Section({ sec, params, onChange }) {
               key={o.value}
               type="button"
               className={on ? 'tile on' : 'tile'}
-              title={`put ${o.label} on this freak`}
+              title={`put ${o.label} on this freak — tap, or drag it onto the creature`}
+              draggable
+              onDragStart={(e) => e.dataTransfer.setData('text/plain', `${sec.key}:${o.value}`)}
               onClick={() => onChange(sec.key, o.value)}
             >
               {shot
