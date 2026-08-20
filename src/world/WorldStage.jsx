@@ -2,22 +2,39 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { buildCreature } from '../creature/build.js';
-import { PixelScale, Controls } from '../scene/Stage.jsx';
+import { PixelScale } from '../scene/Stage.jsx';
 import { buildTerrain, groundHeight } from './terrain.js';
 import { createWalker, TUNE } from './walker.js';
 import { createGait } from './gait.js';
 
 // The walk-test micro-world: the current freak dropped onto the terrain of
-// terrain.js, driven by walker.js, animated by gait.js. The camera is the
-// same orbit as the pedestal, except its target rides on the creature — so
-// spin and zoom still belong to the player while the world scrolls past.
+// terrain.js, driven by walker.js, animated by gait.js.
+//
+// The camera is OURS alone — no OrbitControls in here. The pedestal's orbit
+// ran its own damped update every frame, and with the mouse ALSO steering the
+// camera the two fought over it: every frame each pulled its own way, which
+// the player saw as constant jitter. One owner, no fight: the spherical orbit
+// below is the only thing that ever writes the camera.
 
 // every freak walks the world at the same stature, whatever the sliders say —
 // the WORLD is tuned in these units
 const STATURE = 2.2;
 
+// One knob per input, all in one place.
+export const CAM = {
+  sens: 0.006,      // captured mouse, radians per pixel sideways
+  sensY: 0.0045,    // ...and vertically
+  drag: 1.5,        // swipe/drag look, multiplier on top of sens
+  stick: 3.0,       // right stick, radians per second sideways
+  stickY: 2.0,      // ...and vertically
+  minPhi: 0.35,     // how far over the top the eye may go
+  maxPhi: Math.PI / 2 - 0.05,
+  minDist: 2.2,
+  maxDist: 26,
+};
+
 function WalkScene({ params, inputRef, camRef, jumpRef }) {
-  const { camera, controls } = useThree();
+  const { camera, gl } = useThree();
 
   const built = useMemo(() => buildCreature(params), [params]);
   useEffect(() => () => built.dispose(), [built]);
@@ -32,81 +49,104 @@ function WalkScene({ params, inputRef, camRef, jumpRef }) {
 
   const carrier = useRef();
   const aimed = useRef(false);
+  // the whole camera is these three numbers
+  const cam = useRef({ theta: 0, phi: 1.15, dist: STATURE * 3.6 });
+  // raw look input gathered between frames, spent once per frame
+  const look = useRef({ dx: 0, dy: 0 });
   const _fwd = useRef(new THREE.Vector3());
   const _tgt = useRef(new THREE.Vector3());
+  const _off = useRef(new THREE.Vector3());
 
-  // Desktop mouse-look: the pointer is CAPTURED (pointer lock) and the camera
-  // follows the bare mouse — no button held. Entering the world was itself a
-  // click, so the grab is attempted immediately; if the browser refuses, the
-  // next click on the scene grabs it, and ESC always gives the cursor back.
-  // Raw movement deltas pile up here and are spent once per frame.
-  const look = useRef({ dx: 0, dy: 0 });
-  const { gl } = useThree();
+  // Look input, three doors into the same accumulator:
+  //  - desktop: pointer lock — the bare mouse steers, ESC frees the cursor;
+  //  - fallback and phones: drag/swipe across the world;
+  //  - phones also have the right stick (read in the frame loop).
   useEffect(() => {
-    if (typeof matchMedia === 'function' && !matchMedia('(pointer: fine)').matches) return undefined;
     const dom = gl.domElement;
+    const fine = typeof matchMedia !== 'function' || matchMedia('(pointer: fine)').matches;
+
     const tryLock = () => {
-      if (document.pointerLockElement !== dom) {
-        // some browsers return a promise that rejects without a gesture —
-        // that is fine, the click fallback stays armed
+      if (fine && document.pointerLockElement !== dom) {
+        // may reject without a fresh gesture — fine, the click fallback stays
         try { dom.requestPointerLock()?.catch?.(() => {}); } catch { /* fine */ }
       }
     };
-    const move = (e) => {
-      if (document.pointerLockElement !== dom) return;
-      look.current.dx += e.movementX;
-      look.current.dy += e.movementY;
-    };
-    // the browser drops the lock on ESC by itself; doing it by hand as well
-    // costs nothing and covers embedders where the native exit is flaky
     const esc = (e) => {
       if (e.key === 'Escape' && document.pointerLockElement === dom) document.exitPointerLock();
     };
+
+    // one pointermove handler serves both doors: captured mouse deltas when
+    // locked, held-pointer drag deltas otherwise
+    let dragId = null;
+    let lx = 0;
+    let ly = 0;
+    const pdown = (e) => {
+      if (document.pointerLockElement === dom) return;
+      dragId = e.pointerId;
+      lx = e.clientX;
+      ly = e.clientY;
+    };
+    const pmove = (e) => {
+      if (document.pointerLockElement === dom) {
+        look.current.dx += e.movementX;
+        look.current.dy += e.movementY;
+        return;
+      }
+      if (dragId !== e.pointerId) return;
+      look.current.dx += (e.clientX - lx) * CAM.drag;
+      look.current.dy += (e.clientY - ly) * CAM.drag;
+      lx = e.clientX;
+      ly = e.clientY;
+    };
+    const pup = (e) => { if (dragId === e.pointerId) dragId = null; };
+    const wheel = (e) => {
+      e.preventDefault();
+      cam.current.dist = THREE.MathUtils.clamp(
+        cam.current.dist * (e.deltaY > 0 ? 1.1 : 0.9), CAM.minDist, CAM.maxDist);
+    };
+
     tryLock();
     dom.addEventListener('click', tryLock);
-    document.addEventListener('mousemove', move);
+    dom.addEventListener('pointerdown', pdown);
+    window.addEventListener('pointermove', pmove);
+    window.addEventListener('pointerup', pup);
+    window.addEventListener('pointercancel', pup);
+    dom.addEventListener('wheel', wheel, { passive: false });
     document.addEventListener('keydown', esc);
     return () => {
       dom.removeEventListener('click', tryLock);
-      document.removeEventListener('mousemove', move);
+      dom.removeEventListener('pointerdown', pdown);
+      window.removeEventListener('pointermove', pmove);
+      window.removeEventListener('pointerup', pup);
+      window.removeEventListener('pointercancel', pup);
+      dom.removeEventListener('wheel', wheel);
       document.removeEventListener('keydown', esc);
       if (document.pointerLockElement === dom) document.exitPointerLock();
     };
   }, [gl]);
 
   useFrame((state, dt) => {
-    if (!carrier.current || !controls) return;
+    if (!carrier.current) return;
     const w = walker.state;
 
-    // first frame: park the camera behind the creature, facing the hill
     if (!aimed.current) {
       aimed.current = true;
-      controls.target.set(w.pos.x, w.pos.y + STATURE * 0.7, w.pos.z);
-      camera.position.set(w.pos.x, w.pos.y + STATURE * 1.6, w.pos.z + STATURE * 3.4);
       camera.near = 0.1;
       camera.far = 300;
       camera.updateProjectionMatrix();
-      controls.update();
     }
 
-    // the right stick and the captured mouse swing the camera around the
-    // creature the same way: sideways orbits, up and down raises the eye,
-    // clamped just above the ground plane. Mouse up looks UP (the camera
+    // spend the gathered look input. Mouse/swipe up looks UP (the camera
     // drops), like every shooter since forever.
     const ci = camRef?.current;
     const lk = look.current;
-    const dTheta = (ci?.x ?? 0) * 2.4 * dt + lk.dx * 0.0032;
-    const dPhi = -(ci?.y ?? 0) * 1.6 * dt - lk.dy * 0.0024;
+    const c = cam.current;
+    c.theta -= (ci?.x ?? 0) * CAM.stick * dt + lk.dx * CAM.sens;
+    c.phi = THREE.MathUtils.clamp(
+      c.phi - (ci?.y ?? 0) * CAM.stickY * dt - lk.dy * CAM.sensY,
+      CAM.minPhi, CAM.maxPhi);
     lk.dx = 0;
     lk.dy = 0;
-    if (dTheta || dPhi) {
-      const off = camera.position.clone().sub(controls.target);
-      const sph = new THREE.Spherical().setFromVector3(off);
-      sph.theta -= dTheta;
-      sph.phi = THREE.MathUtils.clamp(sph.phi + dPhi, 0.3, Math.PI / 2 - 0.06);
-      off.setFromSpherical(sph);
-      camera.position.copy(controls.target).add(off);
-    }
 
     // a queued jump fires on this frame's ground truth
     if (jumpRef?.current) {
@@ -114,11 +154,8 @@ function WalkScene({ params, inputRef, camRef, jumpRef }) {
       walker.jump();
     }
 
-    // stick/keys are camera-relative: up on the stick is away from the lens
-    const fwd = _fwd.current.copy(controls.target).sub(camera.position);
-    fwd.y = 0;
-    if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1);
-    fwd.normalize();
+    // stick/keys are camera-relative: up on the stick walks away from the lens
+    const fwd = _fwd.current.set(-Math.sin(c.theta), 0, -Math.cos(c.theta));
     const inp = inputRef.current;
     const wx = fwd.x * inp.y - fwd.z * inp.x;
     const wz = fwd.z * inp.y + fwd.x * inp.x;
@@ -129,15 +166,14 @@ function WalkScene({ params, inputRef, camRef, jumpRef }) {
     carrier.current.position.copy(w.pos);
     carrier.current.rotation.y = w.yaw;
 
-    // the camera's target rides the creature; the camera keeps its own offset
+    // the camera hangs off the creature on its spherical arm...
     const tgt = _tgt.current.set(w.pos.x, w.pos.y + STATURE * 0.7, w.pos.z);
-    camera.position.add(tgt.clone().sub(controls.target));
-    controls.target.copy(tgt);
-
-    // the orbit sphere knows nothing about the hill: when the trailing camera
-    // would sink into a slope, it rides the ground instead
+    const off = _off.current.setFromSphericalCoords(c.dist, c.phi, c.theta);
+    camera.position.copy(tgt).add(off);
+    // ...and rides over the terrain rather than sinking into a slope
     const camFloor = groundHeight(camera.position.x, camera.position.z) + 0.7;
     if (camera.position.y < camFloor) camera.position.y = camFloor;
+    camera.lookAt(tgt);
 
     // the tests read the walk from here — cheaper than teaching them to parse
     // a pixelated screenshot
@@ -184,7 +220,6 @@ export default function WorldStage({ params, inputRef, camRef, jumpRef }) {
       <directionalLight position={[3, 5, 6]} intensity={2.6} />
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
       <PixelScale pixelSize={params.pixelSize} pixelate={pixelate} />
-      <Controls minDistance={2.2} maxDistance={26} maxPolar={Math.PI / 2 - 0.06} />
       <WalkScene params={params} inputRef={inputRef} camRef={camRef} jumpRef={jumpRef} />
     </Canvas>
   );
