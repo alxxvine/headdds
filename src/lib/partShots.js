@@ -8,9 +8,10 @@ import { PARAM_BY_KEY } from '../creature/schema.js';
 // teeth need an open mouth).
 //
 // Thumbnails are rendered lazily, one per tick, on a single offscreen
-// renderer. They are cached per LOOK: each section keeps the shots for the
-// creature as it is now, and when the creature changes the old shots stay on
-// screen as stand-ins while the new ones bake — tiles update, never blink.
+// renderer, cached per LOOK: each section keeps the shots for the creature as
+// it is NOW. When the creature changes the old shots are dropped outright —
+// a tile shows the placeholder until its fresh shot lands. Keeping the old
+// ones as stand-ins read as the previous freak slowly mutating into the new.
 
 const SHOT_W = 72;
 const SHOT_H = 84;
@@ -40,8 +41,7 @@ export const sectionOptions = (sec) => PARAM_BY_KEY[sec.key].options;
 
 // ------------------------------------------------------------------ cache ---
 
-// per section: the look its shots were taken of, the fresh shots, and the
-// previous look's shots as stand-ins while the fresh ones bake
+// per section: the look its shots were taken of, and the shots themselves
 const sections = new Map();
 
 /**
@@ -65,21 +65,21 @@ function sectionState(sec, params) {
   const rev = sectionRev(sec, params);
   let st = sections.get(sec.key);
   if (!st || st.rev !== rev) {
-    st = {
-      rev,
-      shots: new Map(),
-      stale: st ? new Map([...st.stale, ...st.shots]) : new Map(),
-    };
+    st = { rev, shots: new Map() };
     sections.set(sec.key, st);
   }
   return st;
 }
 
-/** The freshest available thumbnail: current look first, stand-in second. */
+/**
+ * The thumbnail for the CURRENT look, or null. Checked against the live
+ * params, so the moment the creature changes every tile goes back to the
+ * placeholder instead of wearing the previous freak.
+ */
 export function peekShot(sec, params, value) {
   const st = sections.get(sec.key);
-  if (!st) return null;
-  return st.shots.get(value) || st.stale.get(value) || null;
+  if (!st || st.rev !== sectionRev(sec, params)) return null;
+  return st.shots.get(value) || null;
 }
 
 // --------------------------------------------------------------- renderer ---
@@ -160,8 +160,8 @@ function pump() {
     try {
       st.shots.set(job.value, renderShot(job.sec, job.base, job.value));
     } catch {
-      // a lost WebGL context or an OOM: fall back to the stand-in, if any
-      st.shots.set(job.value, st.stale.get(job.value) || null);
+      // a lost WebGL context or an OOM: skip this tile rather than loop on it
+      st.shots.set(job.value, null);
     }
     job.onShot?.();
   }
