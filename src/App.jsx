@@ -162,9 +162,15 @@ export default function App() {
         walkRun.current = true;
         return;
       }
+      // the pointer is usually captured, so the buttons are out of reach:
+      // R starts a FRESH round (also mid-game and over the end banner),
+      // B shuts the mode down — neither lets the mouse go
+      if (e.code === 'KeyR' && !e.repeat) {
+        setBombEnd(null);
+        setBombRound((n) => n + 1);
+        return;
+      }
       if (e.code === 'KeyB' && !e.repeat) {
-        // the pointer is usually captured, so the BOMB button is out of
-        // reach — B starts and stops the round without letting the mouse go
         setBombEnd(null);
         setBombRound((n) => (n > 0 ? 0 : n + 1));
         return;
@@ -507,7 +513,7 @@ export default function App() {
         )}
         {walk && (
           <>
-            <div className="walk-hint">WASD · shift — run · space — jump · B — bomb tag · esc — cursor</div>
+            <div className="walk-hint">WASD · shift — run · space — jump · R — bomb round · B — bomb off · esc — cursor</div>
             <label className="walk-sens" title="mouse look speed (esc frees the cursor to reach this)">
               <span>mouse speed</span>
               <input
@@ -548,6 +554,7 @@ export default function App() {
                 <div className="bomb-title">
                   {bombEnd === 'win' ? 'LAST ONE STANDING' : 'BOOM \u2014 it was in your hands'}
                 </div>
+                <div className="gz-hint">R — straight into the next round</div>
                 <div className="bomb-actions">
                   <button type="button" onClick={() => { setBombEnd(null); setBombRound((n) => n + 1); }}>AGAIN</button>
                   <button type="button" onClick={() => { setBombEnd(null); setBombRound(0); }}>DONE</button>
