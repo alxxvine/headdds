@@ -7,6 +7,7 @@ import { buildTerrain, groundHeight, WORLD } from './terrain.js';
 import { createWalker, TUNE } from './walker.js';
 import { createGait } from './gait.js';
 import { createAnimator } from '../scene/animator.js';
+import { createBombGame } from './bots.js';
 
 // The walk-test micro-world: the current freak dropped onto the terrain of
 // terrain.js, driven by walker.js, animated by gait.js.
@@ -34,7 +35,7 @@ export const CAM = {
   maxDist: 26,
 };
 
-function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null }) {
+function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null, bombRound = 0, onBombEnd, bombHudRef }) {
   const { camera, gl } = useThree();
   // the in-game speed slider; a ref so the frame loop reads the live value
   const sensRef = useRef(sens);
@@ -60,6 +61,15 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
   // standing still hands the puppet to the pedestal's idle animator — blinks,
   // breath, mood and all; the first step hands it back to the gait
   const idler = useMemo(() => createAnimator(), []);
+
+  // BOMB TAG: each round number is a fresh game; 0 is no game at all
+  const game = useMemo(
+    () => (bombRound > 0 ? createBombGame(terrain.colliders) : null),
+    [bombRound, terrain],
+  );
+  useEffect(() => () => game?.dispose(), [game]);
+  const bombReported = useRef(false);
+  useEffect(() => { bombReported.current = false; }, [game]);
 
   const carrier = useRef();
   const aimed = useRef(false);
@@ -255,9 +265,25 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
 
     // the tests read the walk from here — cheaper than teaching them to parse
     // a pixelated screenshot
+    // the round itself: bots think, the bomb rides, the fuse burns
+    if (game) {
+      game.update(dt, w);
+      const gs = game.state;
+      if (gs.over && !bombReported.current) {
+        bombReported.current = true;
+        onBombEnd?.(gs.over);
+      }
+      const hud = bombHudRef?.current;
+      if (hud?.el) {
+        hud.el.textContent = gs.over ? '' : `${gs.holder === 0 ? '\u{1F4A3} YOU ARE IT — touch someone' : 'the bomb is out there'} · ${Math.max(0, gs.fuse).toFixed(1)}s · ${gs.alive} alive`;
+        hud.el.style.color = gs.holder === 0 ? '#ff6a4a' : '';
+      }
+    }
+
     window.__walk = {
       x: w.pos.x, y: w.pos.y, z: w.pos.z, speed: w.speed, grade: w.grade, air: w.air, vy: w.vy,
       stamina: w.stamina, run: w.run, winded: w.winded,
+      bomb: game ? { holder: game.state.holder, fuse: game.state.fuse, alive: game.state.alive, over: game.state.over } : null,
       camX: camera.position.x, camY: camera.position.y, camZ: camera.position.z,
     };
   });
@@ -267,6 +293,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
   return (
     <>
       <primitive object={terrain.group} />
+      {game && <primitive object={game.group} />}
       {/* the gait writes offsets into the creature root's own position, so
           the stature scale lives on a wrapper — scaling the root itself would
           leave those offsets unscaled */}
@@ -279,7 +306,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
   );
 }
 
-export default function WorldStage({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null }) {
+export default function WorldStage({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null, bombRound = 0, onBombEnd, bombHudRef }) {
   const pixelate = params.pixelate !== 'off';
   // the world's sky is the pedestal background lifted a shade toward dusk
   // blue, and the fog is the SAME color — so the horizon melts into the sky
@@ -302,7 +329,19 @@ export default function WorldStage({ params, inputRef, camRef, jumpRef, runRef, 
       <directionalLight position={[3, 5, 6]} intensity={2.6} />
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
       <PixelScale pixelSize={params.pixelSize} pixelate={pixelate} />
-      <WalkScene params={params} inputRef={inputRef} camRef={camRef} jumpRef={jumpRef} runRef={runRef} hudRef={hudRef} sens={sens} zoom={zoom} />
+      <WalkScene
+        params={params}
+        inputRef={inputRef}
+        camRef={camRef}
+        jumpRef={jumpRef}
+        runRef={runRef}
+        hudRef={hudRef}
+        sens={sens}
+        zoom={zoom}
+        bombRound={bombRound}
+        onBombEnd={onBombEnd}
+        bombHudRef={bombHudRef}
+      />
     </Canvas>
   );
 }
