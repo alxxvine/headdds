@@ -6,6 +6,10 @@ import { groundHeight, groundNormal, WORLD } from './terrain.js';
 // it LOOK like walking.
 export const TUNE = {
   speed: 5.4,       // units/s on the flat (the creature stands ~2.2 tall)
+  run: 8.6,         // ...and with SHIFT held, while the stamina lasts
+  drain: 0.24,      // stamina spent per second of sprinting (≈4s of sprint)
+  regen: 0.17,      // ...and recovered per second of not sprinting
+  winded: 0.3,      // an emptied bar must refill this far before running again
   accel: 9,         // how quickly it gets up to speed / stops
   turn: 9,          // how quickly it faces where it is going
   uphill: 0.62,     // fraction of speed lost per unit of grade when climbing
@@ -33,6 +37,9 @@ export function createWalker(colliders = []) {
     roll: 0,
     air: false,      // off the ground mid-jump
     vy: 0,           // vertical speed while airborne
+    stamina: 1,      // 0..1, spent by sprinting
+    winded: false,   // emptied the bar: no sprint until it partly refills
+    run: false,      // actually sprinting this tick
   };
 
   /** Take off — only from the ground; mid-air mashing does nothing. */
@@ -44,12 +51,21 @@ export function createWalker(colliders = []) {
 
   /**
    * One tick. `ix, iz` is the wanted direction in WORLD space (already
-   * camera-relative), length 0..1.
+   * camera-relative), length 0..1; `wantRun` is the sprint key.
    */
-  function update(dt, ix, iz) {
+  function update(dt, ix, iz, wantRun = false) {
     const step = Math.min(0.05, dt);
     let mag = Math.hypot(ix, iz);
     if (mag > 1) { ix /= mag; iz /= mag; mag = 1; }
+
+    // sprinting spends the bar; walking refills it. An emptied bar stays
+    // winded until it climbs back a little, so the sprint cannot flicker at
+    // the very bottom.
+    state.run = wantRun && !state.winded && state.stamina > 0 && mag > 0.05;
+    state.stamina = Math.min(1, Math.max(0,
+      state.stamina + (state.run ? -TUNE.drain : TUNE.regen) * step));
+    if (state.run && state.stamina <= 0) state.winded = true;
+    if (state.winded && state.stamina >= TUNE.winded) state.winded = false;
 
     let target = 0;
     if (mag > 0.05) {
@@ -70,7 +86,7 @@ export function createWalker(colliders = []) {
       const f = state.grade > 0
         ? Math.max(TUNE.slowest, 1 - state.grade * TUNE.uphill)
         : Math.min(1.25, 1 - state.grade * TUNE.downhill);
-      target = state.grade > TUNE.maxGrade ? 0 : TUNE.speed * mag * f;
+      target = state.grade > TUNE.maxGrade ? 0 : (state.run ? TUNE.run : TUNE.speed) * mag * f;
     } else {
       state.grade = 0;
     }
@@ -87,10 +103,12 @@ export function createWalker(colliders = []) {
       pos.z = THREE.MathUtils.clamp(pos.z + fz * state.speed * step, -(WORLD - 2), WORLD - 2);
     }
 
-    // trunks and boulders are round walls: whatever the step did, the body
-    // ends it OUTSIDE every circle, pushed straight back out — so it slides
-    // along a rock it walked into instead of stopping dead or ghosting through
+    // Trunks and boulders are round walls — but only BELOW their tops:
+    // whatever the step did, a body below the rim ends it OUTSIDE the circle,
+    // pushed straight back out, so it slides along a rock it walked into. A
+    // body above the rim passes freely: up there the rock is a floor.
     for (const c of colliders) {
+      if (pos.y >= (c.top ?? Infinity) - 0.05) continue;
       const dx = pos.x - c.x;
       const dz = pos.z - c.z;
       const keep = c.r + TUNE.body;
@@ -107,7 +125,21 @@ export function createWalker(colliders = []) {
     // stance point is lifted with the tilt — otherwise the downhill-side feet
     // stand right and the uphill side is buried to the shins.
     groundNormal(pos.x, pos.z, _n);
-    const floor = groundHeight(pos.x, pos.z) + (1 - _n.y) * 0.8;
+    let floor = groundHeight(pos.x, pos.z) + (1 - _n.y) * 0.8;
+    // a rock top under the feet IS the floor while the body is up at its level
+    for (const c of colliders) {
+      const top = c.top;
+      if (top === undefined || !Number.isFinite(top) || pos.y < top - 0.3) continue;
+      const dx = pos.x - c.x;
+      const dz = pos.z - c.z;
+      const r = c.r + TUNE.body * 0.6;
+      if (dx * dx + dz * dz < r * r) floor = Math.max(floor, top);
+    }
+    // stepping off a ledge is a FALL, not a glide down an invisible ramp
+    if (!state.air && pos.y - floor > 0.45) {
+      state.air = true;
+      state.vy = 0;
+    }
     if (state.air) {
       // ballistic until the ground comes back up to meet the feet
       state.vy -= TUNE.gravity * step;

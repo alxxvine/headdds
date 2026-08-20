@@ -34,7 +34,7 @@ export const CAM = {
   maxDist: 26,
 };
 
-function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1, zoom = null }) {
+function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null }) {
   const { camera, gl } = useThree();
   // the in-game speed slider; a ref so the frame loop reads the live value
   const sensRef = useRef(sens);
@@ -189,7 +189,16 @@ function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1, zoom = null })
     const wx = fwd.x * inp.y - fwd.z * inp.x;
     const wz = fwd.z * inp.y + fwd.x * inp.x;
 
-    walker.update(dt, wx, wz);
+    walker.update(dt, wx, wz, !!runRef?.current);
+
+    // the stamina bar lives outside React: written every frame, shown only
+    // while it is not full, red while the creature is winded
+    const hud = hudRef?.current;
+    if (hud?.fill) {
+      hud.fill.style.transform = `scaleX(${w.stamina})`;
+      hud.fill.style.background = w.winded ? '#e8642c' : '';
+      if (hud.box) hud.box.style.opacity = w.stamina >= 1 ? '0' : '1';
+    }
     // moving or airborne: the gait owns the puppet. Standing: the pedestal's
     // idle animator does — same blinks, breath and moods as on the stand.
     // Both write absolute transforms off the built pose, so the hand-over is
@@ -248,6 +257,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1, zoom = null })
     // a pixelated screenshot
     window.__walk = {
       x: w.pos.x, y: w.pos.y, z: w.pos.z, speed: w.speed, grade: w.grade, air: w.air, vy: w.vy,
+      stamina: w.stamina, run: w.run, winded: w.winded,
       camX: camera.position.x, camY: camera.position.y, camZ: camera.position.z,
     };
   });
@@ -269,7 +279,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1, zoom = null })
   );
 }
 
-export default function WorldStage({ params, inputRef, camRef, jumpRef, sens = 1, zoom = null }) {
+export default function WorldStage({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null }) {
   const pixelate = params.pixelate !== 'off';
   // the world's sky is the pedestal background lifted a shade toward dusk
   // blue, and the fog is the SAME color — so the horizon melts into the sky
@@ -292,7 +302,7 @@ export default function WorldStage({ params, inputRef, camRef, jumpRef, sens = 1
       <directionalLight position={[3, 5, 6]} intensity={2.6} />
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
       <PixelScale pixelSize={params.pixelSize} pixelate={pixelate} />
-      <WalkScene params={params} inputRef={inputRef} camRef={camRef} jumpRef={jumpRef} sens={sens} zoom={zoom} />
+      <WalkScene params={params} inputRef={inputRef} camRef={camRef} jumpRef={jumpRef} runRef={runRef} hudRef={hudRef} sens={sens} zoom={zoom} />
     </Canvas>
   );
 }
