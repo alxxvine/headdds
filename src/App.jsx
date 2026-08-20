@@ -445,7 +445,7 @@ export default function App() {
         )}
         {walk && (
           <>
-            <div className="walk-hint">WASD / arrows · space to jump · drag to look</div>
+            <div className="walk-hint">WASD · space — jump · mouse — look · esc — cursor</div>
             <Joystick inputRef={walkInput} />
             <Joystick inputRef={walkCam} className="stick stick-right" />
             <button
