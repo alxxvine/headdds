@@ -110,12 +110,15 @@ function addProps(group, rng, colliders) {
     if (rng() < 0.45) {
       const rock = new THREE.Mesh(rockGeo, rockMat);
       const s = 0.5 + rng() * 1.1;
-      rock.scale.set(s * (0.8 + rng() * 0.5), s * (0.55 + rng() * 0.4), s * (0.8 + rng() * 0.5));
+      const sy = s * (0.55 + rng() * 0.4);
+      rock.scale.set(s * (0.8 + rng() * 0.5), sy, s * (0.8 + rng() * 0.5));
       rock.rotation.y = rng() * Math.PI;
       seat(rock, x, z);
       rock.position.y += s * 0.1;
       group.add(rock);
-      colliders.push({ x, z, r: s * 0.9 });
+      // a rock has a TOP: below it the circle is a wall, above it a floor —
+      // that is what makes it jump-on-able
+      colliders.push({ x, z, r: s * 0.9, top: rock.position.y + sy * 0.8 });
     } else {
       const tree = new THREE.Group();
       const s = 0.8 + rng() * 0.9;
@@ -129,7 +132,8 @@ function addProps(group, rng, colliders) {
       tree.rotation.y = rng() * Math.PI;
       seat(tree, x, z);
       group.add(tree);
-      colliders.push({ x, z, r: 0.5 * s });
+      // a trunk is a wall all the way up — nobody stands on a tree
+      colliders.push({ x, z, r: 0.5 * s, top: Infinity });
     }
     placed++;
   }

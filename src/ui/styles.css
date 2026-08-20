@@ -971,3 +971,27 @@ input[type='range']::-moz-range-thumb { width: 3px; height: 13px; border-radius:
 .panel::-webkit-scrollbar { width: 8px; }
 .panel::-webkit-scrollbar-thumb { background: #202020; }
 .panel::-webkit-scrollbar-track { background: transparent; }
+
+/* the sprint's fuel gauge: appears when it is not full, red when winded */
+.stamina {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  width: 220px;
+  height: 5px;
+  background: #161616;
+  border: 1px solid #2e2e2e;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.35s;
+  pointer-events: none;
+}
+
+.stamina i {
+  display: block;
+  height: 100%;
+  background: var(--status);
+  transform-origin: left;
+  transform: scaleX(1);
+}

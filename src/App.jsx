@@ -55,6 +55,9 @@ export default function App() {
   const walkInput = useRef({ x: 0, y: 0 });
   const walkCam = useRef({ x: 0, y: 0 });
   const walkJump = useRef(false);
+  const walkRun = useRef(false);
+  // the stamina bar's DOM, written by the world every frame without React
+  const walkHud = useRef({ box: null, fill: null });
   // mouse-look speed multiplier, remembered between visits
   const [walkSens, setWalkSens] = useState(() => {
     const v = parseFloat(typeof localStorage !== 'undefined' ? localStorage.getItem('hd_walkSens') : '');
@@ -141,6 +144,10 @@ export default function App() {
     };
     const STEER = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
     const down = (e) => {
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        walkRun.current = true;
+        return;
+      }
       if (e.code === 'Space') {
         e.preventDefault();
         walkJump.current = true;
@@ -151,13 +158,21 @@ export default function App() {
       held.add(e.code);
       apply();
     };
-    const up = (e) => { held.delete(e.code); apply(); };
+    const up = (e) => {
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        walkRun.current = false;
+        return;
+      }
+      held.delete(e.code);
+      apply();
+    };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     return () => {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
       walkInput.current = { x: 0, y: 0 };
+      walkRun.current = false;
     };
   }, [walk]);
 
@@ -416,7 +431,7 @@ export default function App() {
     <div className={edit ? 'app edit-on' : walk ? 'app walk-on' : 'app'}>
       <div className="viewport" onDragOver={(e) => e.preventDefault()} onDrop={onDropPart}>
         {walk ? (
-          <WorldStage params={scene} inputRef={walkInput} camRef={walkCam} jumpRef={walkJump} sens={walkSens} zoom={walkZoom} />
+          <WorldStage params={scene} inputRef={walkInput} camRef={walkCam} jumpRef={walkJump} runRef={walkRun} hudRef={walkHud} sens={walkSens} zoom={walkZoom} />
         ) : (
         <Stage
           params={scene}
@@ -457,7 +472,7 @@ export default function App() {
         )}
         {walk && (
           <>
-            <div className="walk-hint">WASD · space — jump · mouse — look · esc — cursor</div>
+            <div className="walk-hint">WASD · shift — run · space — jump · mouse — look · esc — cursor</div>
             <label className="walk-sens" title="mouse look speed (esc frees the cursor to reach this)">
               <span>mouse speed</span>
               <input
@@ -482,6 +497,9 @@ export default function App() {
               />
               <span>−</span>
             </label>
+            <div className="stamina" ref={(el) => { walkHud.current.box = el; }}>
+              <i ref={(el) => { walkHud.current.fill = el; }} />
+            </div>
             <Joystick inputRef={walkInput} />
             <Joystick inputRef={walkCam} className="stick stick-right" />
             <button
