@@ -63,6 +63,8 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem('hd_walkSens', String(walkSens)); } catch { /* private mode */ }
   }, [walkSens]);
+  // camera distance for the phone's zoom slider (the desktop has the wheel)
+  const [walkZoom, setWalkZoom] = useState(8);
   const [placeKind, setPlaceKind] = useState(null);
   // which style the next planted part of a kind wears; null = same as the face
   const [placeStyles, setPlaceStyles] = useState({ eye: null, arm: 'stick', ear: null, hair: null, nose: null });
@@ -414,7 +416,7 @@ export default function App() {
     <div className={edit ? 'app edit-on' : walk ? 'app walk-on' : 'app'}>
       <div className="viewport" onDragOver={(e) => e.preventDefault()} onDrop={onDropPart}>
         {walk ? (
-          <WorldStage params={scene} inputRef={walkInput} camRef={walkCam} jumpRef={walkJump} sens={walkSens} />
+          <WorldStage params={scene} inputRef={walkInput} camRef={walkCam} jumpRef={walkJump} sens={walkSens} zoom={walkZoom} />
         ) : (
         <Stage
           params={scene}
@@ -467,6 +469,18 @@ export default function App() {
                 onChange={(e) => setWalkSens(parseFloat(e.target.value))}
               />
               <span className="walk-sens-val">{walkSens.toFixed(1)}x</span>
+            </label>
+            <label className="walk-zoom" title="camera distance">
+              <span>＋</span>
+              <input
+                type="range"
+                min="2.2"
+                max="20"
+                step="0.1"
+                value={walkZoom}
+                onChange={(e) => setWalkZoom(parseFloat(e.target.value))}
+              />
+              <span>−</span>
             </label>
             <Joystick inputRef={walkInput} />
             <Joystick inputRef={walkCam} className="stick stick-right" />

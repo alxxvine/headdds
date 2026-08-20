@@ -34,11 +34,16 @@ export const CAM = {
   maxDist: 26,
 };
 
-function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1 }) {
+function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1, zoom = null }) {
   const { camera, gl } = useThree();
   // the in-game speed slider; a ref so the frame loop reads the live value
   const sensRef = useRef(sens);
   sensRef.current = sens;
+  // the phone's zoom slider: whenever its value changes, the new distance is
+  // applied once — the wheel keeps working on top of it
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const zoomApplied = useRef(null);
 
   // the ink outline reads as grime at world scale — the game builds without
   // it; the pedestal and the editor keep theirs, and links stay untouched
@@ -161,11 +166,16 @@ function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1 }) {
     const c = cam.current;
     const k = sensRef.current;
     c.theta -= (ci?.x ?? 0) * CAM.stick * dt + lk.dx * CAM.sens * k;
+    // stick up looks UP, exactly like the mouse: pushing up drops the camera
     c.phi = THREE.MathUtils.clamp(
-      c.phi - (ci?.y ?? 0) * CAM.stickY * dt - lk.dy * CAM.sensY * k,
+      c.phi + (ci?.y ?? 0) * CAM.stickY * dt - lk.dy * CAM.sensY * k,
       CAM.minPhi, CAM.maxPhi);
     lk.dx = 0;
     lk.dy = 0;
+    if (zoomRef.current != null && zoomRef.current !== zoomApplied.current) {
+      zoomApplied.current = zoomRef.current;
+      c.dist = THREE.MathUtils.clamp(zoomRef.current, CAM.minDist, CAM.maxDist);
+    }
 
     // a queued jump fires on this frame's ground truth
     if (jumpRef?.current) {
@@ -259,7 +269,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1 }) {
   );
 }
 
-export default function WorldStage({ params, inputRef, camRef, jumpRef, sens = 1 }) {
+export default function WorldStage({ params, inputRef, camRef, jumpRef, sens = 1, zoom = null }) {
   const pixelate = params.pixelate !== 'off';
   // the world's sky is the pedestal background lifted a shade toward dusk
   // blue, and the fog is the SAME color — so the horizon melts into the sky
@@ -282,7 +292,7 @@ export default function WorldStage({ params, inputRef, camRef, jumpRef, sens = 1
       <directionalLight position={[3, 5, 6]} intensity={2.6} />
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
       <PixelScale pixelSize={params.pixelSize} pixelate={pixelate} />
-      <WalkScene params={params} inputRef={inputRef} camRef={camRef} jumpRef={jumpRef} sens={sens} />
+      <WalkScene params={params} inputRef={inputRef} camRef={camRef} jumpRef={jumpRef} sens={sens} zoom={zoom} />
     </Canvas>
   );
 }
