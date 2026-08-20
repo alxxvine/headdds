@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { buildCreature } from '../creature/build.js';
 import { PixelScale } from '../scene/Stage.jsx';
-import { buildTerrain, groundHeight } from './terrain.js';
+import { buildTerrain, groundHeight, WORLD } from './terrain.js';
 import { createWalker, TUNE } from './walker.js';
 import { createGait } from './gait.js';
 
@@ -76,12 +76,14 @@ function WalkScene({ params, inputRef, camRef, jumpRef }) {
     };
 
     // one pointermove handler serves both doors: captured mouse deltas when
-    // locked, held-pointer drag deltas otherwise
+    // locked, held-FINGER swipe deltas otherwise. A mouse button deliberately
+    // does NOT drag the view — on a desktop the captured mouse is the one and
+    // only way to look, so a stray click never spins the world.
     let dragId = null;
     let lx = 0;
     let ly = 0;
     const pdown = (e) => {
-      if (document.pointerLockElement === dom) return;
+      if (e.pointerType !== 'touch') return;
       dragId = e.pointerId;
       lx = e.clientX;
       ly = e.clientY;
@@ -166,18 +168,35 @@ function WalkScene({ params, inputRef, camRef, jumpRef }) {
     carrier.current.position.copy(w.pos);
     carrier.current.rotation.y = w.yaw;
 
-    // the camera hangs off the creature on its spherical arm...
+    // The camera hangs off the creature on its spherical arm — but the arm
+    // COLLIDES: where full length would put the eye inside a hill or out past
+    // the world's rim, the arm shortens and the camera closes in on the
+    // creature instead. Lifting the eye over the obstacle was the old answer,
+    // and at the map's edge the rim is so tall the lift read as the camera
+    // flying away.
     const tgt = _tgt.current.set(w.pos.x, w.pos.y + STATURE * 0.7, w.pos.z);
     const off = _off.current.setFromSphericalCoords(c.dist, c.phi, c.theta);
-    camera.position.copy(tgt).add(off);
-    // ...and rides over the terrain rather than sinking into a slope
-    const camFloor = groundHeight(camera.position.x, camera.position.z) + 0.7;
+    let reach = 1 / 8;
+    for (let i = 8; i >= 1; i--) {
+      const f = i / 8;
+      const px = tgt.x + off.x * f;
+      const pz = tgt.z + off.z * f;
+      const py = tgt.y + off.y * f;
+      if (Math.abs(px) < WORLD - 2.5 && Math.abs(pz) < WORLD - 2.5
+        && py > groundHeight(px, pz) + 0.5) { reach = f; break; }
+    }
+    camera.position.copy(tgt).addScaledVector(off, reach);
+    // whatever length survived, never leave the eye under the skin
+    const camFloor = groundHeight(camera.position.x, camera.position.z) + 0.5;
     if (camera.position.y < camFloor) camera.position.y = camFloor;
     camera.lookAt(tgt);
 
     // the tests read the walk from here — cheaper than teaching them to parse
     // a pixelated screenshot
-    window.__walk = { x: w.pos.x, y: w.pos.y, z: w.pos.z, speed: w.speed, grade: w.grade, air: w.air, vy: w.vy };
+    window.__walk = {
+      x: w.pos.x, y: w.pos.y, z: w.pos.z, speed: w.speed, grade: w.grade, air: w.air, vy: w.vy,
+      camX: camera.position.x, camY: camera.position.y, camZ: camera.position.z,
+    };
   });
 
   const fit = STATURE / Math.max(1e-6, built.fitSize.y);
