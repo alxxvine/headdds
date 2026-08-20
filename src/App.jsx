@@ -118,28 +118,30 @@ export default function App() {
     };
   }, [edit, walk]);
 
-  // the desktop's legs: WASD and the arrows steer while the world is up
+  // The desktop's legs: WASD and the arrows steer while the world is up.
+  // Matched by PHYSICAL key (e.code), not by the letter — on a Russian layout
+  // W reads as 'ц' and matching e.key left the creature standing still.
   useEffect(() => {
     if (!walk) return undefined;
     const held = new Set();
     const apply = () => {
-      const y = (held.has('w') || held.has('arrowup') ? 1 : 0) - (held.has('s') || held.has('arrowdown') ? 1 : 0);
-      const x = (held.has('d') || held.has('arrowright') ? 1 : 0) - (held.has('a') || held.has('arrowleft') ? 1 : 0);
+      const y = (held.has('KeyW') || held.has('ArrowUp') ? 1 : 0) - (held.has('KeyS') || held.has('ArrowDown') ? 1 : 0);
+      const x = (held.has('KeyD') || held.has('ArrowRight') ? 1 : 0) - (held.has('KeyA') || held.has('ArrowLeft') ? 1 : 0);
       walkInput.current = { x, y };
     };
+    const STEER = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
     const down = (e) => {
-      const k = e.key.toLowerCase();
-      if (k === ' ') {
+      if (e.code === 'Space') {
         e.preventDefault();
         walkJump.current = true;
         return;
       }
-      if (!'wasd'.includes(k) && !k.startsWith('arrow')) return;
+      if (!STEER.has(e.code)) return;
       e.preventDefault();
-      held.add(k);
+      held.add(e.code);
       apply();
     };
-    const up = (e) => { held.delete(e.key.toLowerCase()); apply(); };
+    const up = (e) => { held.delete(e.code); apply(); };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     return () => {
