@@ -831,3 +831,119 @@ button, select, input { touch-action: manipulation; }
   letter-spacing: 1px;
   font-size: 11px;
 }
+
+/* ==================================================================== skin */
+/* The dressing layer, applied last so the cascade does the surgery: same
+   bones and layout, calmer skin. Chrome is near-black with hairlines and
+   tracked caps; the one loud thing on the panel is the solid-white RANDOM.
+   Color still belongs only to what is alive: mood, stats, statuses. */
+
+:root {
+  --bg: #050505;
+  --panel: #0a0a0a;
+  --line: #262626;
+  --dim: #7a7a7a;
+}
+
+body { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+button, select, input { transition: border-color 0.15s, color 0.15s, background 0.15s; }
+button { border-radius: 0; }
+
+.panel { border-left: 1px solid #1b1b1b; }
+.panel-head { padding: 16px 14px 12px; border-bottom: 1px solid #1b1b1b; }
+.title { font-size: 16px; letter-spacing: 4px; }
+.sub { font-size: 10px; letter-spacing: 2px; }
+
+.actions { padding: 10px 14px 0; }
+.actions button {
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  border-radius: 0;
+  padding: 7px 4px;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+}
+.actions button:hover { border-color: #8a8a8a; }
+.actions button.primary { background: var(--ink); color: #000; border-color: var(--ink); }
+.actions button.primary:hover { background: #d7d7d7; border-color: #d7d7d7; }
+.actions button.toggle.on { color: var(--ink); border-color: #8a8a8a; }
+
+.seed input { background: transparent; border: 1px solid #2a2a2a; border-radius: 0; }
+.seed input:focus { outline: none; border-color: #8a8a8a; }
+
+.note { padding: 10px 14px 6px; font-size: 11px; }
+
+/* sections: tracked caps, a plus that turns into a minus */
+details { border-top: 1px solid #1b1b1b; }
+summary { list-style: none; padding: 10px 14px; font-size: 10px; letter-spacing: 3px; text-transform: uppercase; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: '+'; display: inline-block; width: 13px; color: #4e4e4e; }
+details[open] > summary::before { content: '\2212'; }
+.group-body { padding: 4px 14px 12px; }
+
+.row-label { font-size: 11px; }
+.row select { background: transparent; border: 1px solid #2a2a2a; border-radius: 0; padding: 4px; }
+.row select:hover { border-color: #8a8a8a; }
+
+/* sliders: a hairline and a blade */
+input[type='range']::-webkit-slider-runnable-track { height: 1px; background: #303030; }
+input[type='range']::-moz-range-track { height: 1px; background: #303030; }
+input[type='range']::-webkit-slider-thumb { width: 3px; height: 13px; margin-top: -6px; border-radius: 0; }
+input[type='range']::-moz-range-thumb { width: 3px; height: 13px; border-radius: 0; }
+
+/* stats: quiet chrome, loud data */
+.stats { padding: 8px 14px 12px; border-top: 1px solid #1b1b1b; }
+.stats-head { letter-spacing: 3px; font-size: 10px; }
+.stat-bar { height: 4px; background: #161616; border: 0; }
+.stat-bar::after { top: 0; bottom: 0; border-left-color: #3a3a3a; }
+.trait { background: transparent; border: 1px solid #2f4633; border-radius: 0; color: #9ad4a4; }
+.trait.none { border-color: #2a2a2a; color: #565656; }
+
+.fav-pick { background: #0c0c0c; border-radius: 0; }
+.fav-pick:hover { border-color: #8a8a8a; }
+.fav-del { background: #0c0c0c; }
+.tile { background: transparent; border-radius: 0; }
+.tile:hover { border-color: #8a8a8a; }
+.tile.on { border-color: var(--ink); }
+.tile.on .tile-label { color: var(--ink); }
+
+/* floating chrome over the stage: dark glass */
+.edit-toggle, .edit-tool, .edit-style, .walk-hint, .walk-sens, .gizmo {
+  background: rgba(5, 5, 5, 0.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-radius: 0;
+  border-color: #2e2e2e;
+}
+.edit-toggle { font-size: 11px; letter-spacing: 3px; }
+.edit-toggle:hover, .edit-tool:hover { border-color: #8a8a8a; }
+.edit-toggle.on, .edit-tool.on, .app.walk-on .walk-toggle {
+  background: rgba(5, 5, 5, 0.7);
+  color: var(--ink);
+  border-color: #8a8a8a;
+}
+.edit-exit, .gz-ok { color: var(--ink); border-color: #8a8a8a; }
+
+.gizmo { border-color: #2e2e2e; border-radius: 0; }
+.gz { background: transparent; border-radius: 0; }
+.gz:active { background: var(--ink); color: #000; border-color: var(--ink); }
+.gz-val { color: var(--ink); }
+.gizmo-head { color: var(--ink); letter-spacing: 2px; }
+
+.jump-btn {
+  background: rgba(5, 5, 5, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-color: #6a6a6a;
+  color: var(--ink);
+}
+.jump-btn:active { background: var(--ink); color: #000; }
+.stick { background: rgba(8, 8, 8, 0.35); border-color: #3a3a3a; }
+.stick-knob { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.28); }
+.walk-sens-val { color: var(--ink); }
+
+/* a thin quiet scrollbar */
+.panel::-webkit-scrollbar { width: 8px; }
+.panel::-webkit-scrollbar-thumb { background: #202020; }
+.panel::-webkit-scrollbar-track { background: transparent; }
