@@ -6,8 +6,8 @@ import { SECTIONS, sectionOptions, peekShot, ensureSection } from '../lib/partSh
 // that part on it — a picker as much as an index.
 //
 // Thumbnails render lazily for whichever sections are open, and re-bake a
-// beat after the creature changes; while they bake, the previous look's
-// tiles stand in, so the strip updates without ever blinking.
+// beat after the creature changes; the moment it changes the old tiles drop
+// to placeholders — half-old half-new read as the freak slowly mutating.
 
 function Section({ sec, params, onChange }) {
   const [, setTick] = useState(0);
