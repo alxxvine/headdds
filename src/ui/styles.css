@@ -787,11 +787,36 @@ button, select, input { touch-action: manipulation; }
 }
 .jump-btn:active { background: #1d3325cc; }
 
+.walk-sens {
+  position: absolute;
+  top: 42px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  background: #1c1926cc;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.walk-sens input[type='range'] { width: 90px; }
+
+.walk-sens-val {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 26px;
+}
+
 /* the sticks are for thumbs; a mouse has WASD and space */
 @media (pointer: coarse) {
   .stick { display: block; }
   .jump-btn { display: block; }
   .walk-hint { display: none; }
+  .walk-sens { display: none; }
 }
 
 .gz-split {
