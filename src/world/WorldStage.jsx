@@ -6,6 +6,7 @@ import { PixelScale } from '../scene/Stage.jsx';
 import { buildTerrain, groundHeight, WORLD } from './terrain.js';
 import { createWalker, TUNE } from './walker.js';
 import { createGait } from './gait.js';
+import { createAnimator } from '../scene/animator.js';
 
 // The walk-test micro-world: the current freak dropped onto the terrain of
 // terrain.js, driven by walker.js, animated by gait.js.
@@ -39,7 +40,9 @@ function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1 }) {
   const sensRef = useRef(sens);
   sensRef.current = sens;
 
-  const built = useMemo(() => buildCreature(params), [params]);
+  // the ink outline reads as grime at world scale — the game builds without
+  // it; the pedestal and the editor keep theirs, and links stay untouched
+  const built = useMemo(() => buildCreature({ ...params, outline: 0 }), [params]);
   useEffect(() => () => built.dispose(), [built]);
 
   const terrain = useMemo(() => buildTerrain(), []);
@@ -49,6 +52,9 @@ function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1 }) {
   // swaps the puppet, not the position
   const walker = useMemo(() => createWalker(terrain.colliders), [terrain]);
   const gait = useMemo(() => createGait(), []);
+  // standing still hands the puppet to the pedestal's idle animator — blinks,
+  // breath, mood and all; the first step hands it back to the gait
+  const idler = useMemo(() => createAnimator(), []);
 
   const carrier = useRef();
   const aimed = useRef(false);
@@ -59,6 +65,8 @@ function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1 }) {
   const _fwd = useRef(new THREE.Vector3());
   const _tgt = useRef(new THREE.Vector3());
   const _off = useRef(new THREE.Vector3());
+  // how much of the camera arm is currently extended (0..1), smoothed
+  const reach = useRef(1);
 
   // Look input, three doors into the same accumulator:
   //  - desktop: pointer lock — the bare mouse steers, ESC frees the cursor;
@@ -172,7 +180,15 @@ function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1 }) {
     const wz = fwd.z * inp.y + fwd.x * inp.x;
 
     walker.update(dt, wx, wz);
-    gait.update(built.rig, dt, w, TUNE.speed);
+    // moving or airborne: the gait owns the puppet. Standing: the pedestal's
+    // idle animator does — same blinks, breath and moods as on the stand.
+    // Both write absolute transforms off the built pose, so the hand-over is
+    // a small step, and it lands where both amplitudes are near zero.
+    if (w.speed > 0.25 || w.air) {
+      gait.update(built.rig, dt, w, TUNE.speed);
+    } else {
+      idler.update(built.rig, built.stats, dt, { pointer: { x: 0, y: 0 }, active: false, spin: 0 });
+    }
 
     carrier.current.position.copy(w.pos);
     carrier.current.rotation.y = w.yaw;
@@ -185,16 +201,34 @@ function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1 }) {
     // flying away.
     const tgt = _tgt.current.set(w.pos.x, w.pos.y + STATURE * 0.7, w.pos.z);
     const off = _off.current.setFromSphericalCoords(c.dist, c.phi, c.theta);
-    let reach = 1 / 8;
-    for (let i = 8; i >= 1; i--) {
-      const f = i / 8;
+    // Where along the arm may the eye sit? Found CONTINUOUSLY — a coarse scan
+    // plus a bisection — because an 8-step grid made the trailing camera hop
+    // in one-unit jumps whenever the creature walked toward a blocked arm.
+    const fits = (f) => {
       const px = tgt.x + off.x * f;
       const pz = tgt.z + off.z * f;
-      const py = tgt.y + off.y * f;
-      if (Math.abs(px) < WORLD - 2.5 && Math.abs(pz) < WORLD - 2.5
-        && py > groundHeight(px, pz) + 0.5) { reach = f; break; }
+      return Math.abs(px) < WORLD - 2.5 && Math.abs(pz) < WORLD - 2.5
+        && tgt.y + off.y * f > groundHeight(px, pz) + 0.5;
+    };
+    let want = 1 / 16;
+    if (fits(1)) want = 1;
+    else {
+      let good = 1 / 16;
+      let bad = 1;
+      for (let i = 15; i >= 1; i--) {
+        if (fits(i / 16)) { good = i / 16; bad = (i + 1) / 16; break; }
+      }
+      for (let k = 0; k < 5; k++) {
+        const m = (good + bad) / 2;
+        if (fits(m)) good = m; else bad = m;
+      }
+      want = good;
     }
-    camera.position.copy(tgt).addScaledVector(off, reach);
+    // the arm SNAPS in (never clip into a hill) and EASES back out
+    reach.current = want < reach.current
+      ? want
+      : reach.current + (want - reach.current) * (1 - Math.exp(-dt * 4));
+    camera.position.copy(tgt).addScaledVector(off, reach.current);
     // whatever length survived, never leave the eye under the skin
     const camFloor = groundHeight(camera.position.x, camera.position.z) + 0.5;
     if (camera.position.y < camFloor) camera.position.y = camFloor;
