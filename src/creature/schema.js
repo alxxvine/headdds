@@ -467,7 +467,10 @@ export const PARAMS = [
   // colour — a second tone — which is what stops a freak reading as one flat
   // silhouette without turning it into a paint job.
   range('trim', 'style', 'tip shade', 0, 0.75, 0.35, { random: (rng) => rng() * 0.7 }),
-  range('outline', 'style', 'outline', 0, 0.12, 0.05, { random: (rng) => 0.03 + rng() * 0.05 }),
+  // Wind Waker call: no ink by default — at this pixel density the outline
+  // reads as grime. The slider stays for anyone who wants it back, and the
+  // rng draw is kept (and discarded) so every seed's look survives unchanged.
+  range('outline', 'style', 'outline', 0, 0.12, 0, { random: (rng) => { rng(); return 0; } }),
   // The pixel effect is the whole look, but it is also the one thing that
   // hides what the generator is doing — you cannot judge a new ear at a
   // hundred and ninety pixels across. Off, the scene renders above the display
