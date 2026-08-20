@@ -1,24 +1,30 @@
-import { useCallback, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SECTIONS, sectionOptions, peekShot, ensureSection } from '../lib/partShots.js';
 
-// The catalog of parts: every kind of arm, hand, leg, hair, eye, maw and the
-// rest, each with a thumbnail on the mannequin. Tapping a tile puts that part
-// on the current freak — it is a picker as much as an index.
+// The catalog of parts as a fitting room: every kind of arm, hand, leg, hair,
+// eye, maw and the rest, each worn by the CURRENT freak. Tapping a tile puts
+// that part on it — a picker as much as an index.
 //
-// Thumbnails render lazily, section by section, the first time a section is
-// opened; until one lands its tile shows the label alone.
+// Thumbnails render lazily for whichever sections are open, and re-bake a
+// beat after the creature changes; while they bake, the previous look's
+// tiles stand in, so the strip updates without ever blinking.
 
 function Section({ sec, params, onChange }) {
   const [, setTick] = useState(0);
+  const [open, setOpen] = useState(false);
   const options = sectionOptions(sec);
 
-  const onToggle = useCallback((e) => {
-    // render this section's thumbnails on first open; repaint as each lands
-    if (e.target.open) ensureSection(sec, () => setTick((n) => n + 1));
-  }, [sec]);
+  // Re-shoot this section's tiles when it is open and the creature has
+  // changed — debounced, so a slider drag bakes once at the end, not on
+  // every pixel of travel.
+  useEffect(() => {
+    if (!open) return undefined;
+    const t = setTimeout(() => ensureSection(sec, params, () => setTick((n) => n + 1)), 350);
+    return () => clearTimeout(t);
+  }, [open, params, sec]);
 
   return (
-    <details onToggle={onToggle}>
+    <details onToggle={(e) => setOpen(e.target.open)}>
       <summary>
         {sec.label}
         <span className="cat-count">{options.length}</span>
@@ -26,7 +32,7 @@ function Section({ sec, params, onChange }) {
       <div className="tiles">
         {options.map((o) => {
           const on = params[sec.key] === o.value;
-          const shot = peekShot(sec, o.value);
+          const shot = peekShot(sec, params, o.value);
           return (
             <button
               key={o.value}
@@ -54,8 +60,8 @@ export default function Catalog({ params, onChange }) {
     <details className="catalog">
       <summary>PARTS CATALOG</summary>
       <div className="cat-hint">
-        every part the builder knows, worn by the standard freak — tap one to
-        put it on yours
+        every part the builder knows, tried on by YOUR current freak — tap one
+        to keep it
       </div>
       {SECTIONS.map((sec) => (
         <Section key={sec.key} sec={sec} params={params} onChange={onChange} />

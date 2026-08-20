@@ -1,22 +1,23 @@
 import * as THREE from 'three';
 import { buildCreature } from '../creature/build.js';
-import { DEFAULTS, PARAM_BY_KEY } from '../creature/schema.js';
+import { PARAM_BY_KEY } from '../creature/schema.js';
 
-// The parts catalog: every kind of every part, each rendered once on a
-// mannequin — the default freak with just enough tweaked that the part in
-// question is actually visible (hair needs hairs, teeth need an open mouth).
+// The parts catalog as a FITTING ROOM: every kind of every part, rendered on
+// the CURRENT freak — its colors, its skull, its skin — with just enough
+// tweaked that the part in question is actually visible (hair needs hairs,
+// teeth need an open mouth).
 //
 // Thumbnails are rendered lazily, one per tick, on a single offscreen
-// renderer, and cached twice: in memory for this visit and in localStorage
-// keyed by the build stamp — a new deploy may draw any part differently, so
-// its catalog is re-shot rather than trusted.
+// renderer. They are cached per LOOK: each section keeps the shots for the
+// creature as it is now, and when the creature changes the old shots stay on
+// screen as stand-ins while the new ones bake — tiles update, never blink.
 
 const SHOT_W = 72;
 const SHOT_H = 84;
 
-// what the mannequin must wear for each family of parts to be legible;
-// everything not mentioned stays at the defaults, so the tiles all read as
-// the same creature with one thing swapped
+// what the freak must wear for each family of parts to be legible;
+// everything not mentioned stays the player's own, so the tiles read as
+// THEIR creature with one thing swapped
 const QUIET = { tendrils: 0, warts: 0, horns: 0, spores: 0 };
 const BODY_SHOT = { ...QUIET, headRatio: 0.55, legLen: 1.0, armLen: 1.0 };
 
@@ -39,34 +40,47 @@ export const sectionOptions = (sec) => PARAM_BY_KEY[sec.key].options;
 
 // ------------------------------------------------------------------ cache ---
 
-const BUILD = typeof __BUILD__ === 'string' ? __BUILD__ : 'dev';
-const LS_KEY = 'headdds-parts';
-const memory = new Map();
+// per section: the look its shots were taken of, the fresh shots, and the
+// previous look's shots as stand-ins while the fresh ones bake
+const sections = new Map();
 
-function loadStore() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(LS_KEY));
-    if (raw && raw.build === BUILD && raw.shots) {
-      for (const [k, v] of Object.entries(raw.shots)) memory.set(k, v);
-    }
-  } catch { /* fresh visit */ }
-}
-loadStore();
-
-let saveTimer = 0;
-function saveStore() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify({ build: BUILD, shots: Object.fromEntries(memory) }));
-    } catch { /* full — memory cache still works */ }
-  }, 400);
+/**
+ * The look fingerprint a section's tiles depend on. The section's OWN key is
+ * left out: picking a tile changes that key, and the section's other tiles
+ * must not re-bake because of it.
+ */
+function sectionRev(sec, params) {
+  const base = { ...params };
+  delete base[sec.key];
+  const s = JSON.stringify(base);
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
 }
 
-const shotId = (sec, value) => `${sec.key}:${value}`;
+function sectionState(sec, params) {
+  const rev = sectionRev(sec, params);
+  let st = sections.get(sec.key);
+  if (!st || st.rev !== rev) {
+    st = {
+      rev,
+      shots: new Map(),
+      stale: st ? new Map([...st.stale, ...st.shots]) : new Map(),
+    };
+    sections.set(sec.key, st);
+  }
+  return st;
+}
 
-/** The cached thumbnail, or null if it has not been rendered yet. */
-export const peekShot = (sec, value) => memory.get(shotId(sec, value)) || null;
+/** The freshest available thumbnail: current look first, stand-in second. */
+export function peekShot(sec, params, value) {
+  const st = sections.get(sec.key);
+  if (!st) return null;
+  return st.shots.get(value) || st.stale.get(value) || null;
+}
 
 // --------------------------------------------------------------- renderer ---
 
@@ -97,9 +111,9 @@ function ensureCtx() {
 const _size = new THREE.Vector3();
 const _center = new THREE.Vector3();
 
-function renderShot(sec, value) {
+function renderShot(sec, base, value) {
   const { canvas, renderer, scene, camera } = ensureCtx();
-  const params = { ...DEFAULTS, ...sec.tweak, [sec.key]: value };
+  const params = { ...base, ...sec.tweak, [sec.key]: value };
   const built = buildCreature(params);
   scene.add(built.group);
   built.group.updateMatrixWorld(true);
@@ -128,37 +142,41 @@ function renderShot(sec, value) {
 
 // ------------------------------------------------------------------ queue ---
 
-// One shot per macrotask: a whole section takes a couple of seconds, but the
-// panel never freezes and the tiles fill in one by one as they land.
+// One shot per macrotask: a whole section takes a moment, but the panel never
+// freezes and the tiles refresh one by one as they land.
 const queue = [];
 const queued = new Set();
 let running = false;
 
 function pump() {
-  if (!queue.length) { running = false; saveStore(); return; }
+  if (!queue.length) { running = false; return; }
   running = true;
-  const { sec, value, onShot } = queue.shift();
-  const id = shotId(sec, value);
-  queued.delete(id);
-  if (!memory.has(id)) {
+  const job = queue.shift();
+  queued.delete(job.id);
+  // the creature changed while this job waited: the shot would be of a look
+  // nobody is wearing any more
+  const st = sections.get(job.sec.key);
+  if (st === job.st && st.rev === job.rev && !st.shots.has(job.value)) {
     try {
-      memory.set(id, renderShot(sec, value));
+      st.shots.set(job.value, renderShot(job.sec, job.base, job.value));
     } catch {
-      // a lost WebGL context or an OOM: skip this tile rather than loop on it
-      memory.set(id, null);
+      // a lost WebGL context or an OOM: fall back to the stand-in, if any
+      st.shots.set(job.value, st.stale.get(job.value) || null);
     }
-    onShot?.();
+    job.onShot?.();
   }
   setTimeout(pump, 16);
 }
 
-/** Queues every missing thumbnail of a section; onShot fires as each lands. */
-export function ensureSection(sec, onShot) {
+/** Queues every missing thumbnail of a section for the CURRENT look. */
+export function ensureSection(sec, params, onShot) {
+  const st = sectionState(sec, params);
+  const base = { ...params };
   for (const o of sectionOptions(sec)) {
-    const id = shotId(sec, o.value);
-    if (memory.has(id) || queued.has(id)) continue;
+    const id = `${sec.key}:${st.rev}:${o.value}`;
+    if (st.shots.has(o.value) || queued.has(id)) continue;
     queued.add(id);
-    queue.push({ sec, value: o.value, onShot });
+    queue.push({ id, sec, st, rev: st.rev, base, value: o.value, onShot });
   }
   if (!running && queue.length) {
     running = true;
