@@ -67,7 +67,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
     () => (bombRound > 0 ? createBombGame(terrain.colliders) : null),
     [bombRound, terrain],
   );
-  useEffect(() => () => game?.dispose(), [game]);
+  useEffect(() => () => { game?.dispose(); walker.state.boost = 1; }, [game, walker]);
   const bombReported = useRef(false);
   useEffect(() => { bombReported.current = false; }, [game]);
 
@@ -275,15 +275,20 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
       }
       const hud = bombHudRef?.current;
       if (hud?.el) {
-        hud.el.textContent = gs.over ? '' : `${gs.holder === 0 ? '\u{1F4A3} YOU ARE IT — touch someone' : 'the bomb is out there'} · ${Math.max(0, gs.fuse).toFixed(1)}s · ${gs.alive} alive`;
-        hud.el.style.color = gs.holder === 0 ? '#ff6a4a' : '';
+        const out = gs.playerOut > 0
+          ? ` · ⚠ OUTSIDE THE RING ${(Math.max(0, 2.5 - gs.playerOut)).toFixed(1)}` : '';
+        hud.el.textContent = gs.over ? '' : `${gs.holder === 0 ? '\u{1F4A3} YOU ARE IT — touch someone' : 'the bomb is out there'} · ${Math.max(0, gs.fuse).toFixed(1)}s · ${gs.alive} alive · ring ${gs.zoneR.toFixed(0)}m${out}`;
+        hud.el.style.color = gs.playerOut > 0 ? '#ff3020' : gs.holder === 0 ? '#ff6a4a' : '';
       }
     }
 
     window.__walk = {
       x: w.pos.x, y: w.pos.y, z: w.pos.z, speed: w.speed, grade: w.grade, air: w.air, vy: w.vy,
       stamina: w.stamina, run: w.run, winded: w.winded,
-      bomb: game ? { holder: game.state.holder, fuse: game.state.fuse, alive: game.state.alive, over: game.state.over } : null,
+      bomb: game ? {
+        holder: game.state.holder, fuse: game.state.fuse, alive: game.state.alive,
+        over: game.state.over, zoneR: game.state.zoneR, out: game.state.playerOut,
+      } : null,
       camX: camera.position.x, camY: camera.position.y, camZ: camera.position.z,
     };
   });
