@@ -86,7 +86,8 @@ export function createWalker(colliders = []) {
       const f = state.grade > 0
         ? Math.max(TUNE.slowest, 1 - state.grade * TUNE.uphill)
         : Math.min(1.25, 1 - state.grade * TUNE.downhill);
-      target = state.grade > TUNE.maxGrade ? 0 : (state.run ? TUNE.run : TUNE.speed) * mag * f;
+      // `boost` is the game's dial (the bomb's holder runs hotter than anyone)
+      target = state.grade > TUNE.maxGrade ? 0 : (state.run ? TUNE.run : TUNE.speed) * (state.boost || 1) * mag * f;
     } else {
       state.grade = 0;
     }

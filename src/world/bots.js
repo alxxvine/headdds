@@ -16,13 +16,21 @@ import { groundHeight, WORLD } from './terrain.js';
 
 export const BOMB = {
   bots: 5,
-  fuseMin: 16,      // seconds on the fuse, rolled per bomb
-  fuseMax: 24,
+  fuseMin: 14,      // seconds on the fuse, rolled per bomb
+  fuseMax: 20,
   reach: 1.25,      // touching closer than this hands the bomb over
   handLock: 1.0,    // right after a pass nobody can pass at all...
   backLock: 2.5,    // ...and the PREVIOUS holder is safe this long
-  chaseRun: 3,      // the holder sprints when its prey is further than this
-  fleeRun: 7,       // everyone else sprints when the holder is this close
+  fleeRun: 7,       // non-holders sprint when the holder is this close
+  itBoost: 1.15,    // the holder runs hotter than anyone — it WILL catch you
+  stick: 2.5,       // the holder commits to one victim this long before re-picking
+  // THE RING. A burning circle closes over the round: corners stop existing,
+  // the herd is squeezed together, and hiding is a death sentence — outside
+  // the ring you have zoneGrace seconds to get back in.
+  zoneStart: 26,
+  zoneEnd: 7,
+  zoneRate: 0.27,   // units of radius lost per second
+  zoneGrace: 2.5,
 };
 
 // must match WorldStage's STATURE: every creature walks the world at this height
@@ -57,8 +65,17 @@ export function createBombGame(colliders) {
     bots.push({
       id: i + 1, built, walker, carrier, gait: createGait(),
       alive: true, wanderA: Math.random() * Math.PI * 2, wanderT: 0, stuck: 0,
+      out: 0, targetId: -1, targetT: 0,
     });
   }
+
+  // the ring: a burning wall the round closes inside
+  const ringMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(1, 1, 6, 48, 1, true),
+    new THREE.MeshBasicMaterial({ color: '#ff5a30', transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  ringMesh.position.y = 3;
+  group.add(ringMesh);
 
   // the bomb: a black ball with a heartbeat that panics as the fuse shortens
   const bombMesh = new THREE.Mesh(
@@ -86,10 +103,39 @@ export function createBombGame(colliders) {
     over: null,       // 'win' | 'lose'
     alive: BOMB.bots + 1,
     t: 0,
+    zoneR: BOMB.zoneStart,
+    playerOut: 0,
   };
 
   const entPos = (id, player) => (id === 0 ? player.pos : bots[id - 1].walker.state.pos);
   const aliveIds = () => [0, ...bots.filter((b) => b.alive).map((b) => b.id)];
+
+  /** One creature gone — by the bomb or by the ring. Rehomes the bomb. */
+  const eliminate = (id, player) => {
+    explodeAt(entPos(id, player));
+    if (id === 0) {
+      state.over = 'lose';
+      player.boost = 1;
+      return;
+    }
+    const b = bots[id - 1];
+    b.alive = false;
+    group.remove(b.carrier);
+    state.alive -= 1;
+    if (!bots.some((x) => x.alive)) {
+      state.over = 'win';
+      player.boost = 1;
+      return;
+    }
+    if (state.holder === id) {
+      // the bomb relights in a random survivor's hands — the player included
+      const ids = aliveIds();
+      state.holder = ids[Math.floor(Math.random() * ids.length)];
+      state.prev = -1;
+      state.fuse = rollFuse();
+      state.sinceHand = 99;
+    }
+  };
 
   function update(dt, player) {
     state.t += dt;
@@ -106,8 +152,12 @@ export function createBombGame(colliders) {
 
     state.sinceHand += dt;
     state.fuse -= dt;
+    state.zoneR = Math.max(BOMB.zoneEnd, BOMB.zoneStart - state.t * BOMB.zoneRate);
     const events = [];
     const holderPos = entPos(state.holder, player);
+
+    // the holder is the fastest thing on the map — the chase always closes
+    player.boost = state.holder === 0 ? BOMB.itBoost : 1;
 
     // ------------------------------------------------------------ bot minds
     for (const b of bots) {
@@ -117,41 +167,54 @@ export function createBombGame(colliders) {
       let iz = 0;
       let run = false;
 
+      const cd = Math.hypot(p.x, p.z) || 1;
       if (state.holder === b.id) {
-        // it: chase whoever is nearest and still breathing
-        let best = null;
-        let bd = 1e9;
-        for (const id of aliveIds()) {
-          if (id === b.id) continue;
-          const q = entPos(id, player);
-          const d = Math.hypot(q.x - p.x, q.z - p.z);
-          if (d < bd) { bd = d; best = q; }
+        // it: commit to ONE victim for a while — a chaser that re-picks every
+        // frame dithers between two equal targets and catches neither
+        b.targetT -= dt;
+        const ids = aliveIds().filter((id) => id !== b.id);
+        if (b.targetT <= 0 || !ids.includes(b.targetId)) {
+          let bd = 1e9;
+          for (const id of ids) {
+            const q = entPos(id, player);
+            const d = Math.hypot(q.x - p.x, q.z - p.z);
+            if (d < bd) { bd = d; b.targetId = id; }
+          }
+          b.targetT = BOMB.stick;
         }
-        if (best) {
-          ix = (best.x - p.x) / (bd || 1);
-          iz = (best.z - p.z) / (bd || 1);
-          run = bd > BOMB.chaseRun;
-        }
+        const q = entPos(b.targetId, player);
+        const d = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+        ix = (q.x - p.x) / d;
+        iz = (q.z - p.z) / d;
+        run = true;
+        b.walker.state.boost = BOMB.itBoost;
       } else {
-        // not it: away from the bomb, with a wander so the herd spreads out
-        const dx = p.x - holderPos.x;
-        const dz = p.z - holderPos.z;
-        const d = Math.hypot(dx, dz) || 1;
-        b.wanderT -= dt;
-        if (b.wanderT <= 0) {
-          b.wanderT = 1.5 + Math.random() * 2;
-          b.wanderA = Math.random() * Math.PI * 2;
+        b.walker.state.boost = 1;
+        if (cd > state.zoneR - 1) {
+          // outside (or hugging) the burning ring: NOTHING matters more
+          ix = -(p.x / cd) * 1.4;
+          iz = -(p.z / cd) * 1.4;
+          run = true;
+        } else {
+          // not it: away from the bomb, with a wander so the herd spreads out
+          const dx = p.x - holderPos.x;
+          const dz = p.z - holderPos.z;
+          const d = Math.hypot(dx, dz) || 1;
+          b.wanderT -= dt;
+          if (b.wanderT <= 0) {
+            b.wanderT = 1.5 + Math.random() * 2;
+            b.wanderA = Math.random() * Math.PI * 2;
+          }
+          const flee = Math.max(0, 1 - d / 14);
+          ix = (dx / d) * flee + Math.cos(b.wanderA) * (1 - flee) * 0.7;
+          iz = (dz / d) * flee + Math.sin(b.wanderA) * (1 - flee) * 0.7;
+          // the ring's edge is a dead end: bend the flight back inward
+          if (cd > state.zoneR - 4) {
+            ix -= (p.x / cd) * 1.0;
+            iz -= (p.z / cd) * 1.0;
+          }
+          run = d < BOMB.fleeRun;
         }
-        const flee = Math.max(0, 1 - d / 14);
-        ix = (dx / d) * flee + Math.cos(b.wanderA) * (1 - flee) * 0.7;
-        iz = (dz / d) * flee + Math.sin(b.wanderA) * (1 - flee) * 0.7;
-        // the rim is a dead end: bend the flight back toward open ground
-        const cd = Math.hypot(p.x, p.z);
-        if (cd > WORLD - 8) {
-          ix -= (p.x / cd) * 0.9;
-          iz -= (p.z / cd) * 0.9;
-        }
-        run = d < BOMB.fleeRun;
       }
 
       // pinned against a rock: hop it and pick a new line
@@ -183,30 +246,36 @@ export function createBombGame(colliders) {
       }
     }
 
-    // ---------------------------------------------------------- the boom
-    if (state.fuse <= 0) {
-      explodeAt(entPos(state.holder, player));
-      events.push({ type: 'boom', id: state.holder });
-      if (state.holder === 0) {
-        state.over = 'lose';
-      } else {
-        const b = bots[state.holder - 1];
-        b.alive = false;
-        group.remove(b.carrier);
-        state.alive -= 1;
-        if (!bots.some((x) => x.alive)) {
-          state.over = 'win';
-        } else {
-          const ids = bots.filter((x) => x.alive).map((x) => x.id);
-          state.holder = ids[Math.floor(Math.random() * ids.length)];
-          state.prev = -1;
-          state.fuse = rollFuse();
-          state.sinceHand = 99;
+    // ----------------------------------------------------- the ring kills
+    // linger outside the circle past the grace and you are gone — that is
+    // what makes hiding in a corner a losing move
+    state.playerOut = Math.hypot(player.pos.x, player.pos.z) > state.zoneR
+      ? state.playerOut + dt : 0;
+    if (state.playerOut > BOMB.zoneGrace) {
+      events.push({ type: 'zone', id: 0 });
+      eliminate(0, player);
+    }
+    if (!state.over) {
+      for (const b of bots) {
+        if (!b.alive) continue;
+        const p = b.walker.state.pos;
+        b.out = Math.hypot(p.x, p.z) > state.zoneR ? b.out + dt : 0;
+        if (b.out > BOMB.zoneGrace) {
+          events.push({ type: 'zone', id: b.id });
+          eliminate(b.id, player);
+          if (state.over) break;
         }
       }
     }
 
+    // ---------------------------------------------------------- the boom
+    if (!state.over && state.fuse <= 0) {
+      events.push({ type: 'boom', id: state.holder });
+      eliminate(state.holder, player);
+    }
+
     // ----------------------------------------- the bomb rides its holder
+    ringMesh.scale.set(state.zoneR, 1, state.zoneR);
     if (!state.over) {
       const hp = entPos(state.holder, player);
       const panic = Math.max(0, 1 - state.fuse / 6);
@@ -215,6 +284,7 @@ export function createBombGame(colliders) {
       bombMesh.material.emissiveIntensity = 0.35 + panic * 1.5;
     } else {
       bombMesh.visible = false;
+      ringMesh.visible = false;
     }
     return events;
   }
@@ -225,6 +295,8 @@ export function createBombGame(colliders) {
     fxGeo.dispose();
     bombMesh.geometry.dispose();
     bombMesh.material.dispose();
+    ringMesh.geometry.dispose();
+    ringMesh.material.dispose();
   }
 
   return { group, state, bots, update, dispose };
