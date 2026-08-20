@@ -55,6 +55,14 @@ export default function App() {
   const walkInput = useRef({ x: 0, y: 0 });
   const walkCam = useRef({ x: 0, y: 0 });
   const walkJump = useRef(false);
+  // mouse-look speed multiplier, remembered between visits
+  const [walkSens, setWalkSens] = useState(() => {
+    const v = parseFloat(typeof localStorage !== 'undefined' ? localStorage.getItem('hd_walkSens') : '');
+    return Number.isFinite(v) && v >= 0.3 && v <= 3 ? v : 1;
+  });
+  useEffect(() => {
+    try { localStorage.setItem('hd_walkSens', String(walkSens)); } catch { /* private mode */ }
+  }, [walkSens]);
   const [placeKind, setPlaceKind] = useState(null);
   // which style the next planted part of a kind wears; null = same as the face
   const [placeStyles, setPlaceStyles] = useState({ eye: null, arm: 'stick', ear: null, hair: null, nose: null });
@@ -406,7 +414,7 @@ export default function App() {
     <div className={edit ? 'app edit-on' : walk ? 'app walk-on' : 'app'}>
       <div className="viewport" onDragOver={(e) => e.preventDefault()} onDrop={onDropPart}>
         {walk ? (
-          <WorldStage params={scene} inputRef={walkInput} camRef={walkCam} jumpRef={walkJump} />
+          <WorldStage params={scene} inputRef={walkInput} camRef={walkCam} jumpRef={walkJump} sens={walkSens} />
         ) : (
         <Stage
           params={scene}
@@ -448,6 +456,18 @@ export default function App() {
         {walk && (
           <>
             <div className="walk-hint">WASD · space — jump · mouse — look · esc — cursor</div>
+            <label className="walk-sens" title="mouse look speed (esc frees the cursor to reach this)">
+              <span>mouse speed</span>
+              <input
+                type="range"
+                min="0.3"
+                max="3"
+                step="0.1"
+                value={walkSens}
+                onChange={(e) => setWalkSens(parseFloat(e.target.value))}
+              />
+              <span className="walk-sens-val">{walkSens.toFixed(1)}x</span>
+            </label>
             <Joystick inputRef={walkInput} />
             <Joystick inputRef={walkCam} className="stick stick-right" />
             <button

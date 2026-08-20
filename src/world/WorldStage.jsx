@@ -22,8 +22,8 @@ const STATURE = 2.2;
 
 // One knob per input, all in one place.
 export const CAM = {
-  sens: 0.006,      // captured mouse, radians per pixel sideways
-  sensY: 0.0045,    // ...and vertically
+  sens: 0.008,      // captured mouse, radians per pixel sideways (at speed 1x)
+  sensY: 0.006,     // ...and vertically
   drag: 1.5,        // swipe/drag look, multiplier on top of sens
   stick: 3.0,       // right stick, radians per second sideways
   stickY: 2.0,      // ...and vertically
@@ -33,8 +33,11 @@ export const CAM = {
   maxDist: 26,
 };
 
-function WalkScene({ params, inputRef, camRef, jumpRef }) {
+function WalkScene({ params, inputRef, camRef, jumpRef, sens = 1 }) {
   const { camera, gl } = useThree();
+  // the in-game speed slider; a ref so the frame loop reads the live value
+  const sensRef = useRef(sens);
+  sensRef.current = sens;
 
   const built = useMemo(() => buildCreature(params), [params]);
   useEffect(() => () => built.dispose(), [built]);
@@ -101,6 +104,9 @@ function WalkScene({ params, inputRef, camRef, jumpRef }) {
       ly = e.clientY;
     };
     const pup = (e) => { if (dragId === e.pointerId) dragId = null; };
+    // the mouse BUTTONS mean nothing to the camera: no drag-look, and no
+    // context menu popping over the world on a stray right click
+    const menu = (e) => e.preventDefault();
     const wheel = (e) => {
       e.preventDefault();
       cam.current.dist = THREE.MathUtils.clamp(
@@ -114,6 +120,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef }) {
     window.addEventListener('pointerup', pup);
     window.addEventListener('pointercancel', pup);
     dom.addEventListener('wheel', wheel, { passive: false });
+    dom.addEventListener('contextmenu', menu);
     document.addEventListener('keydown', esc);
     return () => {
       dom.removeEventListener('click', tryLock);
@@ -122,6 +129,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef }) {
       window.removeEventListener('pointerup', pup);
       window.removeEventListener('pointercancel', pup);
       dom.removeEventListener('wheel', wheel);
+      dom.removeEventListener('contextmenu', menu);
       document.removeEventListener('keydown', esc);
       if (document.pointerLockElement === dom) document.exitPointerLock();
     };
@@ -143,9 +151,10 @@ function WalkScene({ params, inputRef, camRef, jumpRef }) {
     const ci = camRef?.current;
     const lk = look.current;
     const c = cam.current;
-    c.theta -= (ci?.x ?? 0) * CAM.stick * dt + lk.dx * CAM.sens;
+    const k = sensRef.current;
+    c.theta -= (ci?.x ?? 0) * CAM.stick * dt + lk.dx * CAM.sens * k;
     c.phi = THREE.MathUtils.clamp(
-      c.phi - (ci?.y ?? 0) * CAM.stickY * dt - lk.dy * CAM.sensY,
+      c.phi - (ci?.y ?? 0) * CAM.stickY * dt - lk.dy * CAM.sensY * k,
       CAM.minPhi, CAM.maxPhi);
     lk.dx = 0;
     lk.dy = 0;
@@ -216,7 +225,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef }) {
   );
 }
 
-export default function WorldStage({ params, inputRef, camRef, jumpRef }) {
+export default function WorldStage({ params, inputRef, camRef, jumpRef, sens = 1 }) {
   const pixelate = params.pixelate !== 'off';
   // the world's sky is the pedestal background lifted a shade toward dusk
   // blue, and the fog is the SAME color — so the horizon melts into the sky
@@ -239,7 +248,7 @@ export default function WorldStage({ params, inputRef, camRef, jumpRef }) {
       <directionalLight position={[3, 5, 6]} intensity={2.6} />
       <directionalLight position={[-5, 2, -3]} intensity={0.9} color="#7f6bb0" />
       <PixelScale pixelSize={params.pixelSize} pixelate={pixelate} />
-      <WalkScene params={params} inputRef={inputRef} camRef={camRef} jumpRef={jumpRef} />
+      <WalkScene params={params} inputRef={inputRef} camRef={camRef} jumpRef={jumpRef} sens={sens} />
     </Canvas>
   );
 }
