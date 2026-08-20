@@ -35,6 +35,45 @@ function WalkScene({ params, inputRef, camRef, jumpRef }) {
   const _fwd = useRef(new THREE.Vector3());
   const _tgt = useRef(new THREE.Vector3());
 
+  // Desktop mouse-look: the pointer is CAPTURED (pointer lock) and the camera
+  // follows the bare mouse — no button held. Entering the world was itself a
+  // click, so the grab is attempted immediately; if the browser refuses, the
+  // next click on the scene grabs it, and ESC always gives the cursor back.
+  // Raw movement deltas pile up here and are spent once per frame.
+  const look = useRef({ dx: 0, dy: 0 });
+  const { gl } = useThree();
+  useEffect(() => {
+    if (typeof matchMedia === 'function' && !matchMedia('(pointer: fine)').matches) return undefined;
+    const dom = gl.domElement;
+    const tryLock = () => {
+      if (document.pointerLockElement !== dom) {
+        // some browsers return a promise that rejects without a gesture —
+        // that is fine, the click fallback stays armed
+        try { dom.requestPointerLock()?.catch?.(() => {}); } catch { /* fine */ }
+      }
+    };
+    const move = (e) => {
+      if (document.pointerLockElement !== dom) return;
+      look.current.dx += e.movementX;
+      look.current.dy += e.movementY;
+    };
+    // the browser drops the lock on ESC by itself; doing it by hand as well
+    // costs nothing and covers embedders where the native exit is flaky
+    const esc = (e) => {
+      if (e.key === 'Escape' && document.pointerLockElement === dom) document.exitPointerLock();
+    };
+    tryLock();
+    dom.addEventListener('click', tryLock);
+    document.addEventListener('mousemove', move);
+    document.addEventListener('keydown', esc);
+    return () => {
+      dom.removeEventListener('click', tryLock);
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('keydown', esc);
+      if (document.pointerLockElement === dom) document.exitPointerLock();
+    };
+  }, [gl]);
+
   useFrame((state, dt) => {
     if (!carrier.current || !controls) return;
     const w = walker.state;
@@ -50,14 +89,21 @@ function WalkScene({ params, inputRef, camRef, jumpRef }) {
       controls.update();
     }
 
-    // the right stick swings the camera around the creature: x orbits, y
-    // raises and lowers the eye, clamped just above the ground plane
+    // the right stick and the captured mouse swing the camera around the
+    // creature the same way: sideways orbits, up and down raises the eye,
+    // clamped just above the ground plane. Mouse up looks UP (the camera
+    // drops), like every shooter since forever.
     const ci = camRef?.current;
-    if (ci && (ci.x || ci.y)) {
+    const lk = look.current;
+    const dTheta = (ci?.x ?? 0) * 2.4 * dt + lk.dx * 0.0032;
+    const dPhi = -(ci?.y ?? 0) * 1.6 * dt - lk.dy * 0.0024;
+    lk.dx = 0;
+    lk.dy = 0;
+    if (dTheta || dPhi) {
       const off = camera.position.clone().sub(controls.target);
       const sph = new THREE.Spherical().setFromVector3(off);
-      sph.theta -= ci.x * 2.4 * dt;
-      sph.phi = THREE.MathUtils.clamp(sph.phi - ci.y * 1.6 * dt, 0.3, Math.PI / 2 - 0.06);
+      sph.theta -= dTheta;
+      sph.phi = THREE.MathUtils.clamp(sph.phi + dPhi, 0.3, Math.PI / 2 - 0.06);
       off.setFromSpherical(sph);
       camera.position.copy(controls.target).add(off);
     }
