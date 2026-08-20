@@ -58,6 +58,20 @@ export default function App() {
   const walkRun = useRef(false);
   // the stamina bar's DOM, written by the world every frame without React
   const walkHud = useRef({ box: null, fill: null });
+  // BOMB TAG: each round number is a fresh game, 0 = off; bombEnd holds the
+  // outcome banner ('win' | 'lose')
+  const [bombRound, setBombRound] = useState(0);
+  const [bombEnd, setBombEnd] = useState(null);
+  const bombHud = useRef({ el: null });
+  const onBombEnd = useCallback((result) => {
+    setBombEnd(result);
+    // free the cursor so the banner's buttons are reachable right away
+    try { document.exitPointerLock?.(); } catch { /* fine */ }
+  }, []);
+  const onToggleBomb = useCallback(() => {
+    setBombEnd(null);
+    setBombRound((n) => (n > 0 ? 0 : n + 1));
+  }, []);
   // mouse-look speed multiplier, remembered between visits
   const [walkSens, setWalkSens] = useState(() => {
     const v = parseFloat(typeof localStorage !== 'undefined' ? localStorage.getItem('hd_walkSens') : '');
@@ -146,6 +160,13 @@ export default function App() {
     const down = (e) => {
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
         walkRun.current = true;
+        return;
+      }
+      if (e.code === 'KeyB' && !e.repeat) {
+        // the pointer is usually captured, so the BOMB button is out of
+        // reach — B starts and stops the round without letting the mouse go
+        setBombEnd(null);
+        setBombRound((n) => (n > 0 ? 0 : n + 1));
         return;
       }
       if (e.code === 'Space') {
@@ -284,6 +305,8 @@ export default function App() {
     setEdit(false);
     setPlaceKind(null);
     setSelected(null);
+    setBombRound(0);
+    setBombEnd(null);
     setWalk((v) => {
       flash(v ? 'back on the pedestal' : 'WALK: WASD / arrows / the stick — go climb the hill');
       return !v;
@@ -431,7 +454,19 @@ export default function App() {
     <div className={edit ? 'app edit-on' : walk ? 'app walk-on' : 'app'}>
       <div className="viewport" onDragOver={(e) => e.preventDefault()} onDrop={onDropPart}>
         {walk ? (
-          <WorldStage params={scene} inputRef={walkInput} camRef={walkCam} jumpRef={walkJump} runRef={walkRun} hudRef={walkHud} sens={walkSens} zoom={walkZoom} />
+          <WorldStage
+            params={scene}
+            inputRef={walkInput}
+            camRef={walkCam}
+            jumpRef={walkJump}
+            runRef={walkRun}
+            hudRef={walkHud}
+            sens={walkSens}
+            zoom={walkZoom}
+            bombRound={bombRound}
+            onBombEnd={onBombEnd}
+            bombHudRef={bombHud}
+          />
         ) : (
         <Stage
           params={scene}
@@ -472,7 +507,7 @@ export default function App() {
         )}
         {walk && (
           <>
-            <div className="walk-hint">WASD · shift — run · space — jump · mouse — look · esc — cursor</div>
+            <div className="walk-hint">WASD · shift — run · space — jump · B — bomb tag · esc — cursor</div>
             <label className="walk-sens" title="mouse look speed (esc frees the cursor to reach this)">
               <span>mouse speed</span>
               <input
@@ -497,6 +532,28 @@ export default function App() {
               />
               <span>−</span>
             </label>
+            <button
+              type="button"
+              className="edit-toggle bomb-btn"
+              onClick={onToggleBomb}
+              title="bomb tag: five freaks, one lit bomb, last one standing wins"
+            >
+              {bombRound > 0 ? '\u2715 BOMB' : '\ud83d\udca3 BOMB'}
+            </button>
+            {bombRound > 0 && !bombEnd && (
+              <div className="bomb-hud" ref={(el) => { bombHud.current.el = el; }} />
+            )}
+            {bombEnd && (
+              <div className="bomb-banner">
+                <div className="bomb-title">
+                  {bombEnd === 'win' ? 'LAST ONE STANDING' : 'BOOM \u2014 it was in your hands'}
+                </div>
+                <div className="bomb-actions">
+                  <button type="button" onClick={() => { setBombEnd(null); setBombRound((n) => n + 1); }}>AGAIN</button>
+                  <button type="button" onClick={() => { setBombEnd(null); setBombRound(0); }}>DONE</button>
+                </div>
+              </div>
+            )}
             <div className="stamina" ref={(el) => { walkHud.current.box = el; }}>
               <i ref={(el) => { walkHud.current.fill = el; }} />
             </div>
