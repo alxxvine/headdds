@@ -269,6 +269,8 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
     if (game) {
       game.update(dt, w);
       const gs = game.state;
+      // just handed the bomb off: flicker while the pass-back immunity lasts
+      carrier.current.visible = !gs.playerGhost || Math.sin(state.clock.elapsedTime * 24) > -0.2;
       if (gs.over && !bombReported.current) {
         bombReported.current = true;
         onBombEnd?.(gs.over);
@@ -288,6 +290,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
       bomb: game ? {
         holder: game.state.holder, fuse: game.state.fuse, alive: game.state.alive,
         over: game.state.over, zoneR: game.state.zoneR, out: game.state.playerOut,
+        prev: game.state.prev, ghost: !!game.state.playerGhost,
       } : null,
       camX: camera.position.x, camY: camera.position.y, camZ: camera.position.z,
     };
