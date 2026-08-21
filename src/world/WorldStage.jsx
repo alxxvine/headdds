@@ -8,6 +8,7 @@ import { createWalker, TUNE } from './walker.js';
 import { createGait } from './gait.js';
 import { createAnimator } from '../scene/animator.js';
 import { createBombGame } from './bots.js';
+import { createSnowGame, knockAngle, SNOW } from './snow.js';
 
 // The walk-test micro-world: the current freak dropped onto the terrain of
 // terrain.js, driven by walker.js, animated by gait.js.
@@ -35,7 +36,7 @@ export const CAM = {
   maxDist: 26,
 };
 
-function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null, bombRound = 0, onBombEnd, bombHudRef }) {
+function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null, bombRound = 0, onBombEnd, bombHudRef, snowRound = 0, snowHudRef }) {
   const { camera, gl } = useThree();
   // the in-game speed slider; a ref so the frame loop reads the live value
   const sensRef = useRef(sens);
@@ -70,6 +71,47 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
   useEffect(() => () => { game?.dispose(); walker.state.boost = 1; }, [game, walker]);
   const bombReported = useRef(false);
   useEffect(() => { bombReported.current = false; }, [game]);
+
+  // SNOWBALL FIGHT: same shape as the bomb — a round number keys a fresh game
+  const snow = useMemo(
+    () => (snowRound > 0 ? createSnowGame(terrain.colliders) : null),
+    [snowRound, terrain],
+  );
+  useEffect(() => () => snow?.dispose(), [snow]);
+
+  // the throw: LMB held (with the pointer captured) charges, release hurls a
+  // snowball along the LOOK direction — aim high, it flies a real arc
+  const charge = useRef({ down: false, t: 0 });
+  useEffect(() => {
+    if (!snow) return undefined;
+    const dom = gl.domElement;
+    const md = (e) => {
+      if (e.button === 0 && document.pointerLockElement === dom) {
+        charge.current.down = true;
+        charge.current.t = 0;
+      }
+    };
+    const mu = (e) => {
+      const ch = charge.current;
+      if (e.button !== 0 || !ch.down) return;
+      ch.down = false;
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      const p = walker.state.pos;
+      const origin = new THREE.Vector3(p.x, p.y + 1.7, p.z).addScaledVector(dir, 0.9);
+      const v = SNOW.minV + Math.min(1, ch.t / SNOW.charge) * (SNOW.maxV - SNOW.minV);
+      snow.playerThrow(origin, dir, v);
+      ch.t = 0;
+    };
+    document.addEventListener('mousedown', md);
+    document.addEventListener('mouseup', mu);
+    return () => {
+      document.removeEventListener('mousedown', md);
+      document.removeEventListener('mouseup', mu);
+      charge.current.down = false;
+      charge.current.t = 0;
+    };
+  }, [snow, gl, camera, walker]);
 
   const carrier = useRef();
   const aimed = useRef(false);
@@ -187,17 +229,20 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
       c.dist = THREE.MathUtils.clamp(zoomRef.current, CAM.minDist, CAM.maxDist);
     }
 
-    // a queued jump fires on this frame's ground truth
+    // a queued jump fires on this frame's ground truth — unless the player is
+    // flat on their back in a snowball fight
     if (jumpRef?.current) {
       jumpRef.current = false;
-      walker.jump();
+      if (!snow?.state.playerKnock) walker.jump();
     }
 
     // stick/keys are camera-relative: up on the stick walks away from the lens
     const fwd = _fwd.current.set(-Math.sin(c.theta), 0, -Math.cos(c.theta));
     const inp = inputRef.current;
-    const wx = fwd.x * inp.y - fwd.z * inp.x;
-    const wz = fwd.z * inp.y + fwd.x * inp.x;
+    // flat on the back, the legs answer nobody
+    const down = !!snow?.state.playerKnock;
+    const wx = down ? 0 : fwd.x * inp.y - fwd.z * inp.x;
+    const wz = down ? 0 : fwd.z * inp.y + fwd.x * inp.x;
 
     walker.update(dt, wx, wz, !!runRef?.current);
 
@@ -265,6 +310,22 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
 
     // the tests read the walk from here — cheaper than teaching them to parse
     // a pixelated screenshot
+    // SNOWBALL FIGHT: knocked flat, the legs answer nobody and the body tips
+    // onto its back; the stage owns the player's mesh, so the tilt lives here
+    if (snow) {
+      if (charge.current.down) charge.current.t += dt;
+      snow.update(dt, w);
+      carrier.current.rotation.x = snow.state.playerKnock ? knockAngle(snow.state.playerKnock.t) : 0;
+      const shud = snowHudRef?.current;
+      if (shud?.el) shud.el.textContent = `❄ hits ${snow.state.hits} · taken ${snow.state.taken}`;
+      if (shud?.fill) {
+        shud.fill.style.transform = `scaleX(${charge.current.down ? Math.min(1, charge.current.t / SNOW.charge) : 0})`;
+        if (shud.box) shud.box.style.opacity = charge.current.down ? '1' : '0';
+      }
+    } else if (carrier.current.rotation.x !== 0) {
+      carrier.current.rotation.x = 0;
+    }
+
     // the round itself: bots think, the bomb rides, the fuse burns
     if (game) {
       game.update(dt, w);
@@ -292,6 +353,10 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
         over: game.state.over, zoneR: game.state.zoneR, out: game.state.playerOut,
         prev: game.state.prev, ghost: !!game.state.playerGhost,
       } : null,
+      snow: snow ? {
+        hits: snow.state.hits, taken: snow.state.taken,
+        balls: snow.balls.length, down: !!snow.state.playerKnock,
+      } : null,
       camX: camera.position.x, camY: camera.position.y, camZ: camera.position.z,
     };
   });
@@ -302,6 +367,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
     <>
       <primitive object={terrain.group} />
       {game && <primitive object={game.group} />}
+      {snow && <primitive object={snow.group} />}
       {/* the gait writes offsets into the creature root's own position, so
           the stature scale lives on a wrapper — scaling the root itself would
           leave those offsets unscaled */}
@@ -314,7 +380,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
   );
 }
 
-export default function WorldStage({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null, bombRound = 0, onBombEnd, bombHudRef }) {
+export default function WorldStage({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null, bombRound = 0, onBombEnd, bombHudRef, snowRound = 0, snowHudRef }) {
   const pixelate = params.pixelate !== 'off';
   // the world's sky is the pedestal background lifted a shade toward dusk
   // blue, and the fog is the SAME color — so the horizon melts into the sky
@@ -349,6 +415,8 @@ export default function WorldStage({ params, inputRef, camRef, jumpRef, runRef, 
         bombRound={bombRound}
         onBombEnd={onBombEnd}
         bombHudRef={bombHudRef}
+        snowRound={snowRound}
+        snowHudRef={snowHudRef}
       />
     </Canvas>
   );
