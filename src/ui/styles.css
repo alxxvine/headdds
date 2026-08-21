@@ -1101,3 +1101,28 @@ input[type='range']::-moz-range-thumb { width: 3px; height: 13px; border-radius:
   transform-origin: left;
   transform: scaleX(0);
 }
+
+/* the phone's throw button, above the jump: hold charges, release throws —
+   the desktop charges with the held LMB and never sees this */
+.throw-btn {
+  position: absolute;
+  right: 40px;
+  bottom: 226px;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  border: 1px solid #6a6a6a;
+  background: rgba(5, 5, 5, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--ink);
+  font: inherit;
+  font-size: 24px;
+  z-index: 5;
+  touch-action: none;
+  display: none;
+}
+.throw-btn:active { background: var(--ink); color: #000; }
+@media (pointer: coarse) {
+  .throw-btn { display: block; }
+}

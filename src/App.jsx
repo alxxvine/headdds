@@ -76,6 +76,9 @@ export default function App() {
   // SNOWBALL FIGHT: same round-number scheme; the two modes are exclusive
   const [snowRound, setSnowRound] = useState(0);
   const snowHud = useRef({ el: null, box: null, fill: null });
+  // the phone's throw button: held = charging, released = throw; the world
+  // reads it every frame, so a ref — no React between finger and snowball
+  const walkThrow = useRef({ down: false, was: false });
   const onToggleSnow = useCallback(() => {
     setBombEnd(null);
     setBombRound(0);
@@ -492,6 +495,7 @@ export default function App() {
             bombHudRef={bombHud}
             snowRound={snowRound}
             snowHudRef={snowHud}
+            throwRef={walkThrow}
           />
         ) : (
         <Stage
@@ -584,6 +588,18 @@ export default function App() {
                 <div className="charge" ref={(el) => { snowHud.current.box = el; }}>
                   <i ref={(el) => { snowHud.current.fill = el; }} />
                 </div>
+                <button
+                  type="button"
+                  className="throw-btn"
+                  onPointerDown={(e) => { e.preventDefault(); walkThrow.current.down = true; }}
+                  onPointerUp={(e) => { e.preventDefault(); walkThrow.current.down = false; }}
+                  onPointerCancel={() => { walkThrow.current.down = false; }}
+                  onPointerLeave={() => { walkThrow.current.down = false; }}
+                  onContextMenu={(e) => e.preventDefault()}
+                  title="hold to charge, release to throw"
+                >
+                  ❄
+                </button>
               </>
             )}
             {bombEnd && (
