@@ -24,6 +24,8 @@ export const BOMB = {
   fleeRun: 7,       // non-holders sprint when the holder is this close
   itBoost: 1.15,    // the holder runs hotter than anyone — it WILL catch you
   stick: 2.5,       // the holder commits to one victim this long before re-picking
+  ghost: 4,         // after handing the bomb off you are BENEATH the holder's
+                    // notice this long — it hunts somebody else, no yo-yo tag
   // THE RING. A burning circle closes over the round: corners stop existing,
   // the herd is squeezed together, and hiding is a death sentence — outside
   // the ring you have zoneGrace seconds to get back in.
@@ -170,9 +172,14 @@ export function createBombGame(colliders) {
       const cd = Math.hypot(p.x, p.z) || 1;
       if (state.holder === b.id) {
         // it: commit to ONE victim for a while — a chaser that re-picks every
-        // frame dithers between two equal targets and catches neither
+        // frame dithers between two equal targets and catches neither. The
+        // creature that JUST handed the bomb over is a ghost: not worth
+        // chasing until the pass-back window is long gone (unless it is the
+        // only other one left standing).
         b.targetT -= dt;
-        const ids = aliveIds().filter((id) => id !== b.id);
+        let ids = aliveIds().filter((id) => id !== b.id
+          && !(id === state.prev && state.sinceHand < BOMB.ghost));
+        if (!ids.length) ids = aliveIds().filter((id) => id !== b.id);
         if (b.targetT <= 0 || !ids.includes(b.targetId)) {
           let bd = 1e9;
           for (const id of ids) {
@@ -240,6 +247,9 @@ export function createBombGame(colliders) {
           state.prev = state.holder;
           state.holder = id;
           state.sinceHand = 0;
+          // a bot that just got the bomb re-picks its victim at once — with
+          // the ghost rule in force, so it turns AWAY from whoever tagged it
+          if (id > 0) bots[id - 1].targetT = 0;
           events.push({ type: 'pass', to: id });
           break;
         }
@@ -272,6 +282,16 @@ export function createBombGame(colliders) {
     if (!state.over && state.fuse <= 0) {
       events.push({ type: 'boom', id: state.holder });
       eliminate(state.holder, player);
+    }
+
+    // The fresh ex-holder FLICKERS while its pass-back immunity lasts, so
+    // everyone can see it is untouchable. The player's own flicker is done by
+    // the stage (its mesh is not ours); the flag is exported for it.
+    state.playerGhost = state.prev === 0 && state.sinceHand < BOMB.backLock;
+    for (const b of bots) if (b.alive) b.carrier.visible = true;
+    if (state.prev >= 1 && state.sinceHand < BOMB.backLock) {
+      const pb = bots[state.prev - 1];
+      if (pb.alive) pb.carrier.visible = Math.sin(state.t * 24) > -0.2;
     }
 
     // ----------------------------------------- the bomb rides its holder
