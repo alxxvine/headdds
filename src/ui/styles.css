@@ -1053,3 +1053,51 @@ input[type='range']::-moz-range-thumb { width: 3px; height: 13px; border-radius:
 }
 .bomb-actions button:hover { border-color: #8a8a8a; }
 .bomb-actions button:first-child { background: var(--ink); color: #000; border-color: var(--ink); }
+
+/* ------------------------------------------------------------- snow fight */
+
+.snow-btn { top: 46px; }
+.app.walk-on .snow-btn { left: 10px; }
+
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0.85;
+}
+.crosshair::before,
+.crosshair::after {
+  content: '';
+  position: absolute;
+  background: var(--ink);
+}
+.crosshair::before { left: 7px; top: 0; width: 2px; height: 16px; }
+.crosshair::after { left: 0; top: 7px; width: 16px; height: 2px; }
+
+/* the throw's wind-up, right under the crosshair */
+.charge {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 18px);
+  transform: translateX(-50%);
+  width: 90px;
+  height: 4px;
+  background: #161616;
+  border: 1px solid #2e2e2e;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.charge i {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+  transform-origin: left;
+  transform: scaleX(0);
+}

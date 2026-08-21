@@ -70,7 +70,16 @@ export default function App() {
   }, []);
   const onToggleBomb = useCallback(() => {
     setBombEnd(null);
+    setSnowRound(0);
     setBombRound((n) => (n > 0 ? 0 : n + 1));
+  }, []);
+  // SNOWBALL FIGHT: same round-number scheme; the two modes are exclusive
+  const [snowRound, setSnowRound] = useState(0);
+  const snowHud = useRef({ el: null, box: null, fill: null });
+  const onToggleSnow = useCallback(() => {
+    setBombEnd(null);
+    setBombRound(0);
+    setSnowRound((n) => (n > 0 ? 0 : n + 1));
   }, []);
   // mouse-look speed multiplier, remembered between visits
   const [walkSens, setWalkSens] = useState(() => {
@@ -167,11 +176,20 @@ export default function App() {
       // B shuts the mode down — neither lets the mouse go
       if (e.code === 'KeyR' && !e.repeat) {
         setBombEnd(null);
+        setSnowRound(0);
         setBombRound((n) => n + 1);
+        return;
+      }
+      // N — a fresh snowball fight, any time; B shuts whichever mode is up
+      if (e.code === 'KeyN' && !e.repeat) {
+        setBombEnd(null);
+        setBombRound(0);
+        setSnowRound((n) => n + 1);
         return;
       }
       if (e.code === 'KeyB' && !e.repeat) {
         setBombEnd(null);
+        setSnowRound(0);
         setBombRound((n) => (n > 0 ? 0 : n + 1));
         return;
       }
@@ -472,6 +490,8 @@ export default function App() {
             bombRound={bombRound}
             onBombEnd={onBombEnd}
             bombHudRef={bombHud}
+            snowRound={snowRound}
+            snowHudRef={snowHud}
           />
         ) : (
         <Stage
@@ -513,7 +533,7 @@ export default function App() {
         )}
         {walk && (
           <>
-            <div className="walk-hint">WASD · shift — run · space — jump · R — bomb round · B — bomb off · esc — cursor</div>
+            <div className="walk-hint">WASD · shift — run · space — jump · R — bomb · N — snowfight · hold LMB — throw · esc — cursor</div>
             <label className="walk-sens" title="mouse look speed (esc frees the cursor to reach this)">
               <span>mouse speed</span>
               <input
@@ -548,6 +568,23 @@ export default function App() {
             </button>
             {bombRound > 0 && !bombEnd && (
               <div className="bomb-hud" ref={(el) => { bombHud.current.el = el; }} />
+            )}
+            <button
+              type="button"
+              className="edit-toggle snow-btn"
+              onClick={onToggleSnow}
+              title="snowball fight: charge a throw with LMB, arcs are real, hits knock you flat"
+            >
+              {snowRound > 0 ? '\u2715 SNOW' : '\u2744 SNOW'}
+            </button>
+            {snowRound > 0 && (
+              <>
+                <div className="bomb-hud" ref={(el) => { snowHud.current.el = el; }} />
+                <div className="crosshair" />
+                <div className="charge" ref={(el) => { snowHud.current.box = el; }}>
+                  <i ref={(el) => { snowHud.current.fill = el; }} />
+                </div>
+              </>
             )}
             {bombEnd && (
               <div className="bomb-banner">
