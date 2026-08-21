@@ -42,6 +42,10 @@ export function knockAngle(t) {
 export function createSnowGame(colliders) {
   const group = new THREE.Group();
 
+  // shared snowball dressing — also used for the wind-up ball in a hand
+  const ballGeo = new THREE.SphereGeometry(SNOW.radius, 8, 6);
+  const ballMat = new THREE.MeshLambertMaterial({ color: '#f4f7ff' });
+
   const bots = [];
   for (let i = 0; i < SNOW.bots; i++) {
     const built = buildCreature({ ...randomize(randomSeed()), outline: 0 });
@@ -60,19 +64,23 @@ export function createSnowGame(colliders) {
     carrier.position.copy(walker.state.pos);
     group.add(carrier);
 
+    // the wind-up: a snowball grows in the hand before every throw
+    const handBall = new THREE.Mesh(ballGeo, ballMat);
+    handBall.position.set(0.42, 1.15, 0.5);
+    handBall.visible = false;
+    carrier.add(handBall);
+
     bots.push({
-      id: i + 1, built, walker, carrier, gait: createGait(),
+      id: i + 1, built, walker, carrier, gait: createGait(), handBall,
       wanderA: Math.random() * Math.PI * 2, wanderT: 0, stuck: 0,
       strafe: Math.random() < 0.5 ? 1 : -1,
       cd: 1 + Math.random() * 2,       // first throw comes soon
+      snap: 0,                         // the whip forward right after a throw
       targetId: -1, targetT: 0,
       knock: null,                     // { t } while flat on its back
     });
   }
 
-  // shared snowball dressing
-  const ballGeo = new THREE.SphereGeometry(SNOW.radius, 8, 6);
-  const ballMat = new THREE.MeshLambertMaterial({ color: '#f4f7ff' });
   const balls = [];
 
   const fxGeo = new THREE.SphereGeometry(1, 10, 6);
@@ -202,10 +210,18 @@ export function createSnowGame(colliders) {
       b.carrier.rotation.y = b.walker.state.yaw;
       b.gait.update(b.built.rig, dt, b.walker.state, TUNE.speed);
 
-      // and the throw itself
+      // and the throw itself: the last 0.6s of the cooldown is the WIND-UP —
+      // the ball grows in the hand and the body leans back, then whips
       b.cd -= dt;
+      b.snap = Math.max(0, b.snap - dt);
+      const wind = b.cd < 0.6 ? Math.min(1, (0.6 - b.cd) / 0.6) : 0;
+      b.handBall.visible = wind > 0;
+      if (wind > 0) b.handBall.scale.setScalar(0.5 + wind * 0.6);
+      b.carrier.rotation.x = -0.22 * wind + 0.5 * (b.snap / 0.22);
       if (b.cd <= 0 && d < SNOW.botRange && !entKnocked(b.targetId)) {
         botThrow(b, q);
+        b.snap = 0.22;
+        b.handBall.visible = false;
         b.cd = SNOW.botCdMin + Math.random() * (SNOW.botCdMax - SNOW.botCdMin);
       }
     }

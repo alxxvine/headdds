@@ -36,7 +36,7 @@ export const CAM = {
   maxDist: 26,
 };
 
-function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null, bombRound = 0, onBombEnd, bombHudRef, snowRound = 0, snowHudRef }) {
+function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null, bombRound = 0, onBombEnd, bombHudRef, snowRound = 0, snowHudRef, throwRef }) {
   const { camera, gl } = useThree();
   // the in-game speed slider; a ref so the frame loop reads the live value
   const sensRef = useRef(sens);
@@ -80,8 +80,27 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
   useEffect(() => () => snow?.dispose(), [snow]);
 
   // the throw: LMB held (with the pointer captured) charges, release hurls a
-  // snowball along the LOOK direction — aim high, it flies a real arc
-  const charge = useRef({ down: false, t: 0 });
+  // snowball along the LOOK direction — aim high, it flies a real arc. The
+  // phone's ❄ button walks the same road: `touch` marks who owns the charge
+  // so a synthetic mouse event never fires somebody else's throw.
+  const charge = useRef({ down: false, t: 0, touch: false });
+  // the follow-through: set on a successful throw, decays over 0.2s while the
+  // body whips forward
+  const snapT = useRef(0);
+  const releaseThrow = () => {
+    const ch = charge.current;
+    ch.down = false;
+    if (!snow) { ch.t = 0; return; }
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    const p = walker.state.pos;
+    const origin = new THREE.Vector3(p.x, p.y + 1.7, p.z).addScaledVector(dir, 0.9);
+    const v = SNOW.minV + Math.min(1, ch.t / SNOW.charge) * (SNOW.maxV - SNOW.minV);
+    if (snow.playerThrow(origin, dir, v)) snapT.current = 0.2;
+    ch.t = 0;
+  };
+  const releaseRef = useRef(releaseThrow);
+  releaseRef.current = releaseThrow;
   useEffect(() => {
     if (!snow) return undefined;
     const dom = gl.domElement;
@@ -89,19 +108,13 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
       if (e.button === 0 && document.pointerLockElement === dom) {
         charge.current.down = true;
         charge.current.t = 0;
+        charge.current.touch = false;
       }
     };
     const mu = (e) => {
       const ch = charge.current;
-      if (e.button !== 0 || !ch.down) return;
-      ch.down = false;
-      const dir = new THREE.Vector3();
-      camera.getWorldDirection(dir);
-      const p = walker.state.pos;
-      const origin = new THREE.Vector3(p.x, p.y + 1.7, p.z).addScaledVector(dir, 0.9);
-      const v = SNOW.minV + Math.min(1, ch.t / SNOW.charge) * (SNOW.maxV - SNOW.minV);
-      snow.playerThrow(origin, dir, v);
-      ch.t = 0;
+      if (e.button !== 0 || !ch.down || ch.touch) return;
+      releaseRef.current();
     };
     document.addEventListener('mousedown', md);
     document.addEventListener('mouseup', mu);
@@ -111,9 +124,11 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
       charge.current.down = false;
       charge.current.t = 0;
     };
-  }, [snow, gl, camera, walker]);
+  }, [snow, gl]);
 
   const carrier = useRef();
+  // the snowball growing in the player's hand while a throw charges
+  const handRef = useRef();
   const aimed = useRef(false);
   // the whole camera is these three numbers
   const cam = useRef({ theta: 0, phi: 1.15, dist: STATURE * 3.6 });
@@ -313,17 +328,38 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
     // SNOWBALL FIGHT: knocked flat, the legs answer nobody and the body tips
     // onto its back; the stage owns the player's mesh, so the tilt lives here
     if (snow) {
-      if (charge.current.down) charge.current.t += dt;
+      const ch = charge.current;
+      // the phone's ❄ button: press starts a touch-owned charge, release
+      // throws — same charge, same arc, no pointer lock required
+      const tb = throwRef?.current;
+      if (tb) {
+        if (tb.down && !tb.was && !ch.down) { ch.down = true; ch.t = 0; ch.touch = true; }
+        if (!tb.down && tb.was && ch.down && ch.touch) releaseRef.current();
+        tb.was = tb.down;
+      }
+      if (ch.down) ch.t += dt;
       snow.update(dt, w);
-      carrier.current.rotation.x = snow.state.playerKnock ? knockAngle(snow.state.playerKnock.t) : 0;
+      // the wind-up reads on the body: the ball grows in the hand and the
+      // torso leans back with the charge, then whips forward on release —
+      // unless the player is flat on their back
+      const ck = ch.down && !snow.state.playerKnock ? Math.min(1, ch.t / SNOW.charge) : 0;
+      snapT.current = Math.max(0, snapT.current - dt);
+      if (handRef.current) {
+        handRef.current.visible = ck > 0;
+        handRef.current.scale.setScalar(0.5 + ck * 0.6);
+      }
+      carrier.current.rotation.x = snow.state.playerKnock
+        ? knockAngle(snow.state.playerKnock.t)
+        : -0.22 * ck + 0.5 * (snapT.current / 0.2);
       const shud = snowHudRef?.current;
       if (shud?.el) shud.el.textContent = `❄ hits ${snow.state.hits} · taken ${snow.state.taken}`;
       if (shud?.fill) {
         shud.fill.style.transform = `scaleX(${charge.current.down ? Math.min(1, charge.current.t / SNOW.charge) : 0})`;
         if (shud.box) shud.box.style.opacity = charge.current.down ? '1' : '0';
       }
-    } else if (carrier.current.rotation.x !== 0) {
-      carrier.current.rotation.x = 0;
+    } else {
+      if (carrier.current.rotation.x !== 0) carrier.current.rotation.x = 0;
+      if (handRef.current?.visible) handRef.current.visible = false;
     }
 
     // the round itself: bots think, the bomb rides, the fuse burns
@@ -356,6 +392,7 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
       snow: snow ? {
         hits: snow.state.hits, taken: snow.state.taken,
         balls: snow.balls.length, down: !!snow.state.playerKnock,
+        charge: charge.current.down ? Math.min(1, charge.current.t / SNOW.charge) : 0,
       } : null,
       camX: camera.position.x, camY: camera.position.y, camZ: camera.position.z,
     };
@@ -375,12 +412,17 @@ function WalkScene({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1
         <group scale={[fit, fit, fit]}>
           <primitive object={built.group} />
         </group>
+        {/* the wind-up snowball: same seat and growth as the bots' */}
+        <mesh ref={handRef} position={[0.42, 1.15, 0.5]} visible={false}>
+          <sphereGeometry args={[SNOW.radius, 8, 6]} />
+          <meshLambertMaterial color="#f4f7ff" />
+        </mesh>
       </group>
     </>
   );
 }
 
-export default function WorldStage({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null, bombRound = 0, onBombEnd, bombHudRef, snowRound = 0, snowHudRef }) {
+export default function WorldStage({ params, inputRef, camRef, jumpRef, runRef, hudRef, sens = 1, zoom = null, bombRound = 0, onBombEnd, bombHudRef, snowRound = 0, snowHudRef, throwRef }) {
   const pixelate = params.pixelate !== 'off';
   // the world's sky is the pedestal background lifted a shade toward dusk
   // blue, and the fog is the SAME color — so the horizon melts into the sky
@@ -417,6 +459,7 @@ export default function WorldStage({ params, inputRef, camRef, jumpRef, runRef, 
         bombHudRef={bombHudRef}
         snowRound={snowRound}
         snowHudRef={snowHudRef}
+        throwRef={throwRef}
       />
     </Canvas>
   );
