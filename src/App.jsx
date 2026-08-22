@@ -40,8 +40,23 @@ const FAMILY_LABEL = {
   skull: 'skull', torso: 'body', leg: 'legs', arm: 'arms',
 };
 
+// Once the player picks a backdrop it STICKS: every random freak, seed,
+// favourite and shared link renders on it until RESET lets go. Remembered
+// between visits, so the gallery keeps one wall color.
+const readBgLock = () => {
+  try {
+    const v = localStorage.getItem('hd_bg');
+    return v && /^#[0-9a-f]{6}$/i.test(v) ? v : null;
+  } catch { return null; }
+};
+
 export default function App() {
-  const [params, setParams] = useState(() => readUrlParams() || { ...DEFAULTS });
+  const bgLock = useRef(null);
+  const [params, setParams] = useState(() => {
+    bgLock.current = readBgLock();
+    const p = readUrlParams() || { ...DEFAULTS };
+    return bgLock.current ? { ...p, bgColor: bgLock.current } : p;
+  });
   const [note, setNote] = useState('');
   const [idle, setIdle] = useState(WANTS_MOTION);
   const [mood, setMood] = useState(null);
@@ -50,6 +65,8 @@ export default function App() {
   const [viewReset, setViewReset] = useState(0);
   const [edit, setEdit] = useState(false);
   const [walk, setWalk] = useState(false);
+  // the whole UI lives behind one ⋯ button: the screen belongs to the freak
+  const [menuOpen, setMenuOpen] = useState(false);
   // what the walk stick / keys are asking for right now; refs, because the
   // world reads them every frame and touch events fire far faster than React
   const walkInput = useRef({ x: 0, y: 0 });
@@ -126,6 +143,11 @@ export default function App() {
     clearTimeout(noteTimer.current);
     noteTimer.current = setTimeout(() => setNote(''), 2200);
   }, []);
+
+  const onToggleMenu = useCallback(() => {
+    sound.ui('tap');
+    setMenuOpen((v) => !v);
+  }, [sound]);
 
   useEffect(() => {
     const t = setTimeout(() => syncUrl(params), 400);
@@ -229,6 +251,11 @@ export default function App() {
     // fires on every pixel of travel and would turn the panel into a rattle.
     const type = PARAM_BY_KEY[key]?.type;
     if (type === 'select' || type === 'color') sound.ui('tap');
+    if (key === 'bgColor') {
+      // the pick becomes the house backdrop for every freak from here on
+      bgLock.current = value;
+      try { localStorage.setItem('hd_bg', value); } catch { /* private mode */ }
+    }
     setParams((prev) => ({ ...prev, [key]: value }));
   }, [sound]);
 
@@ -238,13 +265,21 @@ export default function App() {
   const onRandom = useCallback(() => {
     const seed = randomSeed();
     const next = randomize(seed);
+    if (bgLock.current) next.bgColor = bgLock.current;
     setParams(next);
     flash(`${nameOf(next)} · #${seed}`);
   }, [flash]);
 
-  const onSeed = useCallback((seed) => setParams(randomize(seed)), []);
+  const onSeed = useCallback((seed) => {
+    const next = randomize(seed);
+    if (bgLock.current) next.bgColor = bgLock.current;
+    setParams(next);
+  }, []);
 
   const onReset = useCallback(() => {
+    // ...and the backdrop lock goes with everything else
+    bgLock.current = null;
+    try { localStorage.removeItem('hd_bg'); } catch { /* fine */ }
     setParams({ ...DEFAULTS });
     // ...and the view goes back to stock with them: a reset that keeps the
     // player's zoom and spin reads as a reset that did not work
@@ -291,7 +326,7 @@ export default function App() {
   const onPickFav = useCallback((fav) => {
     const p = favParams(fav);
     if (!p) { flash('this one is corrupted'); return; }
-    setParams(p);
+    setParams(bgLock.current ? { ...p, bgColor: bgLock.current } : p);
     flash(`${fav.name} · #${fav.seed}`);
   }, [flash]);
 
@@ -478,7 +513,7 @@ export default function App() {
   }, [sound, flash]);
 
   return (
-    <div className={edit ? 'app edit-on' : walk ? 'app walk-on' : 'app'}>
+    <div className={`${edit ? 'app edit-on' : walk ? 'app walk-on' : 'app'}${menuOpen ? ' menu-on' : ''}`}>
       <div className="viewport" onDragOver={(e) => e.preventDefault()} onDrop={onDropPart}>
         {walk ? (
           <WorldStage
@@ -515,24 +550,31 @@ export default function App() {
           onNote={flash}
         />
         )}
-        {!walk && (
-        <button
-          type="button"
-          className={edit ? 'edit-toggle on' : 'edit-toggle'}
-          onClick={onToggleEdit}
-          title="grab the creature itself: drag a part to reshape it, wheel over it to resize"
-        >
-          EDIT
-        </button>
+        {/* the only chrome on a clean screen: RANDOM and the door to the rest */}
+        {!walk && !edit && (
+          <div className="quickbar">
+            <button type="button" className="qb-random" onClick={onRandom}>RANDOM</button>
+            <button
+              type="button"
+              className={menuOpen ? 'qb-menu on' : 'qb-menu'}
+              onClick={onToggleMenu}
+              aria-label="menu"
+              title="everything else: sliders, EDIT, WALK, the collection"
+            >
+              ⋯
+            </button>
+          </div>
         )}
-        {!edit && (
+        {/* flashes surface over the stage now that the panel hides by default */}
+        {!walk && !menuOpen && note && <div className="viewport-note">{note}</div>}
+        {walk && (
           <button
             type="button"
-            className={walk ? 'edit-toggle walk-toggle on' : 'edit-toggle walk-toggle'}
+            className="edit-toggle walk-toggle on"
             onClick={onToggleWalk}
-            title="drop the freak into the micro-world and take it for a walk"
+            title="back to the pedestal"
           >
-            {walk ? '⏎ EXIT' : 'WALK'}
+            ⏎ EXIT
           </button>
         )}
         {walk && (
@@ -776,6 +818,35 @@ export default function App() {
           </div>
         )}
       </div>
+      {/* tap the freak to put the drawer away again */}
+      {menuOpen && <div className="drawer-scrim" onClick={() => setMenuOpen(false)} />}
+      {/* the drawer: everything that used to crowd the screen, one ⋯ away */}
+      <div className={menuOpen ? 'drawer open' : 'drawer'}>
+        <div className="drawer-modes">
+          <button
+            type="button"
+            onClick={() => { setMenuOpen(false); onToggleEdit(); }}
+            title="grab the creature itself: drag a part to reshape it, wheel over it to resize"
+          >
+            ✎ EDIT
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMenuOpen(false); onToggleWalk(); }}
+            title="drop the freak into the micro-world and take it for a walk"
+          >
+            ➤ WALK
+          </button>
+          <button
+            type="button"
+            className="drawer-close"
+            onClick={() => setMenuOpen(false)}
+            aria-label="close"
+            title="back to the freak"
+          >
+            ✕
+          </button>
+        </div>
       <Panel
         params={params}
         note={note}
@@ -795,6 +866,7 @@ export default function App() {
         onPickFav={onPickFav}
         onRemoveFav={onRemoveFav}
       />
+      </div>
     </div>
   );
 }

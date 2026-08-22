@@ -1126,3 +1126,141 @@ input[type='range']::-moz-range-thumb { width: 3px; height: 13px; border-radius:
 @media (pointer: coarse) {
   .throw-btn { display: block; }
 }
+
+/* =========================================================== quiet chrome */
+/* The screen belongs to the freak. Two buttons survive — RANDOM and the ⋯
+   that slides the whole panel in as a drawer; EDIT and WALK moved into it. */
+
+.quickbar {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 7;
+}
+
+.quickbar button {
+  padding: 11px 24px;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 3px;
+  cursor: pointer;
+  border: 1px solid #3a3a3a;
+  border-radius: 2px;
+  background: rgba(5, 5, 5, 0.65);
+  color: var(--ink);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.quickbar .qb-random {
+  background: var(--ink);
+  color: #000;
+  border-color: var(--ink);
+  font-weight: 700;
+}
+.quickbar .qb-random:hover { background: #d7d7d7; border-color: #d7d7d7; }
+
+.quickbar .qb-menu {
+  min-width: 52px;
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: 0;
+  padding: 11px 0;
+}
+.quickbar .qb-menu:hover { border-color: #8a8a8a; }
+.quickbar .qb-menu.on { border-color: var(--ink); background: #1a1a1a; }
+
+/* flashes used to land in the panel; with the panel hidden they float over
+   the stage instead */
+.viewport-note {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: 84vw;
+  padding: 6px 12px;
+  background: rgba(5, 5, 5, 0.7);
+  border: 1px solid var(--line);
+  color: var(--status);
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* the drawer: the untouched panel, parked off-screen until ⋯ */
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(300px, 92vw);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  box-shadow: -14px 0 40px rgba(0, 0, 0, 0.45);
+  transform: translateX(103%);
+  transition: transform 0.22s ease;
+}
+.drawer.open { transform: none; }
+
+.drawer .panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  border-left: 0;
+  border-top: 0;
+}
+
+.drawer-modes {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.drawer-modes button {
+  flex: 1 1 auto;
+  padding: 9px 4px;
+  background: #171717;
+  color: var(--ink);
+  border: 1px solid #3a3a3a;
+  border-radius: 2px;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 3px;
+  cursor: pointer;
+}
+.drawer-modes button:hover { border-color: #8a8a8a; }
+.drawer-modes .drawer-close { flex: 0 0 auto; min-width: 42px; font-size: 13px; letter-spacing: 0; }
+
+/* the phone gets a bottom sheet instead of a side drawer; the quickbar rides
+   above it so ⋯ still closes what it opened */
+@media (max-width: 720px) {
+  .drawer {
+    top: 18vh;
+    left: 0;
+    right: 0;
+    width: auto;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    transform: translateY(105%);
+  }
+  .drawer.open { transform: none; }
+  /* the sheet covers most of the screen, so the floating pair would sit ON
+     the sliders — ✕ inside the sheet closes it instead */
+  .app.menu-on .quickbar { display: none; }
+}
